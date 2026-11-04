@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: scofen-modeler-studio
+  flyway:
+    enabled: false
+  jackson:
+    default-property-inclusion: always
+server:
+  port: 8080
+  shutdown: graceful
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+scofen:
+  product: Scofen Modeler Studio
+  stage: M0
+  persistence: in-memory

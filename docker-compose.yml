@@ -1,0 +1,24 @@
+services:
+  app:
+    build: .
+    image: scofen/server:0.1.0
+    container_name: scofen-app
+    ports:
+      - "8080:8080"
+    environment:
+      SERVER_PORT: "8080"
+      SPRING_PROFILES_ACTIVE: "prod"
+    restart: unless-stopped
+
+  # M0 使用服务端内存权威层，MySQL 8.4 容器为下一步持久化适配器预留。
+  # 启用：docker compose --profile persistence up -d
+  mysql:
+    image: mysql:8.4
+    container_name: scofen-mysql
+    profiles: ["persistence"]
+    environment:
+      MYSQL_ROOT_PASSWORD: scofen
+      MYSQL_DATABASE: scofen
+    ports:
+      - "3306:3306"
+    restart: unless-stopped
