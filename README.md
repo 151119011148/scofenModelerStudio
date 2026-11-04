@@ -76,6 +76,9 @@ curl -X POST http://localhost:8080/api/commands \
 ./build.sh
 docker compose up -d --build          # http://<host>:8080
 docker compose --profile persistence up -d   # 附带 MySQL 8.4
+
+# 或部署到已有服务器（远端需安装 Docker / Docker Compose 与 SSH 访问）
+./deploy-remote.sh user@your-host /opt/scofen
 ```
 
 镜像基于 `eclipse-temurin:17-jre`，端口 8080。反向代理需同时转发 HTTP 与 WebSocket 升级请求。
