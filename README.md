@@ -84,7 +84,7 @@ SCOFEN_BASE=/scofen/modelerStudio/ ./build.sh
 只跑测试：
 
 ```bash
-./mvnw -B -ntp test          # 54 个测试：metamodel 6 / core 20 / xmi 5 / web 23（含 2 个 Testcontainers 跳过）
+./mvnw -B -ntp test          # 70 个测试：metamodel 12 / core 28 / xmi 5 / web 25（含 2 个 Testcontainers 跳过）
 ```
 
 ## 主要 API
