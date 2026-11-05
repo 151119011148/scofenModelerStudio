@@ -11,7 +11,9 @@ import com.scofen.model.metamodel.ElementType;
 import com.scofen.model.metamodel.MetamodelRegistry;
 import com.scofen.model.metamodel.ModelSnapshot;
 import com.scofen.model.metamodel.RelationshipType;
+import com.scofen.model.web.project.ProjectRegistry;
 import com.scofen.model.web.ws.PatchBroker;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -34,6 +36,8 @@ public class ModelController {
     private final CommandExecutor executor;
     private final PatchBroker broker;
     private final PersistenceService persistence;
+    /** 单元测试可直接构造本类；Spring 运行时注入多项目路由。 */
+    private ProjectRegistry projects;
 
     public ModelController(CommandExecutor executor, PatchBroker broker, PersistenceService persistence) {
         this.executor = executor;
@@ -41,24 +45,44 @@ public class ModelController {
         this.persistence = persistence;
     }
 
+    @Autowired
+    public void setProjectRegistry(ProjectRegistry projects) {
+        this.projects = projects;
+    }
+
+    private CommandExecutor forProject(String projectId) {
+        return projects == null ? executor : projects.resolve(projectId);
+    }
+
+    public Map<String, Object> health(String sessionId) {
+        return health(sessionId, "");
+    }
+
     @GetMapping("/health")
     public Map<String, Object> health(
-            @RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId) {
+            @RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId,
+            @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
+        CommandExecutor current = forProject(projectId);
         return Map.of(
                 "status", "UP",
                 "product", PRODUCT_NAME,
                 "tagline", TAGLINE,
-                "revision", executor.revision(),
+                "revision", current.revision(),
                 "diagramKinds", MetamodelRegistry.diagramCount(),
                 "onlineSessions", broker.sessionCount(),
                 "persistence", persistence.describe(),
-                "undoDepth", executor.undoDepth(sessionId),
-                "redoDepth", executor.redoDepth(sessionId));
+                "undoDepth", current.undoDepth(sessionId),
+                "redoDepth", current.redoDepth(sessionId));
+    }
+
+    public ModelSnapshot model() {
+        return model("");
     }
 
     @GetMapping("/model")
-    public ModelSnapshot model() {
-        return executor.snapshot();
+    public ModelSnapshot model(
+            @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
+        return forProject(projectId).snapshot();
     }
 
     @GetMapping("/metamodel/diagrams")
@@ -126,32 +150,52 @@ public class ModelController {
                 "stereotype", type.stereotype());
     }
 
+    public Patch commands(CommandRequest request, String sessionId) {
+        return commands(request, sessionId, "");
+    }
+
     @PostMapping("/commands")
     public Patch commands(@RequestBody CommandRequest request,
-                          @RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId) {
+                          @RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId,
+                          @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
         String clientCmdId = request.clientCmdId() == null || request.clientCmdId().isBlank()
                 ? UUID.randomUUID().toString()
                 : request.clientCmdId();
         Command command = new Command(request.type(), request.payload(), request.baseRevision(), clientCmdId);
-        return executor.execute(sessionId, command);
+        return forProject(projectId).execute(sessionId, command);
+    }
+
+    public Patch undo(String sessionId) {
+        return undo(sessionId, "");
     }
 
     @PostMapping("/commands/undo")
-    public Patch undo(@RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId) {
-        return executor.undo(sessionId);
+    public Patch undo(@RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId,
+                      @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
+        return forProject(projectId).undo(sessionId);
+    }
+
+    public Patch redo(String sessionId) {
+        return redo(sessionId, "");
     }
 
     @PostMapping("/commands/redo")
-    public Patch redo(@RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId) {
-        return executor.redo(sessionId);
+    public Patch redo(@RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId,
+                      @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
+        return forProject(projectId).redo(sessionId);
+    }
+
+    public Map<String, Object> exportModel() {
+        return exportModel("");
     }
 
     @GetMapping("/export/scofen.json")
-    public Map<String, Object> exportModel() {
+    public Map<String, Object> exportModel(
+            @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
         return Map.of(
                 "format", "scofen.json",
                 "version", "1.0",
                 "lossless", Boolean.TRUE,
-                "snapshot", executor.snapshot());
+                "snapshot", forProject(projectId).snapshot());
     }
 }

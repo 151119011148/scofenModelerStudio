@@ -93,38 +93,97 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   padding: 3px 9px;
 }
 
-.tabs {
-  display: flex;
-  gap: 2px;
-  padding: 8px 18px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--line);
-  overflow-x: auto;
-  flex: none;
-}
-
-.tabs button {
-  border-color: transparent;
-  background: transparent;
-  white-space: nowrap;
-  font-size: 12.5px;
+/* 顶栏项目选择器：空间 / 项目下拉，替代常驻的最左侧空间列与顶部九图切换条。 */
+.project-picker { position: relative; flex: 1 1 auto; min-width: 0; display: flex; justify-content: center; }
+.project-switch {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 5px 10px;
+  gap: 8px;
+  max-width: 100%;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--surface-2);
+  font-size: 12.5px;
+  color: var(--text-2);
 }
-.tabs button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-soft); }
-.tabs button:hover:not(:disabled) { background: var(--surface-2); color: var(--accent); }
+.project-switch:hover:not(:disabled), .project-switch.open {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.project-switch strong { color: var(--text); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-space { white-space: nowrap; }
+.pp-caret { color: var(--text-3); font-size: 12px; }
+.project-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 380px;
+  max-width: calc(100vw - 40px);
+  z-index: 40;
+  background: var(--surface);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(28, 36, 48, .14);
+  overflow: hidden;
+}
+.pp-head, .pp-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  font-size: 11.5px;
+  color: var(--text-2);
+}
+.pp-head { border-bottom: 1px solid var(--line); }
+.pp-foot { border-top: 1px solid var(--line); }
+.pp-head button, .pp-foot button { padding: 2px 8px; font-size: 11px; }
+.pp-scroll { max-height: 380px; overflow-y: auto; padding: 4px 0 8px; }
+.pp-space-group { border-bottom: 1px solid var(--line); }
+.pp-space-title { display: flex; align-items: center; gap: 6px; padding: 8px 12px 4px; font-size: 11px; color: var(--text-3); }
+.pp-space-title strong { font-size: 12px; color: var(--text-2); font-weight: 600; }
+.pp-space-title button { margin-left: auto; padding: 0 6px; line-height: 18px; }
+.pp-project {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: calc(100% - 16px);
+  margin: 2px 8px;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+}
+.pp-project:hover:not(:disabled) { background: var(--surface-2); border-color: var(--line); }
+.pp-project.active { background: var(--accent-soft); border-color: var(--accent-soft); }
+.pp-project-body { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.35; }
+.pp-project-name { font-size: 12.5px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-project-meta { font-family: var(--mono); font-size: 9.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-open, .pp-current { flex: none; font-size: 10px; padding: 1px 6px; border-radius: 4px; }
+.pp-open { color: var(--accent); background: var(--accent-soft); }
+.pp-current { color: #1f7a5a; background: #e6f4ef; }
 
-/* 四列：空间/项目导航 | 模型树+属性 | 垂直组件工具箱（紧贴模型树右侧） | 画布。 */
+.user-chip { display: flex; align-items: center; gap: 7px; padding-left: 10px; margin-left: 2px; border-left: 1px solid var(--line); }
+.user-avatar { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 600; }
+.user-name { font-size: 11.5px; color: var(--text-2); white-space: nowrap; }
+.user-chip button { padding: 3px 8px; font-size: 11px; }
+
+/* 三列：模型树+属性 | 垂直组件工具箱 | 画布。
+   空间 / 项目列表收进顶栏，完整面板以抽屉覆盖在工作区左侧。 */
 .workspace {
   display: grid;
-  grid-template-columns: 216px 268px 198px minmax(0, 1fr);
+  grid-template-columns: 268px 198px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   gap: 1px;
   background: var(--line);
   flex: 1 1 auto;
   min-height: 0;
+  position: relative;
 }
 
 /* 顶栏面包屑：当前空间 / 当前项目 */
@@ -154,14 +213,24 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   padding: 1px 6px;
 }
 
-/* ── 最左侧：空间导航（个人空间 / 团队空间）与项目列表 ── */
-.space-dock {
+/* ── 完整空间面板：按需从左侧滑出，不占常驻列宽 ── */
+.drawer-scrim { position: absolute; inset: 0; background: rgba(28, 36, 48, .18); z-index: 29; }
+.space-drawer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 280px;
+  z-index: 30;
   display: flex;
   flex-direction: column;
   min-height: 0;
   min-width: 0;
   background: var(--surface);
+  border-right: 1px solid var(--line-2);
+  box-shadow: 4px 0 18px rgba(28, 36, 48, .14);
 }
+.drawer-close { margin-left: auto; padding: 0 7px; font-size: 15px; line-height: 22px; }
 .space-head {
   display: flex;
   align-items: center;
@@ -813,16 +882,17 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 .modal-actions button.primary { width: auto; min-width: 96px; }
 
 @media (max-width: 1180px) {
-  .workspace { grid-template-columns: 188px 232px 176px minmax(0, 1fr); }
+  .workspace { grid-template-columns: 232px 176px minmax(0, 1fr); }
   .tb-item-st { display: none; }
   .crumb-tag { display: none; }
+  .user-name { display: none; }
 }
 
 @media (max-width: 900px) {
   .app { height: auto; min-height: 100vh; overflow: visible; }
-  .workspace { grid-template-columns: 1fr; grid-template-rows: auto auto auto auto; }
-  .crumb { display: none; }
-  .space-dock { max-height: 300px; }
+  .workspace { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
+  .space-drawer { position: relative; width: 100%; max-height: 300px; }
+  .drawer-scrim { display: none; }
   .space-detail { display: none; }
   .left-dock { max-height: 420px; }
   .tree { max-height: 240px; }
@@ -830,4 +900,76 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   .toolbox { max-height: 320px; }
   .tb-scroll { min-height: 160px; }
   .canvas > svg { min-height: 420px; }
+  .topbar { flex-wrap: wrap; }
+  .project-picker { order: 3; flex-basis: 100%; }
 }
+
+/* ── 登录页（仿 scofenDoc 的居中卡片） ── */
+.auth {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  padding: 24px;
+}
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 10px 30px rgba(28, 36, 48, .07);
+  padding: 30px 32px 24px;
+}
+.auth-brand { text-align: center; margin-bottom: 24px; }
+.auth-logo {
+  display: inline-block;
+  width: 36px;
+  height: 36px;
+  border: 2px solid var(--accent);
+  border-radius: 9px;
+  position: relative;
+  margin-bottom: 12px;
+}
+.auth-logo::after {
+  content: "";
+  position: absolute;
+  right: -9px;
+  top: 5px;
+  width: 8px;
+  height: 8px;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  box-shadow: 0 11px 0 var(--accent-soft), 0 11px 0 1px var(--accent);
+}
+.auth-brand h1 { font-size: 18px; font-weight: 600; margin: 0 0 2px; }
+.auth-brand p { font-size: 12px; color: var(--text-3); margin: 0; }
+.auth-form { display: flex; flex-direction: column; gap: 14px; }
+.auth-form label { display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--text-2); }
+.auth-form input {
+  width: 100%;
+  padding: 9px 11px;
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  outline: none;
+}
+.auth-form input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.auth-error { font-size: 12px; color: var(--danger); margin: 0; }
+.auth-submit {
+  width: 100%;
+  padding: 9px;
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 7px;
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+.auth-submit:hover:not(:disabled) { color: #fff; }
+.auth-submit:disabled { opacity: .6; cursor: not-allowed; }
+.auth-tip { margin: 20px 0 0; font-size: 11px; color: var(--text-3); line-height: 1.7; text-align: center; }

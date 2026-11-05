@@ -1,6 +1,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
-import { createProject, getContainment, getDiagrams, getHealth, getModel, getRelationships, getWorkspaces, postCommand, redo, undo } from './api'
+import {
+  clearSession,
+  createProject,
+  getContainment,
+  getDiagrams,
+  getHealth,
+  getModel,
+  getProjectId,
+  getRelationships,
+  getWorkspaces,
+  loadSession,
+  logout,
+  patchSocketUrl,
+  postCommand,
+  redo,
+  setProjectId,
+  setUnauthorizedHandler,
+  undo,
+} from './api'
 import type {
   ContainmentSpec,
   Diagram,
@@ -10,11 +28,13 @@ import type {
   ModelElement,
   ModelSnapshot,
   RelationshipTypeInfo,
+  Session,
   WorkspaceDirectoryInfo,
   WorkspaceProject,
 } from './types'
 import { arrowGeometry, edgePoint, relationshipStyle, shapeOf } from './notation'
 import { DiagramIcon, FAMILIES, RelationIcon, TypeIcon, familyOfType } from './icons'
+import LoginView from './LoginView'
 
 const EMPTY_MODEL: ModelSnapshot = {
   revision: 0,
@@ -110,7 +130,34 @@ const FALLBACK_RELATIONS: RelationshipTypeInfo[] = [
   { code: 'generalization', label: '泛化', stereotype: 'generalization', family: 'structure' },
 ]
 
+/** 会话门卫：未登录只渲染登录页；任何接口返回 401 都会统一回到这里。 */
 export default function App() {
+  const [session, setSession] = useState<Session | null>(() => loadSession())
+
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      clearSession()
+      setSession(null)
+    })
+    return () => setUnauthorizedHandler(() => {})
+  }, [])
+
+  if (!session) {
+    return <LoginView onSuccess={setSession} />
+  }
+  return (
+    <StudioApp
+      session={session}
+      onLogout={() => {
+        void logout().catch(() => {})
+        clearSession()
+        setSession(null)
+      }}
+    />
+  )
+}
+
+function StudioApp({ session, onLogout }: { session: Session; onLogout: () => void }) {
   const [health, setHealth] = useState<Health | null>(null)
   const [model, setModel] = useState<ModelSnapshot>(EMPTY_MODEL)
   const [specs, setSpecs] = useState<DiagramSpec[]>([])
@@ -135,21 +182,26 @@ export default function App() {
   // 右侧垂直工具箱：组件内容只跟当前图相关（元素 + 关系 + 通用），参考 EA / StarUML。
   const [toolboxTab, setToolboxTab] = useState<'components' | 'styles'>('components')
   const [openToolGroups, setOpenToolGroups] = useState<Set<string>>(
-    () => new Set(['elements', 'relations']),
+    () => new Set(['elements', 'relations', 'generic']),
   )
   const [relationCatalog, setRelationCatalog] = useState<RelationshipTypeInfo[]>([])
   // 连线工具：选中关系组件后在画布上依次点击起点、终点创建关系。
   const [relationTool, setRelationTool] = useState<string | null>(null)
   const [relationSource, setRelationSource] = useState<string | null>(null)
   const [propsTab, setPropsTab] = useState<'attrs' | 'tags'>('attrs')
-  // 空间 / 项目导航：个人空间、团队空间与各自的项目列表（目录数据由服务端下发）。
+  // 空间 / 项目导航：列表收进顶栏项目选择器，完整面板按需展开为左侧抽屉。
   const [workspace, setWorkspace] = useState<WorkspaceDirectoryInfo | null>(null)
   const [openSpaces, setOpenSpaces] = useState<Set<string>>(() => new Set(['personal', 'team']))
-  const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [activeProjectId, setActiveProjectId] = useState(() => getProjectId())
+  const [projectPickerOpen, setProjectPickerOpen] = useState(false)
+  const [spaceDrawerOpen, setSpaceDrawerOpen] = useState(false)
   const [newProjectDialog, setNewProjectDialog] = useState(false)
   const [newProjectSpace, setNewProjectSpace] = useState('personal')
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectDesc, setNewProjectDesc] = useState('')
+
+  // 所有 /api 请求都带当前项目头；在渲染期同步，避免切换项目时首帧请求串到旧项目。
+  setProjectId(activeProjectId)
 
   const svgRef = useRef<SVGSVGElement | null>(null)
   const renameRef = useRef<HTMLInputElement | null>(null)
@@ -177,8 +229,8 @@ export default function App() {
     }
   }, [])
 
+  // 元模型目录与项目无关，登录后只加载一次。
   useEffect(() => {
-    void refresh()
     getDiagrams()
       .then(setSpecs)
       .catch((error: unknown) => setMessage(`图规格加载失败：${errorMessage(error)}`))
@@ -188,13 +240,15 @@ export default function App() {
     getContainment()
       .then(setContainment)
       .catch((error: unknown) => setMessage(`元模型规则加载失败：${errorMessage(error)}`))
-  }, [refresh])
+  }, [])
+
+  // 首次进入与每次「打开项目」都重新拉取该项目的权威快照。
+  useEffect(() => {
+    void refresh()
+  }, [refresh, activeProjectId])
 
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const socket = new WebSocket(
-      `${protocol}//${window.location.host}${import.meta.env.BASE_URL}ws/patches`,
-    )
+    const socket = new WebSocket(patchSocketUrl())
     socket.onmessage = (event: MessageEvent<string>) => {
       try {
         const payload = JSON.parse(event.data) as { type?: string }
@@ -206,7 +260,7 @@ export default function App() {
       }
     }
     return () => socket.close()
-  }, [refresh])
+  }, [refresh, activeProjectId, session.token])
 
   useEffect(() => {
     if (!menu) {
@@ -216,6 +270,16 @@ export default function App() {
     window.addEventListener('pointerdown', close)
     return () => window.removeEventListener('pointerdown', close)
   }, [menu])
+
+  // 项目选择器：点击面板之外关闭；面板自身阻止冒泡，内部按钮可正常点击。
+  useEffect(() => {
+    if (!projectPickerOpen) {
+      return
+    }
+    const close = () => setProjectPickerOpen(false)
+    window.addEventListener('pointerdown', close)
+    return () => window.removeEventListener('pointerdown', close)
+  }, [projectPickerOpen])
 
   const typeInfo = useMemo(
     () => new Map((containment?.types ?? []).map((item) => [item.code, item])),
@@ -243,7 +307,7 @@ export default function App() {
 
   // 切换图：组件内容随图联动，展开元素/关系分组，并清掉新图不允许的连线工具与起点。
   useEffect(() => {
-    setOpenToolGroups(new Set(['elements', 'relations']))
+    setOpenToolGroups(new Set(['elements', 'relations', 'generic']))
     setRelationSource(null)
     setRelationTool((current) =>
       current && (activeSpec?.allowedRelationships ?? []).includes(current) ? current : null,
@@ -1006,15 +1070,15 @@ export default function App() {
     [workspace],
   )
   const selectedProject = useMemo<WorkspaceProject | null>(
-    () => allProjects.find((project) => project.id === selectedProjectId)
+    () => allProjects.find((project) => project.id === activeProjectId)
       ?? allProjects.find((project) => project.current)
       ?? null,
-    [allProjects, selectedProjectId],
+    [allProjects, activeProjectId],
   )
   const currentSpaceLabel = useMemo(
-    () => workspace?.spaces.find((space) => space.projects.some((project) => project.current))?.label
+    () => workspace?.spaces.find((space) => space.projects.some((project) => project.id === activeProjectId))?.label
       ?? '个人空间',
-    [workspace],
+    [workspace, activeProjectId],
   )
 
   const toggleSpace = (code: string) => {
@@ -1029,11 +1093,24 @@ export default function App() {
     })
   }
 
+  /** 打开项目：切换请求头 → 切换 UI → effect 重新拉快照并重连 WS。 */
   const openProject = (project: WorkspaceProject) => {
-    setSelectedProjectId(project.id)
-    setMessage(project.editable
-      ? `当前编辑项目：${project.name}`
-      : `「${project.name}」为目录项 · M0 阶段仅当前项目接入服务端模型`)
+    setProjectPickerOpen(false)
+    setSpaceDrawerOpen(false)
+    if (project.id === activeProjectId) {
+      setMessage(`当前编辑项目：${project.name}`)
+      return
+    }
+    setProjectId(project.id)
+    setActiveProjectId(project.id)
+    setSelectedId(null)
+    setSelectedDiagramId(null)
+    setMenu(null)
+    setRelationTool(null)
+    setRelationSource(null)
+    setExpanded(new Set())
+    const spaceLabel = workspace?.spaces.find((space) => space.code === project.spaceCode)?.label ?? ''
+    setMessage(`已打开项目「${project.name}」· ${spaceLabel}`)
   }
 
   const openNewProject = (spaceCode: string) => {
@@ -1056,9 +1133,11 @@ export default function App() {
       })
       setNewProjectDialog(false)
       setOpenSpaces((previous) => new Set(previous).add(created.spaceCode))
-      setSelectedProjectId(created.id)
-      await refresh()
-      setMessage(`已创建项目「${created.name}」（目录项）`)
+      setProjectId(created.id)
+      setActiveProjectId(created.id)
+      setProjectPickerOpen(false)
+      setSpaceDrawerOpen(false)
+      setMessage(`已创建并打开项目「${created.name}」`)
     } catch (error) {
       setMessage(`新建项目失败：${errorMessage(error)}`)
     } finally {
@@ -1340,47 +1419,111 @@ export default function App() {
             <p>One model. Nine views.</p>
           </div>
         </div>
-        <div className="crumb" title="当前空间 / 当前项目">
-          <span>{currentSpaceLabel}</span>
-          <span className="crumb-sep">/</span>
-          <TypeIcon code="MODEL" size={14} />
-          <strong>{workspace?.currentProjectName ?? projectRoot?.name ?? '未命名项目'}</strong>
-          <span className="crumb-tag">当前项目</span>
+
+        {/* 空间 / 项目选择器：替代原来的常驻最左列与顶部九图切换条 */}
+        <div className="project-picker" onPointerDown={(event) => event.stopPropagation()}>
+          <button
+            type="button"
+            className={`project-switch ${projectPickerOpen ? 'open' : ''}`}
+            onClick={() => setProjectPickerOpen((open) => !open)}
+            title="切换空间与项目"
+          >
+            <span className="pp-space">{currentSpaceLabel}</span>
+            <span className="crumb-sep">/</span>
+            <TypeIcon code="MODEL" size={14} />
+            <strong>{workspace?.currentProjectName ?? projectRoot?.name ?? '未命名项目'}</strong>
+            <span className="crumb-tag">当前项目</span>
+            <span className="pp-caret">▾</span>
+          </button>
+          {projectPickerOpen && (
+            <div className="project-popover">
+              <div className="pp-head">
+                <span>工作空间与项目</span>
+                <button
+                  type="button"
+                  onClick={() => { setSpaceDrawerOpen(true); setProjectPickerOpen(false) }}
+                >完整面板</button>
+              </div>
+              <div className="pp-scroll">
+                {(workspace?.spaces ?? []).map((space) => (
+                  <div className="pp-space-group" key={space.code}>
+                    <div className="pp-space-title">
+                      <span className={`space-glyph ${space.kind}`} aria-hidden="true">
+                        {space.kind === 'personal' ? '◉' : '◎'}
+                      </span>
+                      <strong>{space.label}</strong>
+                      <span className="space-count">{space.projectCount}</span>
+                      <button
+                        type="button"
+                        title={`在${space.label}新建项目`}
+                        onClick={() => openNewProject(space.code)}
+                      >＋</button>
+                    </div>
+                    {space.projects.map((project) => (
+                      <button
+                        type="button"
+                        key={project.id}
+                        className={`pp-project ${project.id === activeProjectId ? 'active' : ''}`}
+                        onClick={() => openProject(project)}
+                        title={`${project.name} · ${project.description || project.status}`}
+                      >
+                        <TypeIcon code="MODEL" size={15} />
+                        <span className="pp-project-body">
+                          <span className="pp-project-name">{project.name}</span>
+                          <span className="pp-project-meta">
+                            {project.opened
+                              ? `${project.diagramCount} 图 · ${project.elementCount} 元素 · rev ${project.revision}`
+                              : '尚未打开 · 点击打开'}
+                          </span>
+                        </span>
+                        {project.id === activeProjectId
+                          ? <span className="pp-current">已打开</span>
+                          : <span className="pp-open">打开</span>}
+                      </button>
+                    ))}
+                  </div>
+                ))}
+                {!workspace && <p className="hint">正在加载空间目录…</p>}
+              </div>
+              <div className="pp-foot">
+                <span>点击项目即可打开 · 新建后自动打开</span>
+                <button
+                  type="button"
+                  onClick={() => { setSpaceDrawerOpen(true); setProjectPickerOpen(false) }}
+                >空间详情</button>
+              </div>
+            </div>
+          )}
         </div>
+
         <div className="top-actions">
           <span className="pill">SysML 1.6 · 九图</span>
-          {projectRoot && (
-            <span className="pill project-pill" title="项目根节点模型">
-              <TypeIcon code="MODEL" size={14} /> {projectRoot.name}
-            </span>
-          )}
-          <button type="button" onClick={() => openCreate(null)} disabled={busy}>新建元素</button>
-          <button type="button" onClick={() => openDiagramDialog(null)} disabled={busy}>新建图</button>
           <button type="button" title="撤销 · Ctrl/⌘ + Z" onClick={() => void handleUndo()} disabled={busy || (health?.undoDepth ?? 0) === 0}>撤销</button>
           <button type="button" title="重做 · Ctrl/⌘ + Shift + Z 或 Ctrl + Y" onClick={() => void handleRedo()} disabled={busy || (health?.redoDepth ?? 0) === 0}>重做</button>
+          <div className="user-chip">
+            <span className="user-avatar" aria-hidden="true">
+              {session.user.username.slice(0, 1).toUpperCase()}
+            </span>
+            <span className="user-name">{session.user.displayName} · {session.user.username}</span>
+            <button type="button" onClick={onLogout} title="退出登录">登出</button>
+          </div>
         </div>
       </header>
 
-      <nav className="tabs" aria-label="图类型">
-        {specs.map((spec) => (
-          <button
-            key={spec.code}
-            type="button"
-            className={activeDiagramKind === spec.code ? 'active' : ''}
-            onClick={() => setActiveByKind(spec.code)}
-            title={`${spec.label} · ${spec.layout}`}
-          >
-            <DiagramIcon code={spec.code} size={15} />
-            <span>{spec.label}</span>
-          </button>
-        ))}
-      </nav>
-
       <div className="workspace">
-        {/* 最左侧：个人空间 / 团队空间 + 空间下的项目列表 */}
-        <aside className="space-dock" aria-label="空间与项目导航">
+        {/* 完整空间面板按需从左侧展开；平时只保留顶栏的项目选择器，不占画布宽度 */}
+        {spaceDrawerOpen && (
+          <>
+            <div className="drawer-scrim" onPointerDown={() => setSpaceDrawerOpen(false)} />
+            <aside className="space-drawer" aria-label="空间与项目导航">
           <div className="space-head">
             <span className="space-title">工作空间</span>
+            <button
+              type="button"
+              className="drawer-close"
+              title="收起空间面板"
+              onClick={() => setSpaceDrawerOpen(false)}
+            >×</button>
             <button
               type="button"
               className="space-add"
@@ -1418,7 +1561,7 @@ export default function App() {
                       <button
                         type="button"
                         key={project.id}
-                        className={`space-project ${project.id === selectedProject?.id ? 'selected' : ''} ${project.current ? 'current' : ''}`}
+                        className={`space-project ${project.id === activeProjectId ? 'selected' : ''} ${project.current ? 'current' : ''}`}
                         onClick={() => openProject(project)}
                         title={`${project.name} · ${project.description || project.status}`}
                       >
@@ -1426,9 +1569,9 @@ export default function App() {
                         <span className="space-project-body">
                           <span className="space-project-name">{project.name}</span>
                           <span className="space-project-meta">
-                            {project.current
+                            {project.opened
                               ? `${project.diagramCount} 图 · ${project.elementCount} 元素 · rev ${project.revision}`
-                              : `${project.status} · ${project.owner}`}
+                              : `尚未打开 · ${project.owner}`}
                           </span>
                         </span>
                         {project.current && <span className="space-current-dot" title="当前编辑项目" />}
@@ -1457,13 +1600,15 @@ export default function App() {
                     <div className="kv"><span>关系 / 修订</span><code>{selectedProject.relationshipCount} / rev {selectedProject.revision}</code></div>
                   </>
                 ) : (
-                  <p className="space-detail-note">M0 阶段仅当前项目接入服务端模型，此项目为目录项，暂不可编辑。</p>
+                  <p className="space-detail-note">点击项目即可打开并编辑；M0 内存态模型在服务重启后回到初始基线。</p>
                 )}
               </div>
             )}
             <div className="space-foot">{workspace?.note ?? '空间目录加载中…'}</div>
           </div>
         </aside>
+          </>
+        )}
 
         <div className="left-dock">
         <aside className="tree">
@@ -1718,11 +1863,29 @@ export default function App() {
                   <button type="button" className="tb-group-head" onClick={() => toggleToolGroup('generic')}>
                     <span className="tb-action-glyph" aria-hidden="true">◇</span>
                     <span className="tb-group-label">通用</span>
-                    <span className="tb-count">2</span>
+                    <span className="tb-count">4</span>
                     <span className="tb-caret">{openToolGroups.has('generic') ? '⌄' : '›'}</span>
                   </button>
                   {openToolGroups.has('generic') && (
                     <div className="tb-items">
+                      <button
+                        type="button"
+                        className="tb-item action"
+                        disabled={busy}
+                        onClick={() => openCreate(null)}
+                      >
+                        <span className="tb-action-glyph" aria-hidden="true">＋</span>
+                        <span className="tb-item-label">新建元素…</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="tb-item action"
+                        disabled={busy}
+                        onClick={() => openDiagramDialog(null)}
+                      >
+                        <span className="tb-action-glyph" aria-hidden="true">▧</span>
+                        <span className="tb-item-label">新建图…</span>
+                      </button>
                       <button type="button" className="tb-item action" onClick={openRelationDialog}>
                         <span className="tb-action-glyph" aria-hidden="true">↔</span>
                         <span className="tb-item-label">新建关系…</span>
@@ -1736,7 +1899,7 @@ export default function App() {
                         <span className="tb-action-glyph" aria-hidden="true">＋</span>
                         <span className="tb-item-label">把选中元素加入当前图</span>
                       </button>
-                      <p className="tb-tip">通用工具与图无关；元素与关系组件随当前图联动。</p>
+                      <p className="tb-tip">新建元素 / 新建图 / 关系向导在此；元素与关系组件随当前图联动。</p>
                     </div>
                   )}
                 </div>
@@ -1997,7 +2160,7 @@ export default function App() {
               <TypeIcon code="MODEL" size={18} />
               新建项目
             </h2>
-            <p className="modal-sub">在指定空间下创建项目目录项</p>
+            <p className="modal-sub">在指定空间下创建并立即打开项目</p>
             <label className="field">
               <span>所属空间</span>
               <select value={newProjectSpace} onChange={(event) => setNewProjectSpace(event.target.value)}>
@@ -2022,7 +2185,7 @@ export default function App() {
                 placeholder="一句话说明项目范围"
               />
             </label>
-            <p className="hint">M0 阶段新建的是空间下的目录项；多项目模型编辑随 MySQL 持久化里程碑接入。</p>
+            <p className="hint">创建后会立即打开该项目并分配独立的内存态模型；服务重启后回到初始基线。</p>
             <div className="modal-actions">
               <button type="button" onClick={() => setNewProjectDialog(false)}>取消</button>
               <button

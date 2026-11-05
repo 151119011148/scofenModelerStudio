@@ -108,6 +108,8 @@ export interface WorkspaceProject {
   status: string
   current: boolean
   editable: boolean
+  /** 是否已在服务端建立内存态模型运行时。 */
+  opened: boolean
   spaceCode: string
   diagramCount: number
   elementCount: number
@@ -147,4 +149,16 @@ export interface CommandRequest {
   payload: Record<string, unknown>
   baseRevision: number
   clientCmdId: string
+}
+
+/** 登录态：仿 scofenDoc，JWT 与用户资料存 localStorage。 */
+export interface AuthUser {
+  username: string
+  displayName: string
+  admin: boolean
+}
+
+export interface Session {
+  token: string
+  user: AuthUser
 }

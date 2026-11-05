@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
@@ -13,11 +14,11 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * 个人空间 / 团队空间下的项目目录（M0）。
  *
  * <p>目录元数据不属于模型四对象（Element / Relationship / Diagram / Notation），
- * 因此不走 CommandExecutor 与全局 revision；当前项目的统计信息则由
- * {@code WorkspaceController} 每次请求时实时取自服务端模型快照，避免展示过期数字。</p>
+ * 因此不走 CommandExecutor 与全局 revision；项目统计由
+ * {@code WorkspaceController} 从对应项目的模型快照实时取出。</p>
  *
- * <p>M0 只有一个接入服务端模型的可编辑项目；其余为目录项，
- * 界面上明确标注「目录项」，不做假切换。</p>
+ * <p>每个项目都可以打开，打开后由 ProjectRegistry 分配独立的内存态模型运行时；
+ * 所有项目共用同一套元模型与校验规则。</p>
  */
 @Component
 public final class WorkspaceDirectory {
@@ -47,17 +48,17 @@ public final class WorkspaceDirectory {
                         LocalDate.now().toString(), "编辑中", true, true, PERSONAL),
                 new Project("project-req", "需求工程样例",
                         "需求条目化与满足 / 验证追溯样例", "我", "2026-11-03",
-                        "目录项", false, false, PERSONAL))));
+                        "可打开", false, true, PERSONAL))));
         projects.put(TEAM, new CopyOnWriteArrayList<>(List.of(
                 new Project("project-eea", "整车电子电气架构",
                         "系统工程组 · 架构基线", "系统工程组", "2026-11-04",
-                        "目录项", false, false, TEAM),
+                        "可打开", false, true, TEAM),
                 new Project("project-thermal", "热管理系统模型",
                         "动力总成组 · 参数图与约束", "动力总成组", "2026-11-01",
-                        "目录项", false, false, TEAM),
+                        "可打开", false, true, TEAM),
                 new Project("project-charge", "充电互操作性基线",
                         "系统工程组 · 接口控制", "系统工程组", "2026-10-28",
-                        "目录项", false, false, TEAM))));
+                        "可打开", false, true, TEAM))));
     }
 
     public List<Space> spaces() {
@@ -67,6 +68,16 @@ public final class WorkspaceDirectory {
     public List<Project> projects(String spaceCode) {
         CopyOnWriteArrayList<Project> list = projects.get(spaceCode);
         return list == null ? List.of() : List.copyOf(list);
+    }
+
+    public Optional<Project> findProject(String id) {
+        if (id == null || id.isBlank()) {
+            return Optional.empty();
+        }
+        return projects.values().stream()
+                .flatMap(List::stream)
+                .filter(project -> project.id().equals(id))
+                .findFirst();
     }
 
     public Project addProject(String spaceCode, String name, String description) {
@@ -86,7 +97,7 @@ public final class WorkspaceDirectory {
                 trimmed,
                 description == null ? "" : description.trim(),
                 PERSONAL.equals(spaceCode) ? "我" : "系统工程组",
-                LocalDate.now().toString(), "目录项", false, false, spaceCode);
+                LocalDate.now().toString(), "可打开", false, true, spaceCode);
         list.add(0, project);
         return project;
     }

@@ -9,6 +9,7 @@ import com.scofen.model.core.UndoStack;
 import com.scofen.model.core.ValidationEngine;
 import com.scofen.model.metamodel.DiagramKind;
 import com.scofen.model.metamodel.ElementType;
+import com.scofen.model.web.auth.AuthService;
 import com.scofen.model.web.ws.PatchBroker;
 import com.scofen.model.web.ws.PatchWebSocketHandler;
 import com.scofen.model.xmi.XmiExchangeService;
@@ -29,8 +30,8 @@ public class RepositoryConfiguration {
     }
 
     @Bean
-    public PatchWebSocketHandler patchWebSocketHandler() {
-        return new PatchWebSocketHandler();
+    public PatchWebSocketHandler patchWebSocketHandler(AuthService authService) {
+        return new PatchWebSocketHandler(authService);
     }
 
     @Bean
