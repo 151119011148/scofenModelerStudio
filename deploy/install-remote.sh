@@ -15,6 +15,18 @@ command -v nginx >/dev/null || { echo "缺少 nginx"; exit 1; }
 command -v python3 >/dev/null || { echo "缺少 python3"; exit 1; }
 mkdir -p "$REMOTE_DIR/logs"
 
+echo "==> 准备固定 JWT 密钥"
+ENV_FILE=/etc/scofen/modeler.env
+mkdir -p /etc/scofen
+if [ -f "$ENV_FILE" ]; then
+  echo "沿用已有密钥文件 $ENV_FILE"
+else
+  umask 077
+  printf 'SCOFEN_AUTH_JWT_SECRET=%s\n' "$(head -c 32 /dev/urandom | base64 | tr -d '\n')" > "$ENV_FILE"
+  chmod 600 "$ENV_FILE"
+  echo "已生成 $ENV_FILE（仅 root 可读）"
+fi
+
 echo "==> 安装 systemd unit"
 cp "$REMOTE_DIR/deploy-assets/scofen.service" "$UNIT"
 systemctl daemon-reload

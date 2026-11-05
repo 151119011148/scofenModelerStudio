@@ -6,6 +6,9 @@ After=network.target
 Type=simple
 User=root
 WorkingDirectory=/opt/scofen
+# 固定 JWT 密钥（由 install-remote.sh 首次部署时生成，chmod 600）。
+# 不配置的话每次重启都会换随机密钥，已登录的浏览器会被迫重新登录。
+EnvironmentFile=-/etc/scofen/modeler.env
 Environment=JAVA_HOME=/usr/lib/jvm/java-17-openjdk
 Environment=TZ=Asia/Shanghai
 ExecStart=/usr/lib/jvm/java-17-openjdk/bin/java \
