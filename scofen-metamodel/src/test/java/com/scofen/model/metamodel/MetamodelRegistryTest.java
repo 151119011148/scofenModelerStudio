@@ -30,6 +30,17 @@ class MetamodelRegistryTest {
     }
 
     @Test
+    void relationshipCatalogIsTableDrivenPerDiagram() {
+        assertThat(MetamodelRegistry.spec(DiagramKind.REQ).relationships())
+                .contains(RelationshipType.SATISFY, RelationshipType.VERIFY, RelationshipType.ALLOCATE)
+                .doesNotContain(RelationshipType.CONNECTOR, RelationshipType.MESSAGE);
+        assertThat(MetamodelRegistry.allowsRelationship(DiagramKind.IBD, RelationshipType.CONNECTOR)).isTrue();
+        assertThat(MetamodelRegistry.allowsRelationship(DiagramKind.REQ, RelationshipType.CONNECTOR)).isFalse();
+        assertThat(RelationshipType.fromAny("derive_reqt")).contains(RelationshipType.DERIVE_REQT);
+        assertThat(RelationshipType.fromAny("unknown")).isEmpty();
+    }
+
+    @Test
     void sequenceDiagramUsesDedicatedLayout() {
         assertThat(MetamodelRegistry.layoutFor(DiagramKind.SEQ))
                 .isEqualTo(MetamodelRegistry.LAYOUT_SEQUENCE);

@@ -9,6 +9,7 @@ import com.scofen.model.metamodel.ModelElement;
 import com.scofen.model.metamodel.ModelSnapshot;
 import com.scofen.model.metamodel.Notation;
 import com.scofen.model.metamodel.Relationship;
+import com.scofen.model.metamodel.RelationshipType;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -108,6 +109,19 @@ public final class ValidationEngine {
                 String target = cmd.str("targetId");
                 if (!repository.elementExists(source) || !repository.elementExists(target)) {
                     throw new ValidationException("Relationship endpoints must exist: " + source + " -> " + target);
+                }
+                RelationshipType relType = RelationshipType.fromAny(cmd.str("type"))
+                        .orElseThrow(() -> new ValidationException(
+                                "Unknown relationship type: " + cmd.str("type")));
+                // 带上 diagramId 时按图规范校验：组件工具箱只显示当前图允许的关系，服务端不信任前端过滤。
+                String diagramId = cmd.str("diagramId");
+                if (diagramId != null && !diagramId.isBlank()) {
+                    Diagram diagram = repository.findDiagram(diagramId)
+                            .orElseThrow(() -> new ValidationException("Unknown diagram: " + diagramId));
+                    if (!MetamodelRegistry.allowsRelationship(diagram.kind(), relType)) {
+                        throw new ValidationException("Relationship «" + relType.code()
+                                + "» is not allowed on " + diagram.kind().label());
+                    }
                 }
                 if ("generalization".equals(cmd.str("type"))
                         && createsCycle(target, source, repository.relationships())) {

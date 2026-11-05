@@ -10,6 +10,7 @@ import com.scofen.model.metamodel.DiagramKind;
 import com.scofen.model.metamodel.ElementType;
 import com.scofen.model.metamodel.MetamodelRegistry;
 import com.scofen.model.metamodel.ModelSnapshot;
+import com.scofen.model.metamodel.RelationshipType;
 import com.scofen.model.web.ws.PatchBroker;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -71,7 +72,23 @@ public class ModelController {
                     "layout", spec.layout(),
                     "elementTypes", spec.elements().size(),
                     "allowedTypes", spec.elements().stream().map(ElementType::name).sorted().toList(),
+                    "allowedRelationships", spec.relationships().stream()
+                            .map(RelationshipType::code).sorted().toList(),
                     "validationGroup", spec.validationGroup()));
+        }
+        return result;
+    }
+
+    /** 关系类型目录：组件工具箱「关系」分组与新建关系弹窗共用，前端不硬编码类型清单。 */
+    @GetMapping("/metamodel/relationships")
+    public List<Map<String, Object>> relationships() {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (RelationshipType type : RelationshipType.values()) {
+            result.add(Map.of(
+                    "code", type.code(),
+                    "label", type.label(),
+                    "stereotype", type.stereotype(),
+                    "family", type.family()));
         }
         return result;
     }

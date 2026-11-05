@@ -1,11 +1,12 @@
 import type { ReactNode } from 'react'
+import { normalizeRelKey, relationshipStyle } from './notation'
 
 /**
- * 元模型 / 九大图图标系统。
+ * 元模型 / 九大图 / 关系图标系统。
  *
- * 设计原则：颜色按「语义族」区分，字形按「元模型类型」区分，
- * 二者组合保证 34 种元素类型 + 9 种图两两可辨；图标与画布记法层（notation.ts）
- * 相互独立，新增类型只需在两张表里登记一行。
+ * 设计原则：元素颜色按「语义族」区分，字形按「元模型类型」区分；
+ * 九大图各有独立字形与颜色；关系图标直接复用画布记法的颜色与虚实线，
+ * 使工具箱里的关系组件与画布上画出来的连线一一对应。
  */
 
 export interface IconSpec {
@@ -93,6 +94,49 @@ export function typeIcon(code: string): IconSpec {
 
 export function diagramIcon(code: string): IconSpec {
   return DIAGRAM_ICONS[code] ?? { glyph: 'default', color: '#64748b' }
+}
+
+/**
+ * 关系组件图标：字形按记法（实线/虚线、实心/空心/无箭头、菱形、双线）区分，
+ * 颜色与 notation.ts 的画布连线样式一致——工具箱所见即画布所得。
+ * 键为 normalizeRelKey 后的形式，兼容 deriveReqt / controlFlow 等 camelCase。
+ */
+const RELATION_GLYPHS: Record<string, string> = {
+  containment: 'rel-diamond',
+  import: 'rel-none',
+  access: 'rel-none',
+  generalization: 'rel-solid-hollow',
+  association: 'rel-solid-open',
+  dependency: 'rel-dashed-open',
+  satisfy: 'rel-solid-fill',
+  verify: 'rel-solid-fill',
+  refine: 'rel-dashed-open',
+  derivereqt: 'rel-dashed-open',
+  copy: 'rel-dashed-open',
+  trace: 'rel-dashed-open',
+  allocate: 'rel-dashed-fill',
+  connector: 'rel-solid-fill',
+  itemflow: 'rel-solid-fill',
+  binding: 'rel-double',
+  delegation: 'rel-dashed-open',
+  constraintparameter: 'rel-double',
+  controlflow: 'rel-solid-fill',
+  objectflow: 'rel-dashed-open',
+  partition: 'rel-dashed-open',
+  message: 'rel-solid-fill',
+  orderedfragment: 'rel-dashed-open',
+  guard: 'rel-dashed-open',
+  transition: 'rel-solid-open',
+  region: 'rel-dashed-open',
+  include: 'rel-dashed-open',
+  extend: 'rel-dashed-open',
+}
+
+export function relationshipIcon(code: string): IconSpec {
+  return {
+    glyph: RELATION_GLYPHS[normalizeRelKey(code)] ?? 'rel-solid-open',
+    color: relationshipStyle(code).color,
+  }
 }
 
 function Glyph({ name }: { name: string }): ReactNode {
@@ -344,6 +388,58 @@ function Glyph({ name }: { name: string }): ReactNode {
           <path d="M5.4 8h.8" {...s} />
         </>
       )
+    // ── 关系记法：线型 + 箭头形态，与画布连线一致 ──
+    case 'rel-solid-fill':
+      return (
+        <>
+          <path d="M1.8 8h9.2" {...s} />
+          <path d="M10.2 5.2L14.2 8l-4 2.8z" fill="currentColor" stroke="none" />
+        </>
+      )
+    case 'rel-dashed-fill':
+      return (
+        <>
+          <path d="M1.8 8h9.2" {...s} strokeDasharray="2.6 1.8" />
+          <path d="M10.2 5.2L14.2 8l-4 2.8z" fill="currentColor" stroke="none" />
+        </>
+      )
+    case 'rel-dashed-open':
+      return (
+        <>
+          <path d="M1.8 8h9.2" {...s} strokeDasharray="2.6 1.8" />
+          <path d="M10.4 5.2L14 8l-3.6 2.8" {...s} />
+        </>
+      )
+    case 'rel-solid-open':
+      return (
+        <>
+          <path d="M1.8 8h9.2" {...s} />
+          <path d="M10.4 5.2L14 8l-3.6 2.8" {...s} />
+        </>
+      )
+    case 'rel-solid-hollow':
+      return (
+        <>
+          <path d="M1.8 8h8.6" {...s} />
+          <path d="M10 4.9L14.2 8 10 11.1z" {...s} fill="#ffffff" />
+        </>
+      )
+    case 'rel-none':
+      return <path d="M1.8 6.2h12.4M1.8 9.8h12.4" {...s} />
+    case 'rel-diamond':
+      return (
+        <>
+          <path d="M1.8 8h3M10 8h4.2" {...s} />
+          <path d="M5 8l2.5-2.6L10 8 7.5 10.6z" fill="currentColor" stroke="none" />
+        </>
+      )
+    case 'rel-double':
+      return (
+        <>
+          <path d="M1.8 6.3h9.4M1.8 9.7h9.4" {...s} />
+          <path d="M10.2 5.2L14.2 8l-4 2.8z" fill="currentColor" stroke="none" />
+        </>
+      )
     default:
       return <rect x="2.6" y="3" width="10.8" height="10" rx="1.6" {...s} />
   }
@@ -380,4 +476,9 @@ export function TypeIcon({ code, size = 16, className, title }: IconProps) {
 /** 九大图图标：9 种图各有独立字形与颜色。 */
 export function DiagramIcon({ code, size = 16, className, title }: IconProps) {
   return <Tile spec={diagramIcon(code.toLowerCase())} size={size} className={className} title={title} />
+}
+
+/** 关系组件图标：线型与颜色与画布连线一致。 */
+export function RelationIcon({ code, size = 16, className, title }: IconProps) {
+  return <Tile spec={relationshipIcon(code)} size={size} className={className} title={title} />
 }

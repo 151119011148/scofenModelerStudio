@@ -1,4 +1,12 @@
-import type { CommandRequest, ContainmentSpec, DiagramSpec, Health, ModelSnapshot, Patch } from './types'
+import type {
+  CommandRequest,
+  ContainmentSpec,
+  DiagramSpec,
+  Health,
+  ModelSnapshot,
+  Patch,
+  RelationshipTypeInfo,
+} from './types'
 
 // Vite 构建时注入的 base（默认 `/`，子路径部署时为 `/scofen/modelerStudio/`）。
 // 保持 API 与页面在同一前缀下，Nginx 只需剥掉一层前缀即可反代。
@@ -20,6 +28,8 @@ export const getHealth = () =>
   request<Health>(`${BASE}api/health`, { headers: { 'X-Scofen-Session': 'web-ui' } })
 export const getModel = () => request<ModelSnapshot>(`${BASE}api/model`)
 export const getDiagrams = () => request<DiagramSpec[]>(`${BASE}api/metamodel/diagrams`)
+export const getRelationships = () =>
+  request<RelationshipTypeInfo[]>(`${BASE}api/metamodel/relationships`)
 export const getContainment = () => request<ContainmentSpec>(`${BASE}api/metamodel/containment`)
 
 export const postCommand = (command: CommandRequest) =>

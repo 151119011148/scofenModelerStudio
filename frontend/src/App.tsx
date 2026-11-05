@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
-import { getContainment, getDiagrams, getHealth, getModel, postCommand, redo, undo } from './api'
+import { getContainment, getDiagrams, getHealth, getModel, getRelationships, postCommand, redo, undo } from './api'
 import type {
   ContainmentSpec,
   Diagram,
@@ -9,9 +9,10 @@ import type {
   Health,
   ModelElement,
   ModelSnapshot,
+  RelationshipTypeInfo,
 } from './types'
 import { arrowGeometry, edgePoint, relationshipStyle, shapeOf } from './notation'
-import { DiagramIcon, FAMILIES, TypeIcon, familyOfType } from './icons'
+import { DiagramIcon, FAMILIES, RelationIcon, TypeIcon, familyOfType } from './icons'
 
 const EMPTY_MODEL: ModelSnapshot = {
   revision: 0,
@@ -88,15 +89,23 @@ type TreeNode =
   | { type: 'element'; ref: ModelElement }
   | { type: 'diagram'; ref: Diagram }
 
-const RELATION_TYPES = [
-  'satisfy',
-  'verify',
-  'allocate',
-  'generalization',
-  'dependency',
-  'trace',
-  'refine',
-  'include',
+/** 关系族中文名：组件工具箱「关系」分组内的小节标题。 */
+const RELATION_FAMILY_LABELS: Record<string, string> = {
+  requirement: '需求追溯',
+  namespace: '命名空间',
+  structure: '结构 / 流',
+  constraint: '参数 / 约束',
+  activity: '活动',
+  interaction: '交互',
+  state: '状态机',
+  usecase: '用例',
+}
+
+/** 元模型目录接口不可用时的最小兜底，正常路径全部由服务端下发。 */
+const FALLBACK_RELATIONS: RelationshipTypeInfo[] = [
+  { code: 'trace', label: '追溯', stereotype: 'trace', family: 'requirement' },
+  { code: 'satisfy', label: '满足', stereotype: 'satisfy', family: 'requirement' },
+  { code: 'generalization', label: '泛化', stereotype: 'generalization', family: 'structure' },
 ]
 
 export default function App() {
@@ -121,10 +130,15 @@ export default function App() {
   const [createStereotype, setCreateStereotype] = useState('')
   const [joinDiagram, setJoinDiagram] = useState(true)
   const [drag, setDrag] = useState<DragState | null>(null)
-  // 右侧垂直工具箱：组件/样式页签 + 可折叠的九图分组（参考 EA / StarUML 工具箱）。
+  // 右侧垂直工具箱：组件内容只跟当前图相关（元素 + 关系 + 通用），参考 EA / StarUML。
   const [toolboxTab, setToolboxTab] = useState<'components' | 'styles'>('components')
-  const [openToolGroup, setOpenToolGroup] = useState<string | null>(null)
-  const [genericOpen, setGenericOpen] = useState(false)
+  const [openToolGroups, setOpenToolGroups] = useState<Set<string>>(
+    () => new Set(['elements', 'relations']),
+  )
+  const [relationCatalog, setRelationCatalog] = useState<RelationshipTypeInfo[]>([])
+  // 连线工具：选中关系组件后在画布上依次点击起点、终点创建关系。
+  const [relationTool, setRelationTool] = useState<string | null>(null)
+  const [relationSource, setRelationSource] = useState<string | null>(null)
   const [propsTab, setPropsTab] = useState<'attrs' | 'tags'>('attrs')
 
   const svgRef = useRef<SVGSVGElement | null>(null)
@@ -146,6 +160,9 @@ export default function App() {
     getDiagrams()
       .then(setSpecs)
       .catch((error: unknown) => setMessage(`图规格加载失败：${errorMessage(error)}`))
+    getRelationships()
+      .then(setRelationCatalog)
+      .catch((error: unknown) => setMessage(`关系目录加载失败：${errorMessage(error)}`))
     getContainment()
       .then(setContainment)
       .catch((error: unknown) => setMessage(`元模型规则加载失败：${errorMessage(error)}`))
@@ -202,10 +219,27 @@ export default function App() {
     }
   }, [activeDiagramId, model.diagrams])
 
-  // 切换图时，右侧工具箱自动展开该图对应的分组（与画布当前图始终一致）。
+  // 切换图：组件内容随图联动，展开元素/关系分组，并清掉新图不允许的连线工具与起点。
   useEffect(() => {
-    setOpenToolGroup(activeDiagramKind || null)
-  }, [activeDiagramKind])
+    setOpenToolGroups(new Set(['elements', 'relations']))
+    setRelationSource(null)
+    setRelationTool((current) =>
+      current && (activeSpec?.allowedRelationships ?? []).includes(current) ? current : null,
+    )
+  }, [activeDiagramKind, activeSpec])
+
+  // Esc 退出连线模式（建模工具惯用快捷键）。
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && relationTool) {
+        setRelationTool(null)
+        setRelationSource(null)
+        setMessage('已退出连线模式')
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [relationTool])
 
   // 激活图被删除后回退到第一张
   useEffect(() => {
@@ -547,6 +581,7 @@ export default function App() {
       type: relationDialog.type,
       sourceId: relationDialog.sourceId,
       targetId: relationDialog.targetId,
+      diagramId: activeDiagramId,
     })
     if (ok) {
       setRelationDialog(null)
@@ -679,6 +714,14 @@ export default function App() {
     y: number,
   ) => {
     event.preventDefault()
+    // 连线模式下节点点击不再进入拖拽，而是依次作为关系的起点 / 终点。
+    if (relationTool) {
+      event.stopPropagation()
+      setSelectedId(element.id)
+      setSelectedDiagramId(null)
+      void handleRelationPick(element.id)
+      return
+    }
     const point = toSvgPoint(event.clientX, event.clientY)
     event.currentTarget.setPointerCapture(event.pointerId)
     setSelectedId(element.id)
@@ -726,25 +769,112 @@ export default function App() {
     }
   }
 
-  // 每张图允许放置的元素类型由后端 MetamodelRegistry 下发；工具箱按「图」分组，
-  // 展开当前图即可看到它的专属工具带（参考 EA / StarUML 的组件工具箱）。
-  const paletteFor = useCallback(
-    (spec: DiagramSpec | null): ElementTypeInfo[] =>
-      (spec?.allowedTypes ?? [])
-        .map((code) => typeInfo.get(code))
-        .filter((item): item is ElementTypeInfo => item !== undefined),
-    [typeInfo],
+  // 组件工具箱只显示「当前图」允许的元素与关系，清单全部来自后端 MetamodelRegistry，
+  // 不再把九大图的分组一次性堆在面板里（参考 EA / StarUML 的按图联动工具箱）。
+  const paletteEntries = useMemo<ElementTypeInfo[]>(
+    () => (activeSpec?.allowedTypes ?? [])
+      .map((code) => typeInfo.get(code))
+      .filter((item): item is ElementTypeInfo => item !== undefined),
+    [activeSpec, typeInfo],
   )
-  const paletteEntries = useMemo(() => paletteFor(activeSpec), [paletteFor, activeSpec])
-  const toolboxGroups = useMemo(
-    () => specs.map((spec) => ({ spec, items: paletteFor(spec) })),
-    [specs, paletteFor],
+  const elementGroups = useMemo(() => {
+    const groups: { key: string; label: string; items: ElementTypeInfo[] }[] = []
+    for (const family of FAMILIES) {
+      const items = paletteEntries.filter((item) => familyOfType(item.code) === family.key)
+      if (items.length > 0) {
+        groups.push({ key: family.key, label: family.label, items })
+      }
+    }
+    return groups
+  }, [paletteEntries])
+
+  const allRelations = useMemo(
+    () => (relationCatalog.length > 0 ? relationCatalog : FALLBACK_RELATIONS),
+    [relationCatalog],
   )
-  // 「通用」组：与图无关的通用工具；只有当前图允许的类型才显示，避免拖入被服务端拒绝。
-  const genericEntries = useMemo(
-    () => paletteEntries.filter((item) => item.code === 'COMMENT'),
-    [paletteEntries],
+  const relationInfo = useMemo(
+    () => new Map(allRelations.map((item) => [item.code, item])),
+    [allRelations],
   )
+  const relationEntries = useMemo<RelationshipTypeInfo[]>(
+    () => (activeSpec?.allowedRelationships ?? []).map((code) => relationInfo.get(code) ?? {
+      code, label: code, stereotype: code, family: 'structure',
+    }),
+    [activeSpec, relationInfo],
+  )
+  const relationGroups = useMemo(() => {
+    const order = ['requirement', 'namespace', 'structure', 'constraint',
+      'activity', 'interaction', 'state', 'usecase']
+    const groups: { key: string; label: string; items: RelationshipTypeInfo[] }[] = []
+    for (const key of order) {
+      const items = relationEntries.filter((item) => item.family === key)
+      if (items.length > 0) {
+        groups.push({ key, label: RELATION_FAMILY_LABELS[key] ?? key, items })
+      }
+    }
+    const grouped = new Set(groups.map((group) => group.key))
+    const rest = relationEntries.filter((item) => !grouped.has(item.family))
+    if (rest.length > 0) {
+      groups.push({ key: 'other', label: '其他', items: rest })
+    }
+    return groups
+  }, [relationEntries])
+  const relationLabel = (code: string) => relationInfo.get(code)?.label ?? code
+
+  const toggleToolGroup = (key: string) => {
+    setOpenToolGroups((previous) => {
+      const next = new Set(previous)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }
+
+  /** 点选（或拖入）关系组件 → 进入连线模式，随后在画布上依次点击起点、终点。 */
+  const activateRelationTool = (code: string) => {
+    setRelationTool(code)
+    setRelationSource(null)
+    setMessage(`已选择「${relationLabel(code)}」：在画布上依次点击起点与终点（Esc 退出）`)
+  }
+
+  const openRelationDialog = () => {
+    setRelationDialog({
+      sourceId: selectedId ?? relationSource ?? '',
+      targetId: '',
+      type: relationTool ?? relationEntries[0]?.code ?? 'trace',
+    })
+  }
+
+  const handleRelationPick = async (elementId: string) => {
+    if (!relationTool) {
+      return
+    }
+    if (!relationSource) {
+      setRelationSource(elementId)
+      setMessage(`起点：${model.elements.find((e) => e.id === elementId)?.name ?? elementId}；请点击终点元素`)
+      return
+    }
+    if (relationSource === elementId) {
+      setRelationSource(null)
+      setMessage('已取消起点，请重新选择起点元素')
+      return
+    }
+    const id = `rel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+    const ok = await runCommand('CREATE_RELATIONSHIP', {
+      id,
+      type: relationTool,
+      sourceId: relationSource,
+      targetId: elementId,
+      diagramId: activeDiagramId,
+    })
+    if (ok) {
+      setRelationSource(null)
+      setMessage(`已创建 «${relationTool}» 关系，可继续连线或按 Esc 退出`)
+    }
+  }
 
   // 从工具箱创建元素：owner 取当前图的语义宿主（块/交互/活动等），并加入当前图，
   // 再移动到放置坐标。符合 SysML 规范——元素挂在模型元素下，图只引用承载它。
@@ -776,6 +906,11 @@ export default function App() {
 
   const handleCanvasDrop = (event: ReactDragEvent<SVGSVGElement>) => {
     event.preventDefault()
+    const relationCode = event.dataTransfer.getData('text/scofen-relation')
+    if (relationCode) {
+      activateRelationTool(relationCode)
+      return
+    }
     const code = event.dataTransfer.getData('text/scofen-type')
     if (!code) {
       return
@@ -901,15 +1036,16 @@ export default function App() {
     const shape = shapeOf(element.type)
     const info = typeInfo.get(codeOf(element.type))
     const selected = selectedId === element.id
+    const isLinkSource = relationSource === element.id
     const isPort = shape === 'port'
     const bw = isPort ? 26 : w
     const bh = isPort ? 26 : h
     const bx = isPort ? x + w / 2 - 13 : x
     const by = isPort ? y + h / 2 - 13 : y
     const children = (childrenByOwner.get(element.id) ?? []).map((child) => child.name)
-    const fill = selected ? '#e9f0fc' : '#ffffff'
-    const stroke = selected ? '#2b5cb8' : '#cbd3dd'
-    const strokeW = selected ? 2 : 1
+    const fill = isLinkSource ? '#e6f6f3' : selected ? '#e9f0fc' : '#ffffff'
+    const stroke = isLinkSource ? '#0f766e' : selected ? '#2b5cb8' : '#cbd3dd'
+    const strokeW = isLinkSource || selected ? 2 : 1
     const onDown = (event: ReactPointerEvent<SVGGElement>) => handlePointerDown(event, element, bx, by)
 
     let shapeSvg: ReactNode = null
@@ -1008,7 +1144,10 @@ export default function App() {
       !isPort && (shape === 'block' || shape === 'frame' || shape === 'requirement' || shape === 'package') && children.length > 0
 
     return (
-      <g className={`node ${drag?.elementId === element.id && drag.moved ? 'dragging' : ''}`} onPointerDown={onDown}>
+      <g
+        className={`node ${drag?.elementId === element.id && drag.moved ? 'dragging' : ''} ${isLinkSource ? 'link-source' : ''}`}
+        onPointerDown={onDown}
+      >
         {shapeSvg}
         {showText && (
           <>
@@ -1196,7 +1335,7 @@ export default function App() {
         </aside>
         </div>
 
-        {/* 模型树右侧的垂直工具箱：组件 / 样式页签 + 九图可折叠分组（对齐参考截图） */}
+        {/* 模型树右侧的垂直组件工具箱：只展示当前图相关元素 + 关系组件（对齐参考截图） */}
         <aside className="toolbox" aria-label="组件工具箱（模型树右侧）">
           <div className="tb-tabs">
             <button
@@ -1212,96 +1351,145 @@ export default function App() {
             <span className="tb-more" aria-hidden="true">⋮</span>
           </div>
           {toolboxTab === 'components' ? (
-            <div className="tb-scroll">
-              <div className={`tb-group ${genericOpen ? 'open' : ''}`}>
-                <button type="button" className="tb-group-head" onClick={() => setGenericOpen(!genericOpen)}>
-                  <span className="tb-group-label">通用</span>
-                  <span className="tb-caret">{genericOpen ? '⌄' : '›'}</span>
-                </button>
-                {genericOpen && (
-                  <div className="tb-items">
-                    {genericEntries.map((type) => (
-                      <button
-                        key={type.code}
-                        type="button"
-                        className="tb-item"
-                        draggable
-                        disabled={busy}
-                        onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
-                        onClick={() => void createElementFromPalette(type.code, canvas.width / 2, canvas.height / 2)}
-                        title={`点击或拖入画布以新建「${type.label}」`}
-                      >
-                        <TypeIcon code={type.code} size={16} />
-                        <span className="tb-item-label">{type.label}</span>
-                      </button>
-                    ))}
-                    <button
-                      type="button"
-                      className="tb-item action"
-                      onClick={() => setRelationDialog({ sourceId: selectedId ?? '', targetId: '', type: RELATION_TYPES[0] })}
-                    >
-                      <span className="tb-action-glyph" aria-hidden="true">↔</span>
-                      <span className="tb-item-label">新建关系…</span>
-                    </button>
-                  </div>
-                )}
+            <>
+              <div className="tb-current">
+                {activeDiagramKind && <DiagramIcon code={activeDiagramKind} size={15} />}
+                <span className="tb-current-name">{activeSpec?.label ?? '未选择图'}</span>
+                <select
+                  className="tb-current-select"
+                  value={activeDiagramKind}
+                  onChange={(event) => setActiveByKind(event.target.value)}
+                  title="切换当前图；组件内容随之联动"
+                >
+                  {specs.map((spec) => (
+                    <option key={spec.code} value={spec.code}>{spec.label}</option>
+                  ))}
+                </select>
               </div>
-              {toolboxGroups.map(({ spec, items }) => {
-                const isOpen = openToolGroup === spec.code
-                return (
-                  <div
-                    key={spec.code}
-                    className={`tb-group ${isOpen ? 'open' : ''} ${activeDiagramKind === spec.code ? 'current' : ''}`}
-                  >
-                    <button
-                      type="button"
-                      className="tb-group-head"
-                      onClick={() => {
-                        if (isOpen) {
-                          setOpenToolGroup('')
-                        } else {
-                          setOpenToolGroup(spec.code)
-                          setActiveByKind(spec.code)
-                        }
-                      }}
-                      title={`${spec.label} · ${spec.layout}`}
-                    >
-                      <DiagramIcon code={spec.code} size={16} />
-                      <span className="tb-group-label">{spec.label}</span>
-                      <span className="tb-count">{items.length}</span>
-                      <span className="tb-caret">{isOpen ? '⌄' : '›'}</span>
-                    </button>
-                    {isOpen && (
-                      <div className="tb-items">
-                        {items.map((type) => (
+              <div className="tb-scroll">
+                {/* 元素：仅当前图允许的类型，按语义族分小节 */}
+                <div className={`tb-group current ${openToolGroups.has('elements') ? 'open' : ''}`}>
+                  <button type="button" className="tb-group-head" onClick={() => toggleToolGroup('elements')}>
+                    {activeDiagramKind && <DiagramIcon code={activeDiagramKind} size={16} />}
+                    <span className="tb-group-label">元素 · {activeSpec?.label ?? '当前图'}</span>
+                    <span className="tb-count">{paletteEntries.length}</span>
+                    <span className="tb-caret">{openToolGroups.has('elements') ? '⌄' : '›'}</span>
+                  </button>
+                  {openToolGroups.has('elements') && (
+                    <div className="tb-items">
+                      {elementGroups.map((group) => (
+                        <div className="tb-sect" key={group.key}>
+                          <div className="tb-sect-label">{group.label}</div>
+                          {group.items.map((type) => (
+                            <button
+                              key={type.code}
+                              type="button"
+                              className="tb-item"
+                              draggable
+                              disabled={busy}
+                              onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
+                              onClick={() =>
+                                void createElementFromPalette(
+                                  type.code,
+                                  canvas.width / 2 - nodeSize.width / 2,
+                                  canvas.height / 2 - nodeSize.height / 2,
+                                )
+                              }
+                              title={`«${type.stereotype}» ${type.label} · ${type.uml}｜点击或拖入画布`}
+                            >
+                              <TypeIcon code={type.code} size={16} />
+                              <span className="tb-item-label">{type.label}</span>
+                              <span className="tb-item-st">«{type.stereotype}»</span>
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                      <p className="tb-tip">仅显示当前图允许的 {paletteEntries.length} 类元素 · 点击 / 拖入画布</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* 关系：当前图规范允许的关系组件，点选后在画布依次点击起点与终点 */}
+                <div className={`tb-group current ${openToolGroups.has('relations') ? 'open' : ''}`}>
+                  <button type="button" className="tb-group-head" onClick={() => toggleToolGroup('relations')}>
+                    <RelationIcon code={relationEntries[0]?.code ?? 'trace'} size={16} />
+                    <span className="tb-group-label">关系</span>
+                    <span className="tb-count">{relationEntries.length}</span>
+                    <span className="tb-caret">{openToolGroups.has('relations') ? '⌄' : '›'}</span>
+                  </button>
+                  {openToolGroups.has('relations') && (
+                    <div className="tb-items">
+                      {relationGroups.map((group) => (
+                        <div className="tb-sect" key={group.key}>
+                          <div className="tb-sect-label">{group.label}</div>
+                          {group.items.map((rel) => (
+                            <button
+                              key={rel.code}
+                              type="button"
+                              className={`tb-item relation ${relationTool === rel.code ? 'tool-active' : ''}`}
+                              draggable
+                              disabled={busy}
+                              onDragStart={(event) => event.dataTransfer.setData('text/scofen-relation', rel.code)}
+                              onClick={() => activateRelationTool(rel.code)}
+                              title={`«${rel.stereotype}» ${rel.label}｜点选后在画布依次点击起点与终点`}
+                            >
+                              <RelationIcon code={rel.code} size={16} />
+                              <span className="tb-item-label">{rel.label}</span>
+                              <span className="tb-item-st">«{rel.stereotype}»</span>
+                            </button>
+                          ))}
+                        </div>
+                      ))}
+                      {relationTool && (
+                        <div className="tb-link-hint">
+                          <span>连线中 · «{relationLabel(relationTool)}»</span>
                           <button
-                            key={type.code}
                             type="button"
-                            className="tb-item"
-                            draggable
-                            disabled={busy}
-                            onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
-                            onClick={() =>
-                              void createElementFromPalette(
-                                type.code,
-                                canvas.width / 2 - nodeSize.width / 2,
-                                canvas.height / 2 - nodeSize.height / 2,
-                              )
-                            }
-                            title={`«${type.stereotype}» ${type.label} · ${type.uml}｜点击或拖入画布`}
-                          >
-                            <TypeIcon code={type.code} size={16} />
-                            <span className="tb-item-label">{type.label}</span>
-                            <span className="tb-item-st">«{type.stereotype}»</span>
-                          </button>
-                        ))}
-                        <p className="tb-tip">本图可放置 · 点击 / 拖入画布</p>
-                      </div>
-                    )}
-                  </div>
-                )
-              })}
-            </div>
+                            onClick={() => {
+                              setRelationTool(null)
+                              setRelationSource(null)
+                            }}
+                          >退出</button>
+                        </div>
+                      )}
+                      <button type="button" className="tb-item action" onClick={openRelationDialog}>
+                        <span className="tb-action-glyph" aria-hidden="true">↔</span>
+                        <span className="tb-item-label">关系向导（选两端）…</span>
+                      </button>
+                      <p className="tb-tip">按当前图规范过滤；选中关系后在画布点起点、再点终点即可连线</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* 通用：与图无关的动作类工具 */}
+                <div className={`tb-group ${openToolGroups.has('generic') ? 'open' : ''}`}>
+                  <button type="button" className="tb-group-head" onClick={() => toggleToolGroup('generic')}>
+                    <span className="tb-action-glyph" aria-hidden="true">◇</span>
+                    <span className="tb-group-label">通用</span>
+                    <span className="tb-count">2</span>
+                    <span className="tb-caret">{openToolGroups.has('generic') ? '⌄' : '›'}</span>
+                  </button>
+                  {openToolGroups.has('generic') && (
+                    <div className="tb-items">
+                      <button type="button" className="tb-item action" onClick={openRelationDialog}>
+                        <span className="tb-action-glyph" aria-hidden="true">↔</span>
+                        <span className="tb-item-label">新建关系…</span>
+                      </button>
+                      <button
+                        type="button"
+                        className="tb-item action"
+                        disabled={!selectedId || busy}
+                        onClick={() => selectedId && void addToCurrentDiagram(selectedId)}
+                      >
+                        <span className="tb-action-glyph" aria-hidden="true">＋</span>
+                        <span className="tb-item-label">把选中元素加入当前图</span>
+                      </button>
+                      <p className="tb-tip">通用工具与图无关；元素与关系组件随当前图联动。</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </>
           ) : (
             <div className="tb-scroll">
               <div className="panel-title">当前图</div>
@@ -1325,7 +1513,7 @@ export default function App() {
           )}
           <div className="tb-foot">
             <span>{activeSpec?.label ?? '—'}</span>
-            <span>{paletteEntries.length} 项</span>
+            <span>{paletteEntries.length} 元素 · {relationEntries.length} 关系</span>
           </div>
         </aside>
 
@@ -1341,21 +1529,29 @@ export default function App() {
                 {activeDiagramObj && (
                   <>
                     <button type="button" onClick={() => openDiagramDialog(activeDiagramObj.ownerId, activeDiagramObj)} disabled={busy}>重命名图</button>
-                    <button type="button" onClick={() => setRelationDialog({ sourceId: selectedId ?? '', targetId: '', type: RELATION_TYPES[0] })} disabled={busy}>新建关系</button>
+                    <button type="button" onClick={openRelationDialog} disabled={busy}>新建关系</button>
                     <button type="button" onClick={exportSvg} disabled={!activeDiagramObj}>导出 SVG</button>
                   </>
                 )}
               </div>
             </div>
             <div className="dt-sub">
-              本图可放置 <strong>{paletteEntries.length}</strong> 类元素 · 使用左侧「组件」工具箱点击或拖入画布
+              「组件」工具箱已按当前图过滤：<strong>{paletteEntries.length}</strong> 类元素 · <strong>{relationEntries.length}</strong> 类关系
+              {relationTool && <span className="dt-linkflag"> · 连线中 «{relationLabel(relationTool)}»（Esc 退出）</span>}
             </div>
           </div>
           <svg
             ref={svgRef}
+            className={relationTool ? 'linking' : undefined}
             viewBox={`0 0 ${canvas.width} ${canvas.height}`}
             role="img"
-            aria-label="模型画布，图形可拖拽"
+            aria-label="模型画布，图形可拖拽；连线模式下依次点击起点与终点"
+            onPointerDown={(event) => {
+              // 连线模式下点击画布空白取消已选起点，点击节点由 handlePointerDown 处理。
+              if (relationTool && event.target === event.currentTarget) {
+                setRelationSource(null)
+              }
+            }}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
@@ -1373,8 +1569,15 @@ export default function App() {
                 stroke="#9aa5b1"
                 strokeWidth={1.2}
                 strokeDasharray="2 2"
+                pointerEvents="none"
               />
             ))}
+            {positions.map(({ element, x, y, w, h }) => renderNode(element, x, y, w, h))}
+            {positions.length === 0 && (
+              <text x={canvas.width / 2} y={canvas.height / 2} textAnchor="middle" className="empty">
+                当前图暂无元素
+              </text>
+            )}
             {model.relationships.map((relation) => {
               const from = positionById.get(relation.sourceId)
               const to = positionById.get(relation.targetId)
@@ -1396,7 +1599,8 @@ export default function App() {
               const midX = (sEdge.x + tEdge.x) / 2
               const midY = (sEdge.y + tEdge.y) / 2
               return (
-                <g key={relation.id}>
+                /* 连线画在节点之上保证标签可读，但整体不接收指针事件，避免挡住连线模式下的节点点选。 */
+                <g key={relation.id} pointerEvents="none">
                   <line
                     x1={sEdge.x}
                     y1={sEdge.y}
@@ -1434,12 +1638,6 @@ export default function App() {
                 </g>
               )
             })}
-            {positions.map(({ element, x, y, w, h }) => renderNode(element, x, y, w, h))}
-            {positions.length === 0 && (
-              <text x={canvas.width / 2} y={canvas.height / 2} textAnchor="middle" className="empty">
-                当前图暂无元素
-              </text>
-            )}
           </svg>
           <p className="canvas-hint">拖拽图形可移动位置 · 关系以连线呈现（含类型箭头与标签）· 端口贴附所属块边框 · 坐标由服务端记法对象保存并广播给所有会话</p>
         </main>
@@ -1447,6 +1645,11 @@ export default function App() {
 
       <footer className="statusbar">
         <span>已同步至服务端 · rev {health?.revision ?? model.revision} · 在线会话 {health?.onlineSessions ?? 0}</span>
+        {relationTool && (
+          <span className="link-status">
+            连线 «{relationLabel(relationTool)}» · {relationSource ? '点击终点元素' : '点击起点元素'} · Esc 退出
+          </span>
+        )}
         <span>{health?.status === 'UP' ? '● 在线' : '○ 未连接'} · {health?.persistence ?? '—'}</span>
       </footer>
 
@@ -1652,7 +1855,9 @@ export default function App() {
         <div className="modal-overlay" onPointerDown={() => setRelationDialog(null)}>
           <div className="modal" onPointerDown={(event) => event.stopPropagation()}>
             <h2>新建关系</h2>
-            <p className="modal-sub">在当前图中建立两个元素之间的语义关系</p>
+            <p className="modal-sub">
+              在「{activeSpec?.label ?? '当前图'}」中建立语义关系 · 类型按当前图规范过滤
+            </p>
             <label className="field">
               <span>源元素</span>
               <select
@@ -1683,8 +1888,8 @@ export default function App() {
                 value={relationDialog.type}
                 onChange={(event) => setRelationDialog({ ...relationDialog, type: event.target.value })}
               >
-                {RELATION_TYPES.map((type) => (
-                  <option key={type} value={type}>{type}</option>
+                {(relationEntries.length > 0 ? relationEntries : allRelations).map((rel) => (
+                  <option key={rel.code} value={rel.code}>{rel.label}（«{rel.code}»）</option>
                 ))}
               </select>
             </label>

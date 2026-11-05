@@ -87,6 +87,30 @@ class ModelControllerTest {
                 .contains(MetamodelRegistry.LAYOUT_SEQUENCE);
         assertThat(diagrams).extracting(item -> item.get("code"))
                 .containsExactlyInAnyOrder("pkg", "req", "bdd", "ibd", "par", "act", "seq", "stm", "uc");
+
+        Map<String, Object> req = diagrams.stream()
+                .filter(item -> "req".equals(item.get("code"))).findFirst().orElseThrow();
+        assertThat(req.get("allowedRelationships"))
+                .as("需求图只允许需求类关系")
+                .isEqualTo(List.of("allocate", "containment", "copy", "deriveReqt",
+                        "refine", "satisfy", "trace", "verify"));
+        @SuppressWarnings("unchecked")
+        List<String> reqRelationships = (List<String>) req.get("allowedRelationships");
+        assertThat(reqRelationships).doesNotContain("connector", "message");
+    }
+
+    @Test
+    void relationshipsEndpointPublishesServerSideCatalog() {
+        List<Map<String, Object>> catalog = controller.relationships();
+        assertThat(catalog).isNotEmpty();
+        assertThat(catalog).extracting(item -> item.get("code"))
+                .contains("satisfy", "verify", "containment", "allocate", "connector");
+        assertThat(catalog).extracting(item -> item.get("label"))
+                .contains("满足", "验证", "包含");
+        assertThat(catalog).allSatisfy(item -> {
+            assertThat(item.get("stereotype")).isNotNull();
+            assertThat(item.get("family")).isNotNull();
+        });
     }
 
     @Test

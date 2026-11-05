@@ -64,7 +64,17 @@ export interface DiagramSpec {
   layout: string
   elementTypes: number
   allowedTypes: string[]
+  /** 当前图允许放置的关系类型（服务端 MetamodelRegistry 下发）。 */
+  allowedRelationships: string[]
   validationGroup: string
+}
+
+/** 关系类型目录项：工具箱「关系」分组与新建关系弹窗共用。 */
+export interface RelationshipTypeInfo {
+  code: string
+  label: string
+  stereotype: string
+  family: string
 }
 
 export interface ElementTypeInfo {

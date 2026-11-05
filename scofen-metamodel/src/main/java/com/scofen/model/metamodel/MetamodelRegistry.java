@@ -1,5 +1,6 @@
 package com.scofen.model.metamodel;
 
+import java.util.Collections;
 import java.util.EnumMap;
 import java.util.EnumSet;
 import java.util.Map;
@@ -17,20 +18,25 @@ public final class MetamodelRegistry {
     public record DiagramSpec(
             DiagramKind kind,
             Set<ElementType> elements,
-            Set<String> relationships,
+            Set<RelationshipType> relationships,
             String layout,
             String validationGroup) {
     }
 
     private static final Map<DiagramKind, DiagramSpec> SPECS = new EnumMap<>(DiagramKind.class);
 
-    private static void register(DiagramKind kind, Set<ElementType> elements, Set<String> relationships,
+    private static void register(DiagramKind kind, Set<ElementType> elements, Set<RelationshipType> relationships,
                                  String layout, String validationGroup) {
         SPECS.put(kind, new DiagramSpec(kind, elements, relationships, layout, validationGroup));
     }
 
-    private static Set<String> rel(String... values) {
-        return Set.of(values);
+    private static Set<RelationshipType> rel(String... values) {
+        EnumSet<RelationshipType> result = EnumSet.noneOf(RelationshipType.class);
+        for (String value : values) {
+            result.add(RelationshipType.fromAny(value)
+                    .orElseThrow(() -> new IllegalArgumentException("Unregistered relationship type: " + value)));
+        }
+        return Collections.unmodifiableSet(result);
     }
 
     static {
@@ -42,7 +48,7 @@ public final class MetamodelRegistry {
         register(DiagramKind.REQ,
                 EnumSet.of(ElementType.REQUIREMENT, ElementType.TEST_CASE, ElementType.BLOCK,
                         ElementType.COMMENT),
-                rel("containment", "satisfy", "verify", "refine", "deriveReqt", "copy", "trace"),
+                rel("containment", "satisfy", "verify", "refine", "deriveReqt", "copy", "trace", "allocate"),
                 LAYOUT_ELK, "requirement");
         register(DiagramKind.BDD,
                 EnumSet.of(ElementType.BLOCK, ElementType.VALUE_TYPE, ElementType.PACKAGE,
@@ -97,6 +103,11 @@ public final class MetamodelRegistry {
 
     public static boolean allows(DiagramKind kind, ElementType type) {
         return spec(kind).elements().contains(type);
+    }
+
+    /** 图与关系的规范约束：组件工具箱的「关系」分组与服务端命令校验共用这一张表。 */
+    public static boolean allowsRelationship(DiagramKind kind, RelationshipType type) {
+        return spec(kind).relationships().contains(type);
     }
 
     public static String layoutFor(DiagramKind kind) {

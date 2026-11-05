@@ -58,6 +58,30 @@ class ModelEditingTest {
     }
 
     @Test
+    void relationshipTypeMustBeRegisteredAndAllowedOnDiagram() {
+        cmd("CREATE_ELEMENT", Map.of("id", "pkg", "type", "Package", "name", "系统", "ownerId", ""));
+        cmd("CREATE_ELEMENT", Map.of("id", "blk", "type", "Block", "name", "控制器", "ownerId", "pkg"));
+        cmd("CREATE_DIAGRAM", Map.of("id", "d-bdd", "kind", "bdd", "name", "模块定义图",
+                "elementIds", List.of("blk")));
+
+        assertThatThrownBy(() -> cmd("CREATE_RELATIONSHIP", Map.of(
+                "id", "r-unknown", "type", "teleport", "sourceId", "pkg", "targetId", "blk",
+                "diagramId", "d-bdd")))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Unknown relationship type");
+        assertThatThrownBy(() -> cmd("CREATE_RELATIONSHIP", Map.of(
+                "id", "r-illegal", "type", "connector", "sourceId", "pkg", "targetId", "blk",
+                "diagramId", "d-bdd")))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("not allowed on");
+
+        cmd("CREATE_RELATIONSHIP", Map.of(
+                "id", "r-ok", "type", "generalization", "sourceId", "pkg", "targetId", "blk",
+                "diagramId", "d-bdd"));
+        assertThat(executor.snapshot().relationships()).hasSize(1);
+    }
+
+    @Test
     void containmentRulesRejectIllegalParentChildCombination() {
         cmd("CREATE_ELEMENT", Map.of("id", "pkg", "type", "Package", "name", "系统", "ownerId", ""));
         assertThatThrownBy(() -> cmd("CREATE_ELEMENT",
