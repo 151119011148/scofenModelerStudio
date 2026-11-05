@@ -13,6 +13,22 @@
   <description>B/S delivery: REST Command API, WebSocket Patch broadcast, Flyway schema</description>
 
   <dependencies>
+    <!-- 显式引入 spring-boot-starter 并排除 jul-to-slf4j 桥接：
+         在 Spring Boot 可执行 fat jar + 内嵌 Tomcat 场景下，juli→JUL→SLF4JBridgeHandler
+         桥接会在记录异常时因类加载器上下文不同而无法加载 logback 的 ThrowableProxy，
+         导致请求线程抛出 NoClassDefFoundError、掩盖真实异常并使连接被重置。
+         排除后 Tomcat 内部日志走 JUL 默认处理器，应用自身日志仍走 logback。 -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter</artifactId>
+      <exclusions>
+        <exclusion>
+          <groupId>org.slf4j</groupId>
+          <artifactId>jul-to-slf4j</artifactId>
+        </exclusion>
+      </exclusions>
+    </dependency>
+
     <dependency>
       <groupId>com.scofen</groupId>
       <artifactId>scofen-core</artifactId>

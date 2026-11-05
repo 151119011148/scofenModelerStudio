@@ -20,6 +20,10 @@ cp "$REMOTE_DIR/deploy-assets/scofen.service" "$UNIT"
 systemctl daemon-reload
 
 echo "==> 安装 Nginx 片段"
+# 目标可能是上一轮部署留下的同名符号链接（指向 deploy-assets 本体），
+# 直接 cp 会因“源与目标为同一文件”报错并以非零退出，进而触发 set -e 中断后续重启。
+# 先移除目标再复制，保证幂等且可重复执行。
+rm -f "$LOCATIONS"
 cp "$REMOTE_DIR/deploy-assets/scofen.locations" "$LOCATIONS"
 
 # 幂等地把 include 挂进已有 80 端口 server（与 scofendoc 同一模式）
