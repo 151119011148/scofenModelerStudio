@@ -1,0 +1,21 @@
+[Unit]
+Description=Scofen Modeler Studio (Spring Boot fat jar, 127.0.0.1:18080)
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/scofen
+Environment=JAVA_HOME=/usr/lib/jvm/java-17-openjdk
+Environment=TZ=Asia/Shanghai
+ExecStart=/usr/lib/jvm/java-17-openjdk/bin/java \
+  -Xms256m -Xmx512m -Duser.timezone=Asia/Shanghai \
+  -jar /opt/scofen/scofen-server.jar \
+  --server.port=18080 \
+  --server.address=127.0.0.1
+Restart=on-failure
+RestartSec=5
+SuccessExitStatus=143
+
+[Install]
+WantedBy=multi-user.target

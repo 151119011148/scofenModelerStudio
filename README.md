@@ -5,7 +5,7 @@
 轻量化 SysML 1.6 / UML 2.5.1 建模工具，对标 M-Design 与 MagicDraw / Cameo。
 模型优先、服务端权威：元素与关系是唯一事实源，图只是视图。
 
-**当前状态：M0 骨架已实现并通过 27 项自动化测试，尚未进入 M1～M4 的完整产品实现。**
+**当前状态：M0 骨架已实现、27 项自动化测试全绿，并已上线 <http://47.117.110.143/scofen/>；尚未进入 M1～M4 的完整产品实现。**
 方案全文见仓库上级目录的《产品方案与技术选型 v0.6》；首发完整范围约 21～25 周。
 
 ## 已实现（M0）
@@ -39,9 +39,14 @@
 ```bash
 ./build.sh                                   # 前端构建 + Maven 全量测试 + fat jar
 java -jar scofen-web/target/scofen-server.jar  # 默认 8080
+
+# 子路径部署（线上用法）：前端资源与 API / WS 统一带 /scofen/ 前缀
+SCOFEN_BASE=/scofen/ ./build.sh
 ```
 
-浏览器打开 <http://localhost:8080>。前端开发模式可用 `cd frontend && npm run dev`（Vite 5173，已配置 `/api` 与 `/ws` 代理到 8080）。
+浏览器打开 <http://localhost:8080>（根路径构建时）。前端开发模式可用 `cd frontend && npm run dev`（Vite 5173，已配置 `/api` 与 `/ws` 代理到 8080）。
+
+前端所有请求都基于 Vite 的 `import.meta.env.BASE_URL`：默认 `/`，`vite build --base=/scofen/` 时自动变成 `/scofen/api/...` 与 `/scofen/ws/patches`，无需改代码即可切换部署路径。
 
 只跑测试：
 
@@ -70,18 +75,37 @@ curl -X POST http://localhost:8080/api/commands \
   -d '{"type":"RENAME_ELEMENT","payload":{"id":"e-vcu","name":"域控制器"},"baseRevision":15,"clientCmdId":"c-1"}'
 ```
 
-## 容器上线
+## 部署上线
+
+**当前线上环境**：阿里云 ECS（Alibaba Cloud Linux 3，47.117.110.143）。服务器上 80 端口已有 emotion-web / scofendoc，8080 与 8081 也已被占用，且未安装 Docker，因此采用「JDK 17 + systemd + Nginx 子路径反代」，不新增监听端口、不改安全组、不影响现有站点。
+
+| 项 | 值 |
+|---|---|
+| 访问入口 | <http://47.117.110.143/scofen/> |
+| 应用进程 | `scofen.service` → `127.0.0.1:18080`（fat jar 自带前端静态资源） |
+| JDK | `/usr/lib/jvm/java-17-openjdk/bin/java` |
+| Nginx 片段 | `/etc/nginx/conf.d/scofen.locations`，由 `emotion-web.conf` 的 server 内 include |
+| WebSocket | `/scofen/ws/patches`（独立 location，带 Upgrade 头与 3600s 超时） |
+| 日志 | `journalctl -u scofen.service -f` |
+
+一键发版（要求远端已配置 SSH 免密，本机已按子路径构建）：
+
+```bash
+SCOFEN_BASE=/scofen/ ./build.sh
+./deploy-remote.sh scofen-server /opt/scofen     # scofen-server 是本机 ~/.ssh/config 中的别名
+```
+
+脚本会上传 jar、`deploy/scofen.service`、`deploy/scofen.locations`，然后执行 `deploy/install-remote.sh`：幂等地插入 Nginx include（原配置自动备份为 `emotion-web.conf.bak-scofen`）、`nginx -t`、reload、systemd 重启与健康探测。
+
+可选的 Docker 路径（适合自备容器环境）：
 
 ```bash
 ./build.sh
-docker compose up -d --build          # http://<host>:8080
-docker compose --profile persistence up -d   # 附带 MySQL 8.4
-
-# 或部署到已有服务器（远端需安装 Docker / Docker Compose 与 SSH 访问）
-./deploy-remote.sh user@your-host /opt/scofen
+docker compose up -d --build                    # http://<host>:8080
+docker compose --profile persistence up -d      # 附带 MySQL 8.4
 ```
 
-镜像基于 `eclipse-temurin:17-jre`，端口 8080。反向代理需同时转发 HTTP 与 WebSocket 升级请求。
+镜像基于 `eclipse-temurin:17-jre`。任何反向代理都需同时转发 HTTP 与 WebSocket 升级请求。
 
 ## 目录
 
@@ -91,4 +115,6 @@ scofen-core/        Repository / Command / revision CAS / 校验 / 撤销
 scofen-xmi/         交换格式契约（EMF 适配器在 M3 接入）
 scofen-web/         Spring Boot 4.1 REST + WebSocket + Flyway 脚本 + 静态前端
 frontend/           Vite + React + TypeScript strict
+deploy/             systemd unit / Nginx locations / 远端安装脚本
+deploy-remote.sh    一键发版入口
 ```

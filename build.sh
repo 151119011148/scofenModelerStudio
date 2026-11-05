@@ -8,7 +8,13 @@ if [ -z "${JAVA_HOME:-}" ]; then
 fi
 
 echo "==> 构建前端（Vite + React + TypeScript strict）"
-(cd frontend && npm install --no-audit --no-fund && npm run build)
+# SCOFEN_BASE=/scofen/ 用于 Nginx 子路径部署；留空则构建为根路径 `/`。
+if [ -n "${SCOFEN_BASE:-}" ]; then
+  echo "    子路径前缀：${SCOFEN_BASE}"
+  (cd frontend && npm install --no-audit --no-fund && npm run build -- --base="${SCOFEN_BASE}")
+else
+  (cd frontend && npm install --no-audit --no-fund && npm run build)
+fi
 
 echo "==> 构建后端（Maven 四模块 + 测试 + fat jar）"
 ./mvnw -B -ntp clean package
