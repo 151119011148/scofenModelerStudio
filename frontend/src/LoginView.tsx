@@ -38,7 +38,7 @@ export default function LoginView({ onSuccess }: Props) {
     } catch (e) {
       const reason = e instanceof Error ? e.message : String(e)
       setError(reason.includes('用户名或密码不正确')
-        ? '用户名或密码不正确：账号是 scofen（全小写），密码区分大小写。若浏览器自动填充了其它站点的账号，请清空两个输入框后手动填写。'
+        ? '用户名或密码不正确：账号是 scofen 或 gaofeng（均全小写），密码区分大小写。若浏览器自动填充了其它站点的账号，请清空两个输入框后手动填写。'
         : reason)
     } finally {
       setBusy(false)
@@ -65,7 +65,7 @@ export default function LoginView({ onSuccess }: Props) {
               autoCapitalize="off"
               spellCheck={false}
               data-lpignore="true"
-              placeholder="超管账号：scofen"
+              placeholder="超管账号：scofen 或 gaofeng"
               autoFocus
             />
           </label>
@@ -101,7 +101,7 @@ export default function LoginView({ onSuccess }: Props) {
           </button>
         </form>
         <p className="auth-tip">
-          超管账号 <code>scofen</code>（全小写），密码区分大小写。<br />
+          超管账号 <code>scofen</code> / <code>gaofeng</code>（均全小写），共用同一口令且区分大小写。<br />
           本实例已关闭自助注册；登录后方可读写模型、图与项目。
         </p>
       </div>

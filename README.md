@@ -26,7 +26,7 @@
 | 右键菜单 | 新建子元素 / 重命名 / 加入当前图 / 在图中定位 / 删除；删除父节点级联整棵子树、关系与记法，单条原子命令且可撤销恢复 |
 | 图形拖拽 | 画布 shape 支持指针拖拽，坐标经 `MOVE_NOTATION` 写入服务端 `Notation` 对象并广播，越界或不在图内的元素被服务端拒绝 |
 | 建表脚本 | `V1__init.sql`，按 MySQL 8.4 六条约束编写（默认关闭 Flyway，待持久化适配器接入） |
-| 登录与会话 | JWT(HS256) + PBKDF2 口令哈希，单一超管账号；`/api/**` 与 WebSocket 握手都校验登录态，401 自动回登录页 |
+| 登录与会话 | JWT(HS256) + PBKDF2 口令哈希，两个超管账号（`scofen` / `gaofeng`）共用口令；`/api/**` 与 WebSocket 握手都校验登录态，401 自动回登录页 |
 | 打开项目 | 顶栏项目选择器点击即打开、新建后自动打开；每个项目分配独立内存态模型运行时（唯一根 Model + 九图），统计 / revision / 撤销栈互不串写 |
 
 ## 尚未实现（后续里程碑）
@@ -42,14 +42,16 @@
 
 ## 登录与账号
 
-默认超管账号 `scofen`（全小写），口令在源码中只保存 PBKDF2-HMAC-SHA256 哈希，明文不进仓库。
+默认有两个超管账号：`scofen` 与 `gaofeng`（均全小写），**共用同一口令**，登录后的身份与权限完全相同。
+口令在源码中只保存 PBKDF2-HMAC-SHA256 哈希，明文不进仓库。
 口令区分大小写，首尾带空格也会校验失败；登录页提供「显示」开关用于核对输入，并已禁用浏览器自动填充——
 同一台服务器上若登录过其它站点，Chrome 可能按 origin 自动填入别的账号密码，遇到 401 请先清空两个输入框手动填写。
 运维可用环境变量覆盖（Spring 宽松绑定）：
 
 | 变量 | 说明 |
 |---|---|
-| `SCOFEN_AUTH_ADMIN_USERNAME` | 登录名，默认 `scofen` |
+| `SCOFEN_AUTH_ADMIN_USERNAMES` | 逗号分隔的超管清单，默认 `scofen,gaofeng`；设置后覆盖默认值 |
+| `SCOFEN_AUTH_ADMIN_USERNAME` | 旧版单数变量，仅在未设置复数变量时生效，值为单个登录名 |
 | `SCOFEN_AUTH_ADMIN_PASSWORD` | 明文口令，仅运行时注入，优先级最高 |
 | `SCOFEN_AUTH_ADMIN_PASSWORD_HASH` | 直接替换哈希（`pbkdf2$迭代$salt$hash`） |
 | `SCOFEN_AUTH_JWT_SECRET` | 固定 JWT 密钥；未设置时每次启动随机生成，重启后需重新登录 |

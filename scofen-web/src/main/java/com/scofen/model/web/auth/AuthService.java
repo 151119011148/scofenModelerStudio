@@ -20,11 +20,14 @@ import java.security.spec.InvalidKeySpecException;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Date;
+import java.util.LinkedHashSet;
+import java.util.Set;
 
 /**
  * 登录态（仿 scofenDoc 的 JWT + 口令哈希方案，但保持本产品 M0 的无数据库依赖）。
  *
- * <p>账号只有一个超管：用户名来自 {@code scofen.auth.admin-username}（默认 scofen）。
+ * <p>超管账号清单来自 {@code scofen.auth.admin-usernames}（逗号分隔，默认 {@code scofen,gaofeng}），
+ * 兼容旧的单数变量 {@code scofen.auth.admin-username}；所有超管共用同一口令。
  * 口令在源码里只保存 PBKDF2-HMAC-SHA256 哈希，明文绝不进 Git；部署时可用
  * {@code SCOFEN_AUTH_ADMIN_PASSWORD} 覆盖，或直接替换
  * {@code SCOFEN_AUTH_ADMIN_PASSWORD_HASH}。</p>
@@ -51,18 +54,20 @@ public class AuthService {
     public record Principal(String username, String displayName, boolean admin) {
     }
 
-    private final String username;
+    private final Set<String> usernames;
     private final String passwordHash;
     private final SecretKey key;
     private final long ttlSeconds;
 
     public AuthService(
-            @Value("${scofen.auth.admin-username:scofen}") String username,
+            // 复数优先；未设置时回退到旧的单数变量；两者都未设置才是默认的两个超管。
+            @Value("${scofen.auth.admin-usernames:${scofen.auth.admin-username:scofen,gaofeng}}") String usernames,
             @Value("${scofen.auth.admin-password:}") String plainPassword,
             @Value("${scofen.auth.admin-password-hash:" + DEFAULT_PASSWORD_HASH + "}") String passwordHash,
             @Value("${scofen.auth.jwt-secret:}") String secret,
             @Value("${scofen.auth.jwt-ttl-seconds:604800}") long ttlSeconds) {
-        this.username = username == null || username.isBlank() ? "scofen" : username.trim();
+        this.usernames = parseUsernames(usernames);
+        log.info("[scofen] 超管账号：{}", String.join(", ", this.usernames));
         this.passwordHash = plainPassword == null || plainPassword.isBlank()
                 ? passwordHash : hash(plainPassword, new SecureRandom().generateSeed(16), 120_000);
         this.ttlSeconds = ttlSeconds > 0 ? ttlSeconds : 604800L;
@@ -81,10 +86,10 @@ public class AuthService {
     /** 账号密码不匹配时抛 SecurityException，由 AuthController 统一转 401。 */
     public Session login(String rawUsername, String rawPassword) {
         String candidate = rawUsername == null ? "" : rawUsername.trim();
-        if (!candidate.equals(username) || rawPassword == null || !matches(rawPassword, passwordHash)) {
+        if (!usernames.contains(candidate) || rawPassword == null || !matches(rawPassword, passwordHash)) {
             throw new SecurityException("用户名或密码不正确");
         }
-        User user = new User(username, "超级管理员", true);
+        User user = new User(candidate, "超级管理员", true);
         return new Session(issue(user), user);
     }
 
@@ -101,10 +106,11 @@ public class AuthService {
             if (!TYP_AUTH.equals(claims.get("typ", String.class))) {
                 return null;
             }
-            if (!username.equals(claims.getSubject())) {
+            String subject = claims.getSubject();
+            if (subject == null || !usernames.contains(subject)) {
                 return null;
             }
-            return new Principal(username, "超级管理员", Boolean.TRUE.equals(claims.get("admin", Boolean.class)));
+            return new Principal(subject, "超级管理员", Boolean.TRUE.equals(claims.get("admin", Boolean.class)));
         } catch (JwtException | IllegalArgumentException ex) {
             return null;
         }
@@ -121,6 +127,23 @@ public class AuthService {
                 .expiration(Date.from(now.plusSeconds(ttlSeconds)))
                 .signWith(key, Jwts.SIG.HS256)
                 .compact();
+    }
+
+    /** 逗号分隔的超管清单；配置为空时回退到 scofen，避免写错配置导致无人可登录。 */
+    private static Set<String> parseUsernames(String raw) {
+        Set<String> result = new LinkedHashSet<>();
+        if (raw != null) {
+            for (String part : raw.split(",")) {
+                String name = part.trim();
+                if (!name.isEmpty()) {
+                    result.add(name);
+                }
+            }
+        }
+        if (result.isEmpty()) {
+            result.add("scofen");
+        }
+        return Set.copyOf(result);
     }
 
     /* ---------------- PBKDF2-HMAC-SHA256 ---------------- */
