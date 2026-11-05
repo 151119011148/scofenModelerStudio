@@ -52,7 +52,7 @@ class ModelControllerTest {
     @Test
     void commandEndpointAppliesWriteAndBroadcastsExactlyOnePatch() {
         Patch patch = post("CREATE_ELEMENT",
-                Map.of("id", "e-1", "type", "Block", "name", "整车控制器", "ownerId", "pkg-1"),
+                Map.of("id", "e-1", "type", "Package", "name", "控制器包", "ownerId", ""),
                 0L, "c-1");
 
         assertThat(patch.revision()).isEqualTo(1L);
@@ -98,7 +98,7 @@ class ModelControllerTest {
 
     @Test
     void undoEndpointRestoresPreviousName() {
-        post("CREATE_ELEMENT", Map.of("id", "e-1", "type", "Block", "name", "A", "ownerId", ""), 0L, "c-1");
+        post("CREATE_ELEMENT", Map.of("id", "e-1", "type", "Package", "name", "A", "ownerId", ""), 0L, "c-1");
         post("RENAME_ELEMENT", Map.of("id", "e-1", "name", "B"), 1L, "c-2");
         Patch undone = controller.undo("session-1");
 

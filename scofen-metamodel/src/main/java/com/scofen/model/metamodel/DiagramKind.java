@@ -1,5 +1,7 @@
 package com.scofen.model.metamodel;
 
+import com.fasterxml.jackson.annotation.JsonValue;
+
 /** SysML 1.6 九大图。UML 核心图复用同一记法引擎，不另立内核。 */
 public enum DiagramKind {
     PKG("pkg", "包图"),
@@ -20,6 +22,7 @@ public enum DiagramKind {
         this.label = label;
     }
 
+    @JsonValue
     public String code() {
         return code;
     }

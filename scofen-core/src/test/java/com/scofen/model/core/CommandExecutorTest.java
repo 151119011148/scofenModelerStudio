@@ -73,7 +73,7 @@ class CommandExecutorTest {
     @Test
     void duplicateClientCmdIdIsIdempotent() {
         Command create = Command.of("CREATE_ELEMENT", 0L, "same-id",
-                Map.of("id", "e-1", "type", "Block", "name", "A", "ownerId", ""));
+                Map.of("id", "e-1", "type", "Package", "name", "A", "ownerId", ""));
         Patch first = executor.execute(SESSION, create);
         Patch second = executor.execute(SESSION, create);
 
@@ -97,16 +97,16 @@ class CommandExecutorTest {
 
     @Test
     void namingUniquenessIsCaseInsensitiveLikeMysqlDefaultCollation() {
-        cmd("CREATE_ELEMENT", Map.of("id", "e-1", "type", "Block", "name", "Controller", "ownerId", "pkg-1"));
+        cmd("CREATE_ELEMENT", Map.of("id", "e-1", "type", "Package", "name", "Controller", "ownerId", ""));
         assertThatThrownBy(() -> cmd("CREATE_ELEMENT",
-                Map.of("id", "e-2", "type", "Block", "name", "controller", "ownerId", "pkg-1")))
+                Map.of("id", "e-2", "type", "Package", "name", "controller", "ownerId", "")))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("Duplicate element name");
     }
 
     @Test
     void relationshipEndpointsMustExist() {
-        cmd("CREATE_ELEMENT", Map.of("id", "e-1", "type", "Block", "name", "A", "ownerId", ""));
+        cmd("CREATE_ELEMENT", Map.of("id", "e-1", "type", "Package", "name", "A", "ownerId", ""));
         assertThatThrownBy(() -> cmd("CREATE_RELATIONSHIP",
                 Map.of("id", "r-1", "type", "trace", "sourceId", "e-1", "targetId", "missing")))
                 .isInstanceOf(ValidationException.class)
@@ -115,8 +115,8 @@ class CommandExecutorTest {
 
     @Test
     void generalizationCycleIsRejected() {
-        cmd("CREATE_ELEMENT", Map.of("id", "e-a", "type", "Block", "name", "A", "ownerId", ""));
-        cmd("CREATE_ELEMENT", Map.of("id", "e-b", "type", "Block", "name", "B", "ownerId", ""));
+        cmd("CREATE_ELEMENT", Map.of("id", "e-a", "type", "Package", "name", "A", "ownerId", ""));
+        cmd("CREATE_ELEMENT", Map.of("id", "e-b", "type", "Package", "name", "B", "ownerId", ""));
         cmd("CREATE_RELATIONSHIP",
                 Map.of("id", "r-1", "type", "generalization", "sourceId", "e-a", "targetId", "e-b"));
         assertThatThrownBy(() -> cmd("CREATE_RELATIONSHIP",

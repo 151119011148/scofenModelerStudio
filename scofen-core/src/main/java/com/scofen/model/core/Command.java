@@ -28,4 +28,28 @@ public record Command(String type, Map<String, Object> payload, long baseRevisio
         }
         return ((java.util.List<Object>) value).stream().map(String::valueOf).toList();
     }
+
+    /** RESTORE_SUBTREE 之类的复合命令用：读取嵌套对象列表。 */
+    @SuppressWarnings("unchecked")
+    public java.util.List<java.util.Map<String, Object>> mapList(String key) {
+        Object value = payload.get(key);
+        if (value == null) {
+            return java.util.List.of();
+        }
+        return ((java.util.List<Object>) value).stream()
+                .map(item -> (java.util.Map<String, Object>) item)
+                .toList();
+    }
+
+    public double decimal(String key) {
+        Object value = payload.get(key);
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        try {
+            return Double.parseDouble(String.valueOf(value));
+        } catch (RuntimeException ex) {
+            throw new ValidationException("Invalid numeric field: " + key);
+        }
+    }
 }

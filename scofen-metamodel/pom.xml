@@ -13,6 +13,11 @@
   <description>Element / Relationship / Diagram / Notation and the nine-diagram registry</description>
 
   <dependencies>
+    <!-- 模型层会被 Jackson 序列化（model 快照），需要注解依赖以声明枚举的 JSON 形态 -->
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-annotations</artifactId>
+    </dependency>
     <dependency>
       <groupId>org.junit.jupiter</groupId>
       <artifactId>junit-jupiter</artifactId>

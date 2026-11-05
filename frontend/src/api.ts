@@ -1,6 +1,6 @@
-import type { CommandRequest, DiagramSpec, Health, ModelSnapshot, Patch } from './types'
+import type { CommandRequest, ContainmentSpec, DiagramSpec, Health, ModelSnapshot, Patch } from './types'
 
-// Vite 构建时注入的 base（默认 `/`，子路径部署时为 `/scofen/`）。
+// Vite 构建时注入的 base（默认 `/`，子路径部署时为 `/scofen/modelerStudio/`）。
 // 保持 API 与页面在同一前缀下，Nginx 只需剥掉一层前缀即可反代。
 const BASE = import.meta.env.BASE_URL
 
@@ -19,6 +19,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const getHealth = () => request<Health>(`${BASE}api/health`)
 export const getModel = () => request<ModelSnapshot>(`${BASE}api/model`)
 export const getDiagrams = () => request<DiagramSpec[]>(`${BASE}api/metamodel/diagrams`)
+export const getContainment = () => request<ContainmentSpec>(`${BASE}api/metamodel/containment`)
 
 export const postCommand = (command: CommandRequest) =>
   request<Patch>(`${BASE}api/commands`, {

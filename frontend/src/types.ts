@@ -61,7 +61,29 @@ export interface DiagramSpec {
   label: string
   layout: string
   elementTypes: number
+  allowedTypes: string[]
   validationGroup: string
+}
+
+export interface ElementTypeInfo {
+  code: string
+  uml: string
+  label: string
+  stereotype: string
+}
+
+export interface ContainmentRule {
+  parent: string
+  parentLabel: string
+  children: ElementTypeInfo[]
+}
+
+export interface ContainmentSpec {
+  rootTypes: string[]
+  rules: ContainmentRule[]
+  types: ElementTypeInfo[]
+  canvas: { maxX: number; maxY: number; width: number; height: number }
+  node: { width: number; height: number }
 }
 
 export interface Patch {

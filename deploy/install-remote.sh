@@ -37,7 +37,7 @@ else:
     if not backup.exists():
         backup.write_text(s, encoding="utf-8")
         print("已备份原配置:", backup)
-    line = "    include /etc/nginx/conf.d/scofen.locations;   # Scofen Modeler Studio /scofen/\n"
+    line = "    include /etc/nginx/conf.d/scofen.locations;   # Scofen Modeler Studio /scofen/modelerStudio/\n"
     p.write_text(s.replace(marker, marker + "\n" + line, 1), encoding="utf-8")
     print("已插入 include")
 PY
@@ -66,6 +66,6 @@ done
 
 echo "==> 本机链路检查"
 curl -fsS --max-time 5 http://127.0.0.1:18080/api/health; echo
-curl -sS -o /dev/null -w "index via nginx: %{http_code}\n" --max-time 5 http://127.0.0.1/scofen/
-curl -sS -o /dev/null -w "api via nginx:   %{http_code}\n" --max-time 5 http://127.0.0.1/scofen/api/health
-echo "==> 部署完成：http://<公网IP>/scofen/"
+curl -sS -o /dev/null -w "index via nginx: %{http_code}\n" --max-time 5 http://127.0.0.1/scofen/modelerStudio/
+curl -sS -o /dev/null -w "api via nginx:   %{http_code}\n" --max-time 5 http://127.0.0.1/scofen/modelerStudio/api/health
+echo "==> 部署完成：http://<公网IP>/scofen/modelerStudio/"

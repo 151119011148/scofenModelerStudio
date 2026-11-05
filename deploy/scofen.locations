@@ -5,19 +5,23 @@
 # 而是通过 emotion-web.conf 中的 include 引入已有的 80 端口 server 内。
 # 与 scofendoc.locations 同样的模式：不新增监听端口、不改安全组、不动现有站点。
 #
-# 访问入口：http://<IP>/scofen/
+# 访问入口：http://<IP>/scofen/modelerStudio/
 # 应用监听：127.0.0.1:18080（fat jar 自带前端静态资源，无需单独托管 dist）
-# 前端构建：vite build --base=/scofen/，API/WS 都带同一前缀，Nginx 剥一层即可。
+# 前端构建：vite build --base=/scofen/modelerStudio/
 # ============================================================================
 
+# ---------------------------------------------------------------------------
+# 当前入口 /scofen/modelerStudio/
+# ---------------------------------------------------------------------------
+
 # 省略尾斜杠时补上，保证相对路径解析正确
-location = /scofen {
-    return 301 /scofen/;
+location = /scofen/modelerStudio {
+    return 301 /scofen/modelerStudio/;
 }
 
-# WebSocket Patch 广播：/scofen/ws/patches -> /ws/patches
+# WebSocket Patch 广播：/scofen/modelerStudio/ws/patches -> /ws/patches
 # 单独一条更长的前缀 location，避免把 Upgrade 头加到普通 HTTP 请求上
-location /scofen/ws/ {
+location /scofen/modelerStudio/ws/ {
     proxy_pass          http://127.0.0.1:18080/ws/;
     proxy_http_version  1.1;
     proxy_set_header    Upgrade           $http_upgrade;
@@ -31,8 +35,8 @@ location /scofen/ws/ {
     proxy_read_timeout    3600s;
 }
 
-# 页面 / 静态资源 / REST：/scofen/xxx -> /xxx
-location /scofen/ {
+# 页面 / 静态资源 / REST：/scofen/modelerStudio/xxx -> /xxx
+location /scofen/modelerStudio/ {
     proxy_pass          http://127.0.0.1:18080/;
     proxy_http_version  1.1;
     proxy_set_header    Host              $host;
@@ -42,4 +46,30 @@ location /scofen/ {
     proxy_connect_timeout 5s;
     proxy_send_timeout    60s;
     proxy_read_timeout    60s;
+}
+
+# ---------------------------------------------------------------------------
+# 旧入口兼容：/scofen/ -> /scofen/modelerStudio/
+# WebSocket 客户端不跟随 301，因此旧 WS 端点仍保留反代。
+# ---------------------------------------------------------------------------
+
+location = /scofen {
+    return 301 /scofen/modelerStudio/;
+}
+
+location /scofen/ws/ {
+    proxy_pass          http://127.0.0.1:18080/ws/;
+    proxy_http_version  1.1;
+    proxy_set_header    Upgrade           $http_upgrade;
+    proxy_set_header    Connection        "upgrade";
+    proxy_set_header    Host              $host;
+    proxy_set_header    X-Real-IP         $remote_addr;
+    proxy_set_header    X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_connect_timeout 5s;
+    proxy_send_timeout    3600s;
+    proxy_read_timeout    3600s;
+}
+
+location /scofen/ {
+    return 301 /scofen/modelerStudio/;
 }
