@@ -185,6 +185,8 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 .node.dragging { cursor: grabbing; }
 .node-type { font-size: 11px; fill: var(--text-3); font-family: var(--mono); }
 .node-name { font-size: 13px; fill: var(--text); }
+.node-child { font-size: 11px; fill: var(--text-2); font-family: var(--sans); }
+.edge-label { font-size: 10.5px; font-family: var(--mono); }
 .empty { font-size: 13px; fill: var(--text-3); }
 
 .field { display: block; margin-bottom: 12px; }

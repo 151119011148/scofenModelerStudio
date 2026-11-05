@@ -2,6 +2,7 @@ package com.scofen.model.web;
 
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.core.InMemoryModelRepository;
+import com.scofen.model.core.NoopPersistenceService;
 import com.scofen.model.core.Patch;
 import com.scofen.model.core.RevisionConflictException;
 import com.scofen.model.core.ValidationEngine;
@@ -32,7 +33,7 @@ class ModelControllerTest {
         PatchWebSocketHandler handler = new PatchWebSocketHandler();
         broker = new PatchBroker(handler);
         executor = new CommandExecutor(new InMemoryModelRepository(), new ValidationEngine(), broker);
-        controller = new ModelController(executor, broker);
+        controller = new ModelController(executor, broker, new NoopPersistenceService());
     }
 
     private Patch post(String type, Map<String, Object> payload, long baseRevision, String cmdId) {

@@ -3,6 +3,9 @@ package com.scofen.model.web.config;
 import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.core.InMemoryModelRepository;
+import com.scofen.model.core.NoopPersistenceService;
+import com.scofen.model.core.PersistenceService;
+import com.scofen.model.core.UndoStack;
 import com.scofen.model.core.ValidationEngine;
 import com.scofen.model.metamodel.DiagramKind;
 import com.scofen.model.metamodel.ElementType;
@@ -36,8 +39,9 @@ public class RepositoryConfiguration {
     }
 
     @Bean
-    public CommandExecutor commandExecutor(InMemoryModelRepository repository, PatchBroker broker) {
-        return new CommandExecutor(repository, new ValidationEngine(), broker);
+    public CommandExecutor commandExecutor(InMemoryModelRepository repository, PatchBroker broker,
+                                          PersistenceService persistence) {
+        return new CommandExecutor(repository, new ValidationEngine(), broker, new UndoStack(), persistence);
     }
 
     @Bean
@@ -50,13 +54,23 @@ public class RepositoryConfiguration {
      * 所有写入仍走 CommandExecutor，保证种子数据与用户编辑同一条协议。
      */
     @Bean
-    public ApplicationRunner sampleModel(CommandExecutor executor) {
+    public ApplicationRunner sampleModel(CommandExecutor executor, PersistenceService persistence) {
         return args -> {
+            // 持久化模式：若已有快照则直接回载，跳过种子（做到重启不丢）
+            if (persistence.isEnabled()) {
+                persistence.loadLatest().ifPresent(snapshot -> {
+                    executor.repository().load(snapshot);
+                    System.out.println("[scofen] 已从 MySQL 回载模型快照，revision=" + snapshot.revision());
+                });
+                if (executor.repository().revision() > 0) {
+                    return;
+                }
+            }
             element(executor, "pkg-1", "Package", "车载动力系统", "");
             element(executor, "pkg-ctrl", "Package", "控制域", "pkg-1");
             element(executor, "e-vcu", "Block", "整车控制器", "pkg-ctrl");
             element(executor, "part-vcu", "PartProperty", "主控单元", "e-vcu");
-            element(executor, "port-can", "Port", "CAN 接口", "e-vcu");
+            element(executor, "port-can", "Port", "CAN 接口", "part-vcu");
             element(executor, "e-bat", "Block", "动力电池", "pkg-ctrl");
             element(executor, "e-motor", "Block", "驱动电机", "pkg-ctrl");
 
@@ -98,6 +112,10 @@ public class RepositoryConfiguration {
                         "name", kind.label() + "示例",
                         "elementIds", refsByKind.getOrDefault(kind.code(), List.of())));
             }
+
+            // 种子完成后立即落库，保证持久化模式首启即有基线
+            persistence.save(executor.snapshot());
+            System.out.println("[scofen] 种子模型已生成并持久化，revision=" + executor.revision());
         };
     }
 

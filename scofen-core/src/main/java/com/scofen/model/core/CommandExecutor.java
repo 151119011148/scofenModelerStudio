@@ -16,18 +16,25 @@ public final class CommandExecutor {
     private final ValidationEngine validation;
     private final PatchSink sink;
     private final UndoStack undoStack;
+    private final PersistenceService persistence;
     private final Map<String, Patch> idempotency = new ConcurrentHashMap<>();
 
     public CommandExecutor(InMemoryModelRepository repository, ValidationEngine validation, PatchSink sink) {
-        this(repository, validation, sink, new UndoStack());
+        this(repository, validation, sink, new UndoStack(), new NoopPersistenceService());
     }
 
     public CommandExecutor(InMemoryModelRepository repository, ValidationEngine validation,
                            PatchSink sink, UndoStack undoStack) {
+        this(repository, validation, sink, undoStack, new NoopPersistenceService());
+    }
+
+    public CommandExecutor(InMemoryModelRepository repository, ValidationEngine validation,
+                           PatchSink sink, UndoStack undoStack, PersistenceService persistence) {
         this.repository = repository;
         this.validation = validation;
         this.sink = sink;
         this.undoStack = undoStack;
+        this.persistence = persistence;
     }
 
     public synchronized Patch execute(String sessionId, Command cmd) {
@@ -63,6 +70,9 @@ public final class CommandExecutor {
         idempotency.put(key, patch);
         if (recordUndo && patch.inverse() != null) {
             undoStack.push(sessionId, patch.inverse());
+        }
+        if (persistence.isEnabled()) {
+            persistence.save(repository.snapshot());
         }
         sink.publish(patch);
         return patch;

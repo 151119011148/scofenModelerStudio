@@ -3,6 +3,7 @@ package com.scofen.model.web.api;
 import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.core.Patch;
+import com.scofen.model.core.PersistenceService;
 import com.scofen.model.core.ValidationEngine;
 import com.scofen.model.metamodel.ContainmentRules;
 import com.scofen.model.metamodel.DiagramKind;
@@ -31,10 +32,12 @@ public class ModelController {
 
     private final CommandExecutor executor;
     private final PatchBroker broker;
+    private final PersistenceService persistence;
 
-    public ModelController(CommandExecutor executor, PatchBroker broker) {
+    public ModelController(CommandExecutor executor, PatchBroker broker, PersistenceService persistence) {
         this.executor = executor;
         this.broker = broker;
+        this.persistence = persistence;
     }
 
     @GetMapping("/health")
@@ -46,7 +49,7 @@ public class ModelController {
                 "revision", executor.revision(),
                 "diagramKinds", MetamodelRegistry.diagramCount(),
                 "onlineSessions", broker.sessionCount(),
-                "persistence", "in-memory (M0 skeleton)");
+                "persistence", persistence.describe());
     }
 
     @GetMapping("/model")

@@ -9,6 +9,7 @@ import type {
   ModelElement,
   ModelSnapshot,
 } from './types'
+import { arrowGeometry, edgePoint, relationshipStyle, shapeOf } from './notation'
 
 const EMPTY_MODEL: ModelSnapshot = {
   revision: 0,
@@ -19,7 +20,7 @@ const EMPTY_MODEL: ModelSnapshot = {
 }
 
 const FALLBACK_CANVAS = { maxX: 480, maxY: 340, width: 640, height: 420 }
-const FALLBACK_NODE = { width: 156, height: 68 }
+const FALLBACK_NODE = { width: 168, height: 84 }
 const ROOT_KEY = '__root__'
 
 interface ContextMenuState {
@@ -251,6 +252,28 @@ export default function App() {
     () => new Map(positions.map((item) => [item.element.id, item])),
     [positions],
   )
+
+  // 端口与所属块之间的连接线（仅视觉提示，不参与交互）
+  const portLinks = useMemo(() => {
+    const links: { x1: number; y1: number; x2: number; y2: number }[] = []
+    for (const element of visibleElements) {
+      if (shapeOf(element.type) !== 'port' || !element.ownerId) {
+        continue
+      }
+      const ownerPos = positions.find((p) => p.element.id === element.ownerId)
+      const portPos = positions.find((p) => p.element.id === element.id)
+      if (!ownerPos || !portPos) {
+        continue
+      }
+      links.push({
+        x1: ownerPos.x + ownerPos.w,
+        y1: ownerPos.y + ownerPos.h / 2,
+        x2: portPos.x + portPos.w / 2,
+        y2: portPos.y + portPos.h / 2,
+      })
+    }
+    return links
+  }, [visibleElements, positions])
 
   const createOptions = useMemo<ElementTypeInfo[]>(() => {
     if (!containment || !createDialog) {
@@ -540,6 +563,143 @@ export default function App() {
     ? (activeSpec?.allowedTypes.includes(codeOf(menuElement.type)) ?? false)
     : false
 
+  const renderNode = (element: ModelElement, x: number, y: number, w: number, h: number): ReactNode => {
+    const shape = shapeOf(element.type)
+    const info = typeInfo.get(codeOf(element.type))
+    const selected = selectedId === element.id
+    const isPort = shape === 'port'
+    const bw = isPort ? 26 : w
+    const bh = isPort ? 26 : h
+    const bx = isPort ? x + w / 2 - 13 : x
+    const by = isPort ? y + h / 2 - 13 : y
+    const children = (childrenByOwner.get(element.id) ?? []).map((child) => child.name)
+    const fill = selected ? '#e9f0fc' : '#ffffff'
+    const stroke = selected ? '#2b5cb8' : '#cbd3dd'
+    const strokeW = selected ? 2 : 1
+    const onDown = (event: ReactPointerEvent<SVGGElement>) => handlePointerDown(event, element, bx, by)
+
+    let shapeSvg: ReactNode = null
+    switch (shape) {
+      case 'package':
+        shapeSvg = (
+          <path
+            d={`M${bx},${by + 18} h34 v-18 h${bw - 34} v18 h0 v${bh - 18} h-${bw} z`}
+            fill={fill}
+            stroke={stroke}
+            strokeWidth={strokeW}
+          />
+        )
+        break
+      case 'requirement':
+      case 'comment': {
+        const fold = 12
+        const d = `M${bx},${by} h${bw - fold} l${fold},${fold} v${bh - fold} h-${bw} z M${bx + bw - fold},${by} v${fold} h-${fold}`
+        shapeSvg = (
+          <path
+            d={d}
+            fill={fill}
+            stroke={stroke}
+            strokeWidth={strokeW}
+            strokeDasharray={shape === 'comment' ? '4 3' : undefined}
+          />
+        )
+        break
+      }
+      case 'usecase':
+        shapeSvg = (
+          <ellipse cx={bx + bw / 2} cy={by + bh / 2} rx={bw / 2 - 2} ry={bh / 2 - 2} fill={fill} stroke={stroke} strokeWidth={strokeW} />
+        )
+        break
+      case 'state':
+        shapeSvg = (
+          <g>
+            <rect x={bx} y={by} width={bw} height={bh} rx={10} fill={fill} stroke={stroke} strokeWidth={strokeW} />
+            <rect x={bx + 4} y={by + 4} width={bw - 8} height={bh - 8} rx={7} fill="none" stroke={stroke} strokeWidth={1} opacity={0.6} />
+          </g>
+        )
+        break
+      case 'pseudostate':
+        shapeSvg = (
+          <circle cx={bx + bw / 2} cy={by + bh / 2} r={11} fill={selected ? '#fdecc8' : '#fff4d6'} stroke="#b7791f" strokeWidth={1.6} />
+        )
+        break
+      case 'actor': {
+        const cxActor = bx + bw / 2
+        const headY = by + 14
+        shapeSvg = (
+          <g fill="none" stroke={stroke} strokeWidth={1.6}>
+            <circle cx={cxActor} cy={headY} r={7} fill={fill} />
+            <line x1={cxActor} y1={headY + 7} x2={cxActor} y2={by + bh - 22} />
+            <line x1={cxActor - 13} y1={by + bh - 14} x2={cxActor + 13} y2={by + bh - 14} />
+            <line x1={cxActor - 11} y1={by + bh - 22} x2={cxActor - 4} y2={by + bh - 12} />
+            <line x1={cxActor + 11} y1={by + bh - 22} x2={cxActor + 4} y2={by + bh - 12} />
+          </g>
+        )
+        break
+      }
+      case 'port':
+        shapeSvg = <rect x={bx} y={by} width={bw} height={bh} fill={selected ? '#d6e4ff' : '#eef3fb'} stroke="#2b6cb0" strokeWidth={1.4} />
+        break
+      case 'frame':
+        shapeSvg = (
+          <g>
+            <rect x={bx} y={by + 16} width={bw} height={bh - 16} rx={4} fill={fill} stroke={stroke} strokeWidth={strokeW} />
+            <path d={`M${bx + 6},${by + 16} v-12 h46 v12`} fill="#f1f5f9" stroke={stroke} strokeWidth={strokeW} />
+          </g>
+        )
+        break
+      case 'action':
+      case 'control':
+      case 'object':
+        shapeSvg = (
+          <rect
+            x={bx}
+            y={by}
+            width={bw}
+            height={bh}
+            rx={shape === 'action' ? 22 : 8}
+            fill={shape === 'control' ? '#eef6ff' : fill}
+            stroke={stroke}
+            strokeWidth={strokeW}
+          />
+        )
+        break
+      default:
+        shapeSvg = <rect x={bx} y={by} width={bw} height={bh} rx={8} fill={fill} stroke={stroke} strokeWidth={strokeW} />
+    }
+
+    const showText = !isPort && shape !== 'pseudostate' && shape !== 'actor'
+    const showLabel = shape === 'actor' || shape === 'pseudostate'
+    const showCompartment =
+      !isPort && (shape === 'block' || shape === 'frame' || shape === 'requirement' || shape === 'package') && children.length > 0
+
+    return (
+      <g className={`node ${drag?.elementId === element.id && drag.moved ? 'dragging' : ''}`} onPointerDown={onDown}>
+        {shapeSvg}
+        {showText && (
+          <>
+            <text x={bx + 12} y={by + 22} className="node-type">«{info?.uml ?? element.type}»</text>
+            <text x={bx + 12} y={by + 42} className="node-name">{element.name}</text>
+          </>
+        )}
+        {showLabel && (
+          <text x={bx + bw / 2} y={by + bh - 4} textAnchor="middle" className="node-name">{element.name}</text>
+        )}
+        {showCompartment && (
+          <>
+            <line x1={bx + 6} y1={by + 50} x2={bx + bw - 6} y2={by + 50} stroke="#d4dae3" strokeWidth={1} />
+            {children.slice(0, 3).map((name, index) => (
+              <text key={index} x={bx + 12} y={by + 66 + index * 12} className="node-child">{name}</text>
+            ))}
+            {children.length > 3 && (
+              <text x={bx + 12} y={by + 66 + 3 * 12} className="node-child">+{children.length - 3}</text>
+            )}
+          </>
+        )}
+      </g>
+    )
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -604,59 +764,86 @@ export default function App() {
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
           >
-            <defs>
-              <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-                <path d="M2 1L8 5L2 9" fill="none" stroke="#8a95a3" strokeWidth="1.5" />
-              </marker>
-            </defs>
+            <defs />
+            {portLinks.map((link, index) => (
+              <line
+                key={`pl-${index}`}
+                x1={link.x1}
+                y1={link.y1}
+                x2={link.x2}
+                y2={link.y2}
+                stroke="#9aa5b1"
+                strokeWidth={1.2}
+                strokeDasharray="2 2"
+              />
+            ))}
             {model.relationships.map((relation) => {
               const from = positionById.get(relation.sourceId)
               const to = positionById.get(relation.targetId)
               if (!from || !to) {
                 return null
               }
+              const fromShape = shapeOf(from.element.type)
+              const toShape = shapeOf(to.element.type)
+              const fw = fromShape === 'port' ? 26 : from.w
+              const fh = fromShape === 'port' ? 26 : from.h
+              const tw = toShape === 'port' ? 26 : to.w
+              const th = toShape === 'port' ? 26 : to.h
+              const sc = { x: from.x + from.w / 2, y: from.y + from.h / 2 }
+              const tc = { x: to.x + to.w / 2, y: to.y + to.h / 2 }
+              const sEdge = edgePoint(sc.x, sc.y, fw, fh, tc.x, tc.y)
+              const tEdge = edgePoint(tc.x, tc.y, tw, th, sc.x, sc.y)
+              const style = relationshipStyle(relation.type)
+              const arrow = arrowGeometry(sEdge.x, sEdge.y, tEdge.x, tEdge.y)
+              const midX = (sEdge.x + tEdge.x) / 2
+              const midY = (sEdge.y + tEdge.y) / 2
               return (
-                <line
-                  key={relation.id}
-                  x1={from.x + from.w}
-                  y1={from.y + from.h / 2}
-                  x2={to.x}
-                  y2={to.y + to.h / 2}
-                  stroke="#8a95a3"
-                  strokeWidth="1.2"
-                  markerEnd="url(#arrow)"
-                />
+                <g key={relation.id}>
+                  <line
+                    x1={sEdge.x}
+                    y1={sEdge.y}
+                    x2={tEdge.x}
+                    y2={tEdge.y}
+                    stroke={style.color}
+                    strokeWidth={style.width}
+                    strokeDasharray={style.dashed ? '5 4' : undefined}
+                  />
+                  {style.arrow === 'filled' && (
+                    <polygon points={arrow.points} fill={style.color} stroke="none" />
+                  )}
+                  {style.arrow === 'hollow' && (
+                    <polygon points={arrow.points} fill="#ffffff" stroke={style.color} strokeWidth={1.4} />
+                  )}
+                  {style.arrow === 'open' && (
+                    <polyline points={`${arrow.v1} ${tEdge.x},${tEdge.y} ${arrow.v2}`} fill="none" stroke={style.color} strokeWidth={style.width} />
+                  )}
+                  {style.label && (
+                    <g>
+                      <rect
+                        x={midX - style.label.length * 3.4 - 3}
+                        y={midY - 9}
+                        width={style.label.length * 6.8 + 6}
+                        height={15}
+                        rx={3}
+                        fill="#ffffff"
+                        opacity={0.92}
+                      />
+                      <text x={midX} y={midY + 2} textAnchor="middle" className="edge-label" fill={style.color}>
+                        «{style.label}»
+                      </text>
+                    </g>
+                  )}
+                </g>
               )
             })}
-            {positions.map(({ element, x, y, w, h }) => (
-              <g
-                key={element.id}
-                className={`node ${drag?.elementId === element.id && drag.moved ? 'dragging' : ''}`}
-                onPointerDown={(event) => handlePointerDown(event, element, x, y)}
-              >
-                <rect
-                  x={x}
-                  y={y}
-                  width={w}
-                  height={h}
-                  rx="8"
-                  fill={selectedId === element.id ? '#e9f0fc' : '#ffffff'}
-                  stroke={selectedId === element.id ? '#2b5cb8' : '#cbd3dd'}
-                  strokeWidth={selectedId === element.id ? 2 : 1}
-                />
-                <text x={x + 12} y={y + 24} className="node-type">
-                  «{typeInfo.get(codeOf(element.type))?.uml ?? element.type}»
-                </text>
-                <text x={x + 12} y={y + 46} className="node-name">{element.name}</text>
-              </g>
-            ))}
+            {positions.map(({ element, x, y, w, h }) => renderNode(element, x, y, w, h))}
             {positions.length === 0 && (
               <text x={canvas.width / 2} y={canvas.height / 2} textAnchor="middle" className="empty">
                 当前图暂无元素
               </text>
             )}
           </svg>
-          <p className="canvas-hint">拖拽图形可移动位置 · 坐标由服务端记法对象保存并广播给所有会话</p>
+          <p className="canvas-hint">拖拽图形可移动位置 · 关系以连线呈现（含类型箭头与标签）· 端口贴附所属块边框 · 坐标由服务端记法对象保存并广播给所有会话</p>
         </main>
 
         <aside className="panel">

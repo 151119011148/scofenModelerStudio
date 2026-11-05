@@ -25,8 +25,8 @@ import java.util.Set;
  */
 public final class InMemoryModelRepository {
 
-    public static final double NODE_WIDTH = 156.0;
-    public static final double NODE_HEIGHT = 68.0;
+    public static final double NODE_WIDTH = 168.0;
+    public static final double NODE_HEIGHT = 84.0;
 
     private static final double GRID_X = 196.0;
     private static final double GRID_Y = 128.0;
@@ -42,6 +42,24 @@ public final class InMemoryModelRepository {
     public long revision() {
         synchronized (lock) {
             return revision;
+        }
+    }
+
+    /**
+     * 用持久化层回载的快照整体替换内存态（启动恢复或测试注入）。
+     * 替换是原子且同步的，不会与正在进行的 apply 交错。
+     */
+    public void load(ModelSnapshot snapshot) {
+        synchronized (lock) {
+            this.revision = snapshot.revision();
+            this.elements.clear();
+            snapshot.elements().forEach(element -> elements.put(element.id(), element));
+            this.relationships.clear();
+            snapshot.relationships().forEach(relation -> relationships.put(relation.id(), relation));
+            this.diagrams.clear();
+            snapshot.diagrams().forEach(diagram -> diagrams.put(diagram.id(), diagram));
+            this.notations.clear();
+            snapshot.notations().forEach(notation -> notations.put(notation.id(), notation));
         }
     }
 
