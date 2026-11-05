@@ -103,18 +103,42 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   flex: none;
 }
 
-.tabs button { border-color: transparent; background: transparent; white-space: nowrap; font-size: 12.5px; }
+.tabs button {
+  border-color: transparent;
+  background: transparent;
+  white-space: nowrap;
+  font-size: 12.5px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+}
 .tabs button.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-soft); }
+.tabs button:hover:not(:disabled) { background: var(--surface-2); color: var(--accent); }
 
+/* 三列：模型树+属性 | 垂直组件工具箱（紧贴模型树右侧） | 画布，对齐 EA / StarUML 布局。 */
 .workspace {
   display: grid;
-  grid-template-columns: 284px minmax(0, 1fr);
+  grid-template-columns: 268px 198px minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   gap: 1px;
   background: var(--line);
   flex: 1 1 auto;
   min-height: 0;
 }
+
+/* 统一图标徽标：颜色按语义族/图类型区分，字形按元模型类型区分。
+   固定 inline-flex + 固定尺寸，避免被画布或工具箱内任何 svg 规则拉伸。 */
+.icon-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 4px;
+  line-height: 1;
+  vertical-align: middle;
+}
+.icon-tile svg { display: block; width: 100%; height: 100%; flex: none; }
 
 /* 左栏：模型树在上、属性窗口常驻在下，整体为布局的一部分（非浮层）。
    属性窗口不会遮挡画布，也不随模型树滚动而消失。 */
@@ -163,11 +187,15 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   background: var(--surface-2);
 }
 .props-tab {
+  border: none;
+  border-radius: 0;
+  background: transparent;
   font-size: 12px;
-  padding: 7px 2px 6px;
+  padding: 7px 9px 6px;
   color: var(--text-3);
   border-bottom: 2px solid transparent;
 }
+.props-tab:hover:not(:disabled) { border-color: transparent; background: transparent; }
 .props-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 .props-head-note {
   margin-left: auto;
@@ -176,6 +204,28 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   color: var(--text-3);
   white-space: nowrap;
 }
+
+/* 属性面板对象头：图标 + 名称 + 元模型类型，一眼分辨当前选中对象 */
+.props-object {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 10px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+}
+.props-object-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+.props-object-kind { font-family: var(--mono); font-size: 10px; color: var(--text-3); flex: none; }
+.props-placeholder { width: 20px; height: 20px; color: var(--text-3); text-align: center; }
+.tags-panel .kv { font-size: 11.5px; }
 .canvas { background: var(--surface); padding: 0; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
 /* 只作用于画布本身；工具箱里的 16px 图标 SVG 是后代，不能被这条规则撑成宽 100% 的大块。 */
 .canvas > svg { width: 100%; flex: 1 1 auto; min-height: 0; display: block; touch-action: none; }
@@ -228,15 +278,27 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 .twisty:hover:not(:disabled) { color: var(--accent); border: none; }
 .twisty.leaf { cursor: default; opacity: .45; }
 
-.type-badge {
+/* 模型树：图标取代统一文字 badge；右侧保留细小的元模型类型名 */
+.tree-type {
   font-family: var(--mono);
   font-size: 10px;
-  color: var(--accent);
-  background: var(--surface-2);
+  color: var(--text-3);
+  flex: none;
+  max-width: 76px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.root-tag {
+  font-size: 10px;
+  color: #a16207;
+  background: #fdf4dc;
+  border: 1px solid #f0dcaa;
   border-radius: 4px;
-  padding: 1px 5px;
+  padding: 0 5px;
   flex: none;
 }
+.tree-row.root-node { font-weight: 600; }
+.tree-row.root-node .tree-label { color: var(--text); }
 
 .child-count {
   font-family: var(--mono);
@@ -245,13 +307,26 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   flex: none;
 }
 
-.diagram-badge {
-  color: #1f7a5a;
-  background: #e6f4ef;
-}
-
 .tree-row.diagram .tree-label { font-style: normal; }
 .tree-row.diagram.selected { background: #e6f4ef; color: #1f7a5a; }
+
+/* 模型树顶部「项目 / 图表 / 模型库」页签，参考截图 */
+.tree-head {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 12px 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+  flex: none;
+}
+.tree-head-tab {
+  font-size: 12px;
+  color: var(--text-3);
+  padding: 4px 10px;
+  border-bottom: 2px solid transparent;
+}
+.tree-head-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 
 .diagram-toolbar {
   display: flex;
@@ -264,6 +339,9 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 }
 .diagram-toolbar .dt-head { display: flex; align-items: center; gap: 10px; }
 .diagram-toolbar .dt-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--mono);
   font-size: 11px;
   color: var(--accent);
@@ -274,43 +352,113 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 .diagram-toolbar .dt-name { font-size: 13.5px; font-weight: 600; color: var(--text); }
 .diagram-toolbar .dt-actions { margin-left: auto; display: flex; gap: 6px; }
 .diagram-toolbar .dt-actions button { font-size: 12px; padding: 4px 10px; }
+.diagram-toolbar .dt-sub { font-size: 11px; color: var(--text-3); font-family: var(--mono); }
+.diagram-toolbar .dt-sub strong { color: var(--accent); }
 
-/* 本图可放置：参考 StarUML 工具箱，图标按钮横向排布成一条工具带，
-   左侧为分组标题，右侧为操作提示；每个按钮可点击或直接拖入画布。 */
-.dt-palette { display: flex; align-items: center; gap: 10px; }
-.dt-palette-label {
-  font-family: var(--mono);
-  font-size: 11px;
+/* ── 模型树右侧的垂直组件工具箱（组件 / 样式页签 + 可折叠九图分组） ── */
+.toolbox {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--surface);
+}
+.tb-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+  flex: none;
+}
+.tb-tabs button {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  font-size: 12.5px;
+  padding: 6px 10px;
   color: var(--text-3);
-  flex: none;
-  padding-right: 10px;
-  border-right: 1px solid var(--line-2);
-  white-space: nowrap;
+  border-bottom: 2px solid transparent;
 }
-.dt-palette-tools { display: flex; align-items: center; flex-wrap: wrap; flex: 1; min-width: 0; }
-.dt-palette-group { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-.dt-palette-sep {
-  width: 1px;
-  height: 20px;
-  background: var(--line-2);
-  margin: 0 8px 0 4px;
-  flex: none;
+.tb-tabs button:hover:not(:disabled) { border-color: transparent; background: transparent; }
+.tb-tabs button.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+.tb-more { margin-left: auto; color: var(--text-3); font-size: 15px; padding: 0 4px; }
+
+.tb-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 0 12px; }
+.tb-group { border-bottom: 1px solid var(--line); }
+.tb-group.current { background: #fbfcfe; }
+.tb-group-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 9px 12px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  text-align: left;
 }
-.palette-chip {
+.tb-group-head:hover:not(:disabled) { background: var(--surface-2); color: var(--accent); border-color: transparent; }
+.tb-group.open > .tb-group-head,
+.tb-group.current > .tb-group-head { color: var(--text); font-weight: 600; }
+.tb-group-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-count { font-family: var(--mono); font-size: 10px; color: var(--text-3); }
+.tb-caret { font-size: 14px; color: var(--text-3); width: 12px; text-align: center; flex: none; }
+
+.tb-items { padding: 2px 8px 10px; display: flex; flex-direction: column; gap: 1px; }
+.tb-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  padding: 5px 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  text-align: left;
+  cursor: grab;
+}
+.tb-item:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); border-color: transparent; }
+.tb-item:active { cursor: grabbing; }
+.tb-item:disabled { opacity: .5; }
+.tb-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-item-st { font-family: var(--mono); font-size: 9.5px; color: var(--text-3); flex: none; }
+.tb-item.action { cursor: pointer; }
+.tb-action-glyph {
+  width: 16px;
+  height: 16px;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  padding: 4px 9px;
-  cursor: grab;
-  background: var(--surface);
-  border-color: var(--line-2);
-  white-space: nowrap;
+  justify-content: center;
+  color: var(--accent);
+  font-size: 14px;
+  flex: none;
 }
-.palette-chip svg { width: 16px; height: 16px; flex: none; color: var(--accent); }
-.palette-chip:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
-.palette-chip:active { cursor: grabbing; }
-.dt-palette-hint { font-family: var(--mono); font-size: 10.5px; color: var(--text-3); flex: none; white-space: nowrap; }
+.tb-tip { font-size: 10.5px; color: var(--text-3); margin: 8px 8px 0; line-height: 1.6; }
+.tb-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex: none;
+  padding: 6px 12px;
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-3);
+}
+.tb-style-head { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; margin-bottom: 10px; }
+.toolbox .kv { padding: 4px 12px; font-size: 11.5px; }
+.toolbox .kv code { font-size: 10px; }
+.toolbox .panel-title { padding: 10px 12px 0; margin-bottom: 6px; }
+.toolbox .tb-tip { margin: 12px 12px 0; }
+.tb-legend { display: flex; align-items: center; gap: 8px; padding: 4px 12px; font-size: 11.5px; color: var(--text-2); }
+.legend-swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
 
 .node { cursor: grab; }
 .node.dragging { cursor: grabbing; }
@@ -348,6 +496,17 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   margin-bottom: 12px;
   word-break: break-word;
 }
+
+.tree > .panel-title { padding: 10px 16px 0; margin-bottom: 0; }
+.project-pill { display: inline-flex; align-items: center; gap: 6px; }
+
+.menu-title { display: flex; align-items: center; gap: 7px; }
+.menu-title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.context-menu button.disabled-hint { color: var(--text-3); font-style: italic; cursor: not-allowed; opacity: .8; }
+.context-menu button.disabled-hint:hover:not(:disabled) { background: transparent; color: var(--text-3); }
+
+.modal-title { display: flex; align-items: center; gap: 9px; }
+.field .field-head { display: flex; align-items: center; gap: 7px; }
 
 .statusbar {
   display: flex;
@@ -425,12 +584,18 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .modal-actions button.primary { width: auto; min-width: 96px; }
 
+@media (max-width: 1180px) {
+  .workspace { grid-template-columns: 232px 176px minmax(0, 1fr); }
+  .tb-item-st { display: none; }
+}
+
 @media (max-width: 900px) {
   .app { height: auto; min-height: 100vh; overflow: visible; }
-  .workspace { grid-template-columns: 1fr; grid-template-rows: auto auto; }
+  .workspace { grid-template-columns: 1fr; grid-template-rows: auto auto auto; }
   .left-dock { max-height: 420px; }
   .tree { max-height: 240px; }
   .props-dock { max-height: 180px; }
+  .toolbox { max-height: 320px; }
+  .tb-scroll { min-height: 160px; }
   .canvas > svg { min-height: 420px; }
-  .dt-palette { flex-wrap: wrap; }
 }

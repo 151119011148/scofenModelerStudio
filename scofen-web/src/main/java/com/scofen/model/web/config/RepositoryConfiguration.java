@@ -50,7 +50,8 @@ public class RepositoryConfiguration {
     }
 
     /**
-     * 示例项目：三层父子模型树 + 覆盖九大图，且每张图只引用自身允许的元素类型。
+     * 示例项目：唯一的项目根 Model → 三层父子模型树 + 覆盖九大图，
+     * 且每张图只引用自身允许的元素类型。
      * 所有写入仍走 CommandExecutor，保证种子数据与用户编辑同一条协议。
      */
     @Bean
@@ -66,7 +67,9 @@ public class RepositoryConfiguration {
                     return;
                 }
             }
-            element(executor, "pkg-1", "Package", "车载动力系统", "");
+            // 项目根：SysML 的 Model 是模型树的唯一顶层节点，所有包/图都归其所有（直接或间接）。
+            element(executor, "model-root", "Model", "车载动力系统工程模型", "");
+            element(executor, "pkg-1", "Package", "车载动力系统", "model-root");
             element(executor, "pkg-ctrl", "Package", "控制域", "pkg-1");
             element(executor, "e-vcu", "Block", "整车控制器", "pkg-ctrl");
             element(executor, "part-vcu", "PartProperty", "主控单元", "e-vcu");

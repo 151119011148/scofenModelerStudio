@@ -61,10 +61,20 @@ public final class ValidationEngine {
                         .orElseThrow(() -> new ValidationException("Unknown element: " + cmd.str("id")));
                 assertNameIsUnique(repository, current.ownerId(), cmd.str("name"), current.id());
             }
-            case "UPDATE_DOCUMENTATION", "DELETE_ELEMENT" -> {
+            case "UPDATE_DOCUMENTATION" -> {
                 require(cmd.str("id"), "id");
                 if (!repository.elementExists(cmd.str("id"))) {
                     throw new ValidationException("Unknown element: " + cmd.str("id"));
+                }
+            }
+            case "DELETE_ELEMENT" -> {
+                require(cmd.str("id"), "id");
+                ModelElement target = repository.findElement(cmd.str("id"))
+                        .orElseThrow(() -> new ValidationException("Unknown element: " + cmd.str("id")));
+                if (isProjectRoot(target)) {
+                    throw new ValidationException(
+                            "项目根节点模型不可删除：Model 是模型树的唯一项目根；"
+                                    + "如需清空项目请删除其下的子元素。");
                 }
             }
             case "RESTORE_SUBTREE" -> {
@@ -199,6 +209,11 @@ public final class ValidationEngine {
                 throw new ValidationException("Root element must be one of "
                         + ContainmentRules.ROOT_TYPES + "; got " + child);
             }
+            // 单项目单根：项目根 Model 是模型树的唯一顶层节点，不允许再建第二个顶层 Model。
+            if (child == ElementType.MODEL
+                    && repository.elements().stream().anyMatch(ValidationEngine::isProjectRoot)) {
+                throw new ValidationException("一个项目只能有一个根 Model；请在已有项目根下新建子元素");
+            }
             return;
         }
         ModelElement parent = repository.findElement(ownerId)
@@ -216,6 +231,14 @@ public final class ValidationEngine {
             throw new ValidationException("Containment rule violation: " + parentType.label()
                     + " (" + parentType + ") cannot own " + child.label() + " (" + child + ")");
         }
+    }
+
+    /** 项目根判定：顶层（ownerId 为空）且类型为 Model。供「唯一根」与「根不可删除」共用。 */
+    private static boolean isProjectRoot(ModelElement element) {
+        return (element.ownerId() == null || element.ownerId().isBlank())
+                && ElementType.fromAny(element.type())
+                        .filter(type -> type == ElementType.MODEL)
+                        .isPresent();
     }
 
     private void assertDiagramAllows(DiagramKind kind, ElementType type) {

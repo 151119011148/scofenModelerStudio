@@ -11,6 +11,7 @@ import type {
   ModelSnapshot,
 } from './types'
 import { arrowGeometry, edgePoint, relationshipStyle, shapeOf } from './notation'
+import { DiagramIcon, FAMILIES, TypeIcon, familyOfType } from './icons'
 
 const EMPTY_MODEL: ModelSnapshot = {
   revision: 0,
@@ -23,13 +24,6 @@ const EMPTY_MODEL: ModelSnapshot = {
 const FALLBACK_CANVAS = { maxX: 480, maxY: 340, width: 640, height: 420 }
 const FALLBACK_NODE = { width: 168, height: 84 }
 const ROOT_KEY = '__root__'
-
-// 工具箱分组：形状类别 → 分组名，用于把「本图可放置」拆成带分隔线的 ribbon 段。
-const PALETTE_FAMILY: Record<string, string> = {
-  block: '结构', package: '结构', port: '结构', frame: '结构', object: '结构', default: '结构',
-  action: '行为', control: '行为', state: '行为', pseudostate: '行为', actor: '行为', usecase: '行为',
-  requirement: '需求', comment: '注释',
-}
 
 type MenuTarget =
   | { kind: 'element'; id: string }
@@ -94,99 +88,6 @@ type TreeNode =
   | { type: 'element'; ref: ModelElement }
   | { type: 'diagram'; ref: Diagram }
 
-// 工具栏图标：与画布形状一一对应，复用 shapeOf 分类，保证工具箱与图面视觉一致。
-function ShapeGlyph({ shape }: { shape: string }) {
-  const s = {
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 1.5,
-    strokeLinejoin: 'round' as const,
-    strokeLinecap: 'round' as const,
-  }
-  switch (shape) {
-    case 'package':
-      return (
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M2 5h4V3h8v10H2z" {...s} />
-        </svg>
-      )
-    case 'requirement':
-    case 'comment':
-      return (
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <path d="M2 2h9l3 3v9H2z" {...s} strokeDasharray={shape === 'comment' ? '3 2' : undefined} />
-          <path d="M11 2v3h3" {...s} strokeDasharray={shape === 'comment' ? '3 2' : undefined} />
-        </svg>
-      )
-    case 'usecase':
-      return (
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <ellipse cx="8" cy="8" rx="6" ry="4.5" {...s} />
-        </svg>
-      )
-    case 'state':
-      return (
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="2" y="3" width="12" height="10" rx="3" {...s} />
-        </svg>
-      )
-    case 'pseudostate':
-      return (
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="8" r="4.5" fill="currentColor" stroke="none" />
-        </svg>
-      )
-    case 'actor':
-      return (
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <circle cx="8" cy="3.4" r="2" {...s} />
-          <line x1="8" y1="5.4" x2="8" y2="11" {...s} />
-          <line x1="3.5" y1="14" x2="12.5" y2="14" {...s} />
-          <line x1="5" y1="11" x2="11" y2="11" {...s} />
-        </svg>
-      )
-    case 'port':
-      return (
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="4" y="4" width="8" height="8" fill="currentColor" stroke="none" opacity="0.25" />
-          <rect x="4" y="4" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.5" />
-        </svg>
-      )
-    case 'frame':
-      return (
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="2" y="4" width="12" height="10" {...s} />
-          <path d="M2 4v-2h5v2" {...s} />
-        </svg>
-      )
-    case 'action':
-      return (
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="2" y="5" width="12" height="6" rx="3" {...s} />
-        </svg>
-      )
-    case 'control':
-      return (
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="2" y="5" width="12" height="6" rx="1.5" {...s} />
-        </svg>
-      )
-    case 'object':
-      return (
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="2" y="4" width="12" height="8" {...s} />
-          <line x1="2" y1="7" x2="14" y2="7" {...s} />
-        </svg>
-      )
-    default:
-      return (
-        <svg viewBox="0 0 16 16" aria-hidden="true">
-          <rect x="2" y="3" width="12" height="10" rx="1.5" {...s} />
-        </svg>
-      )
-  }
-}
-
 const RELATION_TYPES = [
   'satisfy',
   'verify',
@@ -220,6 +121,11 @@ export default function App() {
   const [createStereotype, setCreateStereotype] = useState('')
   const [joinDiagram, setJoinDiagram] = useState(true)
   const [drag, setDrag] = useState<DragState | null>(null)
+  // 右侧垂直工具箱：组件/样式页签 + 可折叠的九图分组（参考 EA / StarUML 工具箱）。
+  const [toolboxTab, setToolboxTab] = useState<'components' | 'styles'>('components')
+  const [openToolGroup, setOpenToolGroup] = useState<string | null>(null)
+  const [genericOpen, setGenericOpen] = useState(false)
+  const [propsTab, setPropsTab] = useState<'attrs' | 'tags'>('attrs')
 
   const svgRef = useRef<SVGSVGElement | null>(null)
   const renameRef = useRef<HTMLInputElement | null>(null)
@@ -296,6 +202,11 @@ export default function App() {
     }
   }, [activeDiagramId, model.diagrams])
 
+  // 切换图时，右侧工具箱自动展开该图对应的分组（与画布当前图始终一致）。
+  useEffect(() => {
+    setOpenToolGroup(activeDiagramKind || null)
+  }, [activeDiagramKind])
+
   // 激活图被删除后回退到第一张
   useEffect(() => {
     if (activeDiagramId !== '' && !model.diagrams.some((d) => d.id === activeDiagramId)) {
@@ -361,6 +272,19 @@ export default function App() {
     }
     return nodes
   }, [rootElements, diagramsByOwner])
+
+  // 项目根：顶层且类型为 Model 的唯一节点。所有「新建」入口默认落到它下面，
+  // 避免出现第二个顶层节点；删除由服务端 ValidationEngine 兜底拒绝。
+  const projectRoot = useMemo(
+    () => rootElements.find((element) => codeOf(element.type) === 'MODEL') ?? null,
+    [rootElements, codeOf],
+  )
+  const projectRootId = projectRoot?.id ?? null
+  const isProjectRoot = useCallback(
+    (element: ModelElement | null) =>
+      !!element && !element.ownerId && codeOf(element.type) === 'MODEL',
+    [codeOf],
+  )
 
   useEffect(() => {
     setExpanded((previous) => {
@@ -529,11 +453,13 @@ export default function App() {
     })
   }
 
+  // 空白处的「新建」一律落到项目根 Model 下，保证模型树始终只有一个根。
   const openCreate = (ownerId: string | null) => {
-    const owner = ownerId
-      ? model.elements.find((element) => element.id === ownerId)?.name ?? ownerId
+    const effective = ownerId ?? projectRootId
+    const owner = effective
+      ? model.elements.find((element) => element.id === effective)?.name ?? effective
       : '模型根'
-    setCreateDialog({ ownerId, ownerName: owner })
+    setCreateDialog({ ownerId: effective, ownerName: owner })
     setCreateType('')
     setCreateName('')
     setCreateStereotype('')
@@ -542,11 +468,12 @@ export default function App() {
   }
 
   const openDiagramDialog = (ownerId: string | null, edit?: Diagram) => {
-    const owner = ownerId
-      ? model.elements.find((element) => element.id === ownerId)?.name ?? ownerId
+    const effective = ownerId ?? projectRootId
+    const owner = effective
+      ? model.elements.find((element) => element.id === effective)?.name ?? effective
       : '模型根'
     setDiagramDialog({
-      ownerId,
+      ownerId: effective,
       ownerName: owner,
       kind: edit?.kind ?? specs[0]?.code ?? 'bdd',
       name: edit?.name ?? `新建图 ${model.diagrams.length + 1}`,
@@ -799,31 +726,25 @@ export default function App() {
     }
   }
 
-  // 每张图允许放置的元素类型（来自后端元模型注册表），作为图工具箱的“可拖放元素”清单。
-  const paletteEntries = useMemo<ElementTypeInfo[]>(() => {
-    if (!activeSpec) {
-      return []
-    }
-    return (activeSpec.allowedTypes ?? [])
-      .map((code) => typeInfo.get(code))
-      .filter((item): item is ElementTypeInfo => item !== undefined)
-  }, [activeSpec, typeInfo])
-
-  // 参考 EA / StarUML 工具箱：按「结构 / 行为 / 需求 · 注释」把工具按钮分组，
-  // 组间用竖分隔线隔开，形成一条 ribbon，而不是一长串等距按钮。
-  const paletteGroups = useMemo(() => {
-    const groups: { key: string; label: string; items: ElementTypeInfo[] }[] = []
-    let lastKey = ''
-    for (const item of paletteEntries) {
-      const key = PALETTE_FAMILY[shapeOf(item.code)] ?? '其他'
-      if (key !== lastKey || groups.length === 0) {
-        groups.push({ key, label: key, items: [] })
-        lastKey = key
-      }
-      groups[groups.length - 1].items.push(item)
-    }
-    return groups
-  }, [paletteEntries])
+  // 每张图允许放置的元素类型由后端 MetamodelRegistry 下发；工具箱按「图」分组，
+  // 展开当前图即可看到它的专属工具带（参考 EA / StarUML 的组件工具箱）。
+  const paletteFor = useCallback(
+    (spec: DiagramSpec | null): ElementTypeInfo[] =>
+      (spec?.allowedTypes ?? [])
+        .map((code) => typeInfo.get(code))
+        .filter((item): item is ElementTypeInfo => item !== undefined),
+    [typeInfo],
+  )
+  const paletteEntries = useMemo(() => paletteFor(activeSpec), [paletteFor, activeSpec])
+  const toolboxGroups = useMemo(
+    () => specs.map((spec) => ({ spec, items: paletteFor(spec) })),
+    [specs, paletteFor],
+  )
+  // 「通用」组：与图无关的通用工具；只有当前图允许的类型才显示，避免拖入被服务端拒绝。
+  const genericEntries = useMemo(
+    () => paletteEntries.filter((item) => item.code === 'COMMENT'),
+    [paletteEntries],
+  )
 
   // 从工具箱创建元素：owner 取当前图的语义宿主（块/交互/活动等），并加入当前图，
   // 再移动到放置坐标。符合 SysML 规范——元素挂在模型元素下，图只引用承载它。
@@ -889,11 +810,12 @@ export default function App() {
           .map((ref) => ({ type: 'element', ref }) as TreeNode))
     const isOpen = expanded.has(node.ref.id)
     const info = isElement ? typeInfo.get(codeOf(element!.type)) : null
+    const isRoot = isProjectRoot(element)
     const isSelected = isElement ? selectedId === element!.id : selectedDiagramId === diagram!.id
     return (
       <div key={`${node.type}:${node.ref.id}`}>
         <div
-          className={`tree-row ${node.type}${isSelected ? ' selected' : ''}`}
+          className={`tree-row ${node.type}${isSelected ? ' selected' : ''}${isRoot ? ' root-node' : ''}`}
           style={{ paddingLeft: 6 + depth * 15 }}
           onClick={() => {
             if (isElement) {
@@ -936,12 +858,17 @@ export default function App() {
           </button>
           {isElement ? (
             <>
-              <span className="type-badge">{info?.label ?? element!.type}</span>
+              <TypeIcon code={codeOf(element!.type)} size={16} title={info?.label ?? element!.type} />
               <span className="tree-label">{element!.name}</span>
+              {isRoot ? (
+                <span className="root-tag" title="项目根节点模型，不可删除">项目根</span>
+              ) : (
+                <span className="tree-type">{info?.label ?? element!.type}</span>
+              )}
             </>
           ) : (
             <>
-              <span className="type-badge diagram-badge">图</span>
+              <DiagramIcon code={diagram!.kind} size={16} title={specs.find((s) => s.code === diagram!.kind)?.label ?? '图'} />
               <span className="tree-label">{diagram!.name}</span>
               <span className="child-count">{diagram!.elementIds.length}</span>
             </>
@@ -1119,8 +1046,12 @@ export default function App() {
         </div>
         <div className="top-actions">
           <span className="pill">SysML 1.6 · 九图</span>
-          <span className="pill">模型树 · 规范校验</span>
-          <button type="button" onClick={() => openCreate(null)} disabled={busy}>新建根元素</button>
+          {projectRoot && (
+            <span className="pill project-pill" title="项目根节点模型">
+              <TypeIcon code="MODEL" size={14} /> {projectRoot.name}
+            </span>
+          )}
+          <button type="button" onClick={() => openCreate(null)} disabled={busy}>新建元素</button>
           <button type="button" onClick={() => openDiagramDialog(null)} disabled={busy}>新建图</button>
           <button type="button" onClick={() => void handleUndo()} disabled={busy || (health?.undoDepth ?? 0) === 0}>撤销</button>
           <button type="button" onClick={() => void handleRedo()} disabled={busy || (health?.redoDepth ?? 0) === 0}>重做</button>
@@ -1136,7 +1067,8 @@ export default function App() {
             onClick={() => setActiveByKind(spec.code)}
             title={`${spec.label} · ${spec.layout}`}
           >
-            {spec.label}
+            <DiagramIcon code={spec.code} size={15} />
+            <span>{spec.label}</span>
           </button>
         ))}
       </nav>
@@ -1144,10 +1076,17 @@ export default function App() {
       <div className="workspace">
         <div className="left-dock">
         <aside className="tree">
-          <div className="panel-title">模型浏览器 · 右键操作</div>
-          <div className="browser">
+          <div className="tree-head">
+            <span className="tree-head-tab active">项目</span>
+            <span className="tree-head-tab">图表</span>
+            <span className="tree-head-tab">模型库</span>
+          </div>
+          <div className="panel-title">
+            {projectRoot ? `模型浏览器 · ${projectRoot.name}` : '模型浏览器 · 右键操作'}
+          </div>
+          <div className="browser" onContextMenu={(event) => openMenu(event, { kind: 'root', id: null })}>
             {rootNodes.map((node) => renderTreeNode(node, 0))}
-            {rootNodes.length === 0 && <p className="hint">暂无元素，右键空白处新建根元素</p>}
+            {rootNodes.length === 0 && <p className="hint">暂无元素，右键空白处新建元素</p>}
             <div className="panel-title">关系</div>
             {model.relationships.map((relation) => (
               <div className="tree-row muted" key={relation.id}>
@@ -1164,43 +1103,90 @@ export default function App() {
         <aside className="props-dock" aria-label="属性窗口（常驻左下角）">
           <div className="props-grip" aria-hidden="true" />
           <div className="props-head">
-            <span className="props-tab active">属性</span>
+            <button
+              type="button"
+              className={`props-tab ${propsTab === 'attrs' ? 'active' : ''}`}
+              onClick={() => setPropsTab('attrs')}
+            >属性</button>
+            <button
+              type="button"
+              className={`props-tab ${propsTab === 'tags' ? 'active' : ''}`}
+              onClick={() => setPropsTab('tags')}
+            >标签</button>
             <span className="props-head-note">常驻 · 左下角</span>
           </div>
-          {selectedDiagram ? (
-            <>
-              <div className="kv"><span>类型</span><code>图 · {activeSpec?.label ?? selectedDiagram.kind}</code></div>
-              <label className="field">
-                <span>图名称</span>
-                <input
-                  defaultValue={selectedDiagram.name}
-                  key={selectedDiagram.id}
-                  onBlur={(event) => handleRenameDiagram(selectedDiagram.id, event.target.value)}
-                />
-              </label>
-              <div className="kv"><span>所有者</span><code>{selectedDiagram.ownerId || '模型根'}</code></div>
-              <div className="kv"><span>元素数</span><code>{selectedDiagram.elementIds.length} 个</code></div>
-              <div className="kv"><span>ID</span><code>{selectedDiagram.id}</code></div>
-            </>
-          ) : selected ? (
-            <>
-              <label className="field">
-                <span>名称</span>
-                <input
-                  ref={renameRef}
-                  value={draftName}
-                  onChange={(event) => setDraftName(event.target.value)}
-                />
-              </label>
-              <div className="kv"><span>ID</span><code>{selected.id}</code></div>
-              <div className="kv"><span>类型</span><code>{selected.type}</code></div>
-              <div className="kv"><span>构造型</span><code>{selected.stereotypes.join(', ') || '—'}</code></div>
-              <div className="kv"><span>所有者</span><code>{selected.ownerId || '模型根'}</code></div>
-              <div className="kv"><span>子元素</span><code>{descendants(selected.id).length} 个后代</code></div>
-              <button type="button" className="primary" onClick={handleRename} disabled={busy}>提交改名</button>
-            </>
+          <div className="props-object">
+            {selectedDiagram ? (
+              <DiagramIcon code={selectedDiagram.kind} size={20} />
+            ) : selected ? (
+              <TypeIcon code={codeOf(selected.type)} size={20} />
+            ) : (
+              <span className="props-placeholder" aria-hidden="true">—</span>
+            )}
+            <span className="props-object-name">
+              {selectedDiagram?.name ?? selected?.name ?? '未选择对象'}
+            </span>
+            <span className="props-object-kind">
+              {selectedDiagram
+                ? specs.find((s) => s.code === selectedDiagram.kind)?.label ?? '图'
+                : selected
+                  ? typeInfo.get(codeOf(selected.type))?.label ?? selected.type
+                  : ''}
+            </span>
+          </div>
+          {propsTab === 'attrs' ? (
+            selectedDiagram ? (
+              <>
+                <div className="kv"><span>类型</span><code>图 · {specs.find((s) => s.code === selectedDiagram.kind)?.label ?? selectedDiagram.kind}</code></div>
+                <label className="field">
+                  <span>图名称</span>
+                  <input
+                    defaultValue={selectedDiagram.name}
+                    key={selectedDiagram.id}
+                    onBlur={(event) => handleRenameDiagram(selectedDiagram.id, event.target.value)}
+                  />
+                </label>
+                <div className="kv"><span>所有者</span><code>{selectedDiagram.ownerId || projectRoot?.name || '模型根'}</code></div>
+                <div className="kv"><span>元素数</span><code>{selectedDiagram.elementIds.length} 个</code></div>
+                <div className="kv"><span>ID</span><code>{selectedDiagram.id}</code></div>
+              </>
+            ) : selected ? (
+              <>
+                <label className="field">
+                  <span>名称</span>
+                  <input
+                    ref={renameRef}
+                    value={draftName}
+                    onChange={(event) => setDraftName(event.target.value)}
+                  />
+                </label>
+                <div className="kv"><span>ID</span><code>{selected.id}</code></div>
+                <div className="kv"><span>类型</span><code>{selected.type}</code></div>
+                <div className="kv"><span>构造型</span><code>{selected.stereotypes.join(', ') || '—'}</code></div>
+                <div className="kv"><span>所有者</span><code>{selected.ownerId || projectRoot?.name || '模型根'}</code></div>
+                <div className="kv"><span>子元素</span><code>{descendants(selected.id).length} 个后代</code></div>
+                <button type="button" className="primary" onClick={handleRename} disabled={busy}>提交改名</button>
+              </>
+            ) : (
+              <p className="hint">在左侧模型树或画布中选择一个元素或图</p>
+            )
           ) : (
-            <p className="hint">在左侧模型树或画布中选择一个元素或图</p>
+            <div className="tags-panel">
+              {selected ? (
+                <>
+                  <div className="kv"><span>构造型</span><code>{selected.stereotypes.map((s) => `«${s}»`).join(' ') || '—'}</code></div>
+                  <div className="kv"><span>语义族</span><code>{FAMILIES.find((f) => f.key === familyOfType(codeOf(selected.type)))?.label ?? '—'}</code></div>
+                  <div className="kv"><span>文档</span><code>{selected.documentation || '—'}</code></div>
+                  <div className="kv"><span>XMI ID</span><code>{selected.xmiId || '—'}</code></div>
+                  {Object.entries(selected.taggedValues).map(([key, value]) => (
+                    <div className="kv" key={key}><span>{key}</span><code>{value}</code></div>
+                  ))}
+                  {Object.keys(selected.taggedValues).length === 0 && <p className="hint">暂无标签值</p>}
+                </>
+              ) : (
+                <p className="hint">选择一个模型元素以查看其构造型、文档与标签值</p>
+              )}
+            </div>
           )}
           <div className="panel-title">模型概要</div>
           <div className="kv"><span>版本 rev</span><code>{health?.revision ?? model.revision}</code></div>
@@ -1210,10 +1196,146 @@ export default function App() {
         </aside>
         </div>
 
+        {/* 模型树右侧的垂直工具箱：组件 / 样式页签 + 九图可折叠分组（对齐参考截图） */}
+        <aside className="toolbox" aria-label="组件工具箱（模型树右侧）">
+          <div className="tb-tabs">
+            <button
+              type="button"
+              className={toolboxTab === 'components' ? 'active' : ''}
+              onClick={() => setToolboxTab('components')}
+            >组件</button>
+            <button
+              type="button"
+              className={toolboxTab === 'styles' ? 'active' : ''}
+              onClick={() => setToolboxTab('styles')}
+            >样式</button>
+            <span className="tb-more" aria-hidden="true">⋮</span>
+          </div>
+          {toolboxTab === 'components' ? (
+            <div className="tb-scroll">
+              <div className={`tb-group ${genericOpen ? 'open' : ''}`}>
+                <button type="button" className="tb-group-head" onClick={() => setGenericOpen(!genericOpen)}>
+                  <span className="tb-group-label">通用</span>
+                  <span className="tb-caret">{genericOpen ? '⌄' : '›'}</span>
+                </button>
+                {genericOpen && (
+                  <div className="tb-items">
+                    {genericEntries.map((type) => (
+                      <button
+                        key={type.code}
+                        type="button"
+                        className="tb-item"
+                        draggable
+                        disabled={busy}
+                        onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
+                        onClick={() => void createElementFromPalette(type.code, canvas.width / 2, canvas.height / 2)}
+                        title={`点击或拖入画布以新建「${type.label}」`}
+                      >
+                        <TypeIcon code={type.code} size={16} />
+                        <span className="tb-item-label">{type.label}</span>
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      className="tb-item action"
+                      onClick={() => setRelationDialog({ sourceId: selectedId ?? '', targetId: '', type: RELATION_TYPES[0] })}
+                    >
+                      <span className="tb-action-glyph" aria-hidden="true">↔</span>
+                      <span className="tb-item-label">新建关系…</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+              {toolboxGroups.map(({ spec, items }) => {
+                const isOpen = openToolGroup === spec.code
+                return (
+                  <div
+                    key={spec.code}
+                    className={`tb-group ${isOpen ? 'open' : ''} ${activeDiagramKind === spec.code ? 'current' : ''}`}
+                  >
+                    <button
+                      type="button"
+                      className="tb-group-head"
+                      onClick={() => {
+                        if (isOpen) {
+                          setOpenToolGroup('')
+                        } else {
+                          setOpenToolGroup(spec.code)
+                          setActiveByKind(spec.code)
+                        }
+                      }}
+                      title={`${spec.label} · ${spec.layout}`}
+                    >
+                      <DiagramIcon code={spec.code} size={16} />
+                      <span className="tb-group-label">{spec.label}</span>
+                      <span className="tb-count">{items.length}</span>
+                      <span className="tb-caret">{isOpen ? '⌄' : '›'}</span>
+                    </button>
+                    {isOpen && (
+                      <div className="tb-items">
+                        {items.map((type) => (
+                          <button
+                            key={type.code}
+                            type="button"
+                            className="tb-item"
+                            draggable
+                            disabled={busy}
+                            onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
+                            onClick={() =>
+                              void createElementFromPalette(
+                                type.code,
+                                canvas.width / 2 - nodeSize.width / 2,
+                                canvas.height / 2 - nodeSize.height / 2,
+                              )
+                            }
+                            title={`«${type.stereotype}» ${type.label} · ${type.uml}｜点击或拖入画布`}
+                          >
+                            <TypeIcon code={type.code} size={16} />
+                            <span className="tb-item-label">{type.label}</span>
+                            <span className="tb-item-st">«{type.stereotype}»</span>
+                          </button>
+                        ))}
+                        <p className="tb-tip">本图可放置 · 点击 / 拖入画布</p>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          ) : (
+            <div className="tb-scroll">
+              <div className="panel-title">当前图</div>
+              <div className="tb-style-head">
+                {activeDiagramKind && <DiagramIcon code={activeDiagramKind} size={18} />}
+                <span>{activeSpec?.label ?? '未选择图'}</span>
+              </div>
+              <div className="kv"><span>布局器</span><code>{activeSpec?.layout ?? '—'}</code></div>
+              <div className="kv"><span>校验分组</span><code>{activeSpec?.validationGroup ?? '—'}</code></div>
+              <div className="kv"><span>画布</span><code>{canvas.width}×{canvas.height}</code></div>
+              <div className="kv"><span>节点</span><code>{nodeSize.width}×{nodeSize.height}</code></div>
+              <div className="panel-title">语义族图例</div>
+              {FAMILIES.map((family) => (
+                <div className="tb-legend" key={family.key}>
+                  <span className="legend-swatch" style={{ background: family.color }} />
+                  <span>{family.label}</span>
+                </div>
+              ))}
+              <p className="tb-tip">记法样式由服务端 Notation 对象保存；图形坐标经 WS Patch 广播给所有会话。</p>
+            </div>
+          )}
+          <div className="tb-foot">
+            <span>{activeSpec?.label ?? '—'}</span>
+            <span>{paletteEntries.length} 项</span>
+          </div>
+        </aside>
+
         <main className="canvas">
           <div className="diagram-toolbar">
             <div className="dt-head">
-              <span className="dt-kind">{activeSpec?.label ?? '未选择图'}</span>
+              <span className="dt-kind">
+                {activeDiagramKind && <DiagramIcon code={activeDiagramKind} size={15} />}
+                {activeSpec?.label ?? '未选择图'}
+              </span>
               <span className="dt-name">{activeDiagramObj?.name ?? '—'}</span>
               <div className="dt-actions">
                 {activeDiagramObj && (
@@ -1225,40 +1347,9 @@ export default function App() {
                 )}
               </div>
             </div>
-            {paletteEntries.length > 0 && (
-              <div className="dt-palette" onDragOver={(event) => event.preventDefault()}>
-                <span className="dt-palette-label">本图可放置</span>
-                <div className="dt-palette-tools">
-                  {paletteGroups.map((group, groupIndex) => (
-                    <div className="dt-palette-group" key={`${group.key}-${groupIndex}`} title={`${group.label}类元素`}>
-                      {groupIndex > 0 && <span className="dt-palette-sep" aria-hidden="true" />}
-                      {group.items.map((type) => (
-                        <button
-                          key={type.code}
-                          type="button"
-                          className="palette-chip"
-                          draggable
-                          onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
-                          onClick={() =>
-                            void createElementFromPalette(
-                              type.code,
-                              canvas.width / 2 - nodeSize.width / 2,
-                              canvas.height / 2 - nodeSize.height / 2,
-                            )
-                          }
-                          disabled={busy}
-                          title={`点击或拖拽到画布以新建「${type.label}」（${type.stereotype}）`}
-                        >
-                          <ShapeGlyph shape={shapeOf(type.code)} />
-                          <span>{type.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  ))}
-                </div>
-                <span className="dt-palette-hint">点击 / 拖入画布</span>
-              </div>
-            )}
+            <div className="dt-sub">
+              本图可放置 <strong>{paletteEntries.length}</strong> 类元素 · 使用左侧「组件」工具箱点击或拖入画布
+            </div>
           </div>
           <svg
             ref={svgRef}
@@ -1366,7 +1457,10 @@ export default function App() {
           onPointerDown={(event) => event.stopPropagation()}
         >
           <div className="menu-title">
-            {menuDiagram ? menuDiagram.name : menuElement ? menuElement.name : '模型根'}
+            {menuDiagram && <DiagramIcon code={menuDiagram.kind} size={16} />}
+            {menuElement && <TypeIcon code={codeOf(menuElement.type)} size={16} />}
+            {menuTarget?.kind === 'root' && projectRoot && <TypeIcon code="MODEL" size={16} />}
+            <span>{menuDiagram ? menuDiagram.name : menuElement ? menuElement.name : '模型根'}</span>
           </div>
           {menuTarget?.kind === 'element' && (
             <>
@@ -1386,18 +1480,24 @@ export default function App() {
               {menuInDiagram && (
                 <button type="button" onClick={() => locateInDiagram(menuElement!.id)}>在图中定位</button>
               )}
-              <button
-                type="button"
-                className="danger"
-                onClick={() => {
-                  setDeleteDialog({
-                    elementId: menuElement!.id,
-                    name: menuElement!.name,
-                    count: menuChildCount,
-                  })
-                  setMenu(null)
-                }}
-              >删除{menuChildCount > 0 ? `（含 ${menuChildCount} 个后代）` : ''}</button>
+              {isProjectRoot(menuElement) ? (
+                <button type="button" className="disabled-hint" disabled title="项目根节点模型不可删除">
+                  项目根节点 · 不可删除
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={() => {
+                    setDeleteDialog({
+                      elementId: menuElement!.id,
+                      name: menuElement!.name,
+                      count: menuChildCount,
+                    })
+                    setMenu(null)
+                  }}
+                >删除{menuChildCount > 0 ? `（含 ${menuChildCount} 个后代）` : ''}</button>
+              )}
             </>
           )}
           {menuTarget?.kind === 'diagram' && (
@@ -1423,8 +1523,8 @@ export default function App() {
           )}
           {menuTarget?.kind === 'root' && (
             <>
-              <button type="button" onClick={() => openCreate(null)}>新建根元素…</button>
-              <button type="button" onClick={() => openDiagramDialog(null)}>新建图…</button>
+              <button type="button" onClick={() => openCreate(null)}>在项目根下新建元素…</button>
+              <button type="button" onClick={() => openDiagramDialog(null)}>在项目根下新建图…</button>
             </>
           )}
         </div>
@@ -1433,14 +1533,20 @@ export default function App() {
       {createDialog && (
         <div className="modal-overlay" onPointerDown={() => setCreateDialog(null)}>
           <div className="modal" onPointerDown={(event) => event.stopPropagation()}>
-            <h2>新建元素</h2>
+            <h2 className="modal-title">
+              <TypeIcon code={createType || 'PACKAGE'} size={18} />
+              新建元素
+            </h2>
             <p className="modal-sub">父节点：{createDialog.ownerName}</p>
             {createOptions.length === 0 ? (
               <p className="hint">按元模型规则，该父类型不允许再包含子元素。</p>
             ) : (
               <>
                 <label className="field">
-                  <span>元素类型（按规范过滤）</span>
+                  <span className="field-head">
+                    <TypeIcon code={createType || 'PACKAGE'} size={15} />
+                    元素类型（按规范过滤）
+                  </span>
                   <select
                     value={createType}
                     onChange={(event) => {
@@ -1504,7 +1610,10 @@ export default function App() {
       {diagramDialog && (
         <div className="modal-overlay" onPointerDown={() => setDiagramDialog(null)}>
           <div className="modal" onPointerDown={(event) => event.stopPropagation()}>
-            <h2>新建图</h2>
+            <h2 className="modal-title">
+              <DiagramIcon code={diagramDialog.kind} size={18} />
+              新建图
+            </h2>
             <p className="modal-sub">所属：{diagramDialog.ownerName}</p>
             <label className="field">
               <span>图类型</span>

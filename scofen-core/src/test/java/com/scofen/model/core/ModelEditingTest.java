@@ -81,6 +81,23 @@ class ModelEditingTest {
     }
 
     @Test
+    void projectRootModelIsUniqueAndCannotBeDeleted() {
+        cmd("CREATE_ELEMENT", Map.of("id", "root", "type", "Model", "name", "项目模型", "ownerId", ""));
+        cmd("CREATE_ELEMENT", Map.of("id", "pkg", "type", "Package", "name", "系统", "ownerId", "root"));
+
+        assertThatThrownBy(() -> cmd("CREATE_ELEMENT",
+                Map.of("id", "root2", "type", "Model", "name", "第二个根", "ownerId", "")))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("一个项目只能有一个根 Model");
+        assertThatThrownBy(() -> cmd("DELETE_ELEMENT", Map.of("id", "root")))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("项目根节点模型不可删除");
+
+        cmd("DELETE_ELEMENT", Map.of("id", "pkg"));
+        assertThat(executor.snapshot().elements()).extracting(ModelElement::id).containsExactly("root");
+    }
+
+    @Test
     void unknownTypeMissingOwnerAndBadNameAreRejected() {
         cmd("CREATE_ELEMENT", Map.of("id", "pkg", "type", "Package", "name", "系统", "ownerId", ""));
         assertThatThrownBy(() -> cmd("CREATE_ELEMENT",

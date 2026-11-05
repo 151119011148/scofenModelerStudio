@@ -24,9 +24,19 @@ class ScofenApplicationTests {
     void contextLoadsAndSeedsHierarchicalModelAndAllNineDiagrams() {
         ModelSnapshot snapshot = executor.snapshot();
         assertThat(snapshot.diagrams()).hasSize(9);
-        assertThat(snapshot.elements()).hasSize(20);
+        assertThat(snapshot.elements()).hasSize(21);
         assertThat(snapshot.elements()).extracting(ModelElement::id)
-                .contains("pkg-1", "pkg-ctrl", "e-vcu", "part-vcu", "r-range", "life-user");
+                .contains("model-root", "pkg-1", "pkg-ctrl", "e-vcu", "part-vcu", "r-range", "life-user");
+        // 项目根 Model 是唯一顶层节点，既有顶层包已 reparent 到它下面
+        assertThat(snapshot.elements()).filteredOn(e -> e.id().equals("model-root"))
+                .singleElement().satisfies(root -> {
+                    assertThat(root.type()).isEqualTo("Model");
+                    assertThat(root.ownerId()).isNull();
+                });
+        assertThat(snapshot.elements()).filteredOn(e -> e.ownerId() == null)
+                .extracting(ModelElement::id).containsExactly("model-root");
+        assertThat(snapshot.elements()).filteredOn(e -> e.id().equals("pkg-1"))
+                .extracting(ModelElement::ownerId).containsExactly("model-root");
         // 三层父子关系：包 → 块 → 部件
         assertThat(snapshot.elements()).filteredOn(e -> "part-vcu".equals(e.id()))
                 .extracting(ModelElement::ownerId).containsExactly("e-vcu");
