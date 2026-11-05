@@ -323,7 +323,7 @@ public final class InMemoryModelRepository {
                 case "CREATE_DIAGRAM" -> {
                     String id = cmd.str("id");
                     DiagramKind kind = DiagramKind.fromCode(cmd.str("kind"));
-                    Diagram diagram = Diagram.of(id, kind, cmd.str("name"), cmd.strList("elementIds"));
+                    Diagram diagram = Diagram.of(id, kind, cmd.str("name"), blankToNull(cmd.str("ownerId")), cmd.strList("elementIds"));
                     diagrams.put(id, diagram);
                     changes.add(new Change("add", "diagram", id, null, diagram));
                     affected.add(id);
@@ -347,6 +347,16 @@ public final class InMemoryModelRepository {
                         }
                     }
                     inverse = Command.of("DELETE_DIAGRAM", revision, id + ":inverse", Map.of("id", id));
+                }
+                case "RENAME_DIAGRAM" -> {
+                    String id = cmd.str("id");
+                    Diagram before = requireDiagram(id);
+                    Diagram after = before.withName(cmd.str("name"));
+                    diagrams.put(id, after);
+                    changes.add(new Change("update", "diagram", id, before, after));
+                    affected.add(id);
+                    inverse = Command.of("RENAME_DIAGRAM", revision, id + ":inverse",
+                            Map.of("id", id, "name", before.name()));
                 }
                 case "DELETE_DIAGRAM" -> {
                     String id = cmd.str("id");

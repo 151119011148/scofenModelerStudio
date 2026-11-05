@@ -34,7 +34,7 @@ class ScofenApplicationTests {
         assertThat(snapshot.diagrams()).allSatisfy(diagram ->
                 assertThat(snapshot.notations()).anySatisfy(n ->
                         assertThat(n.diagramId()).isEqualTo(diagram.id())));
-        assertThat(controller.health()).containsEntry("product", "Scofen Modeler Studio");
+        assertThat(controller.health("default")).containsEntry("product", "Scofen Modeler Studio");
     }
 
     @Test

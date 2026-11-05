@@ -42,7 +42,7 @@ class ModelControllerTest {
 
     @Test
     void healthReportsBrandTaglineAndNineDiagrams() {
-        Map<String, Object> health = controller.health();
+        Map<String, Object> health = controller.health("default");
         assertThat(health).containsEntry("status", "UP")
                 .containsEntry("product", "Scofen Modeler Studio")
                 .containsEntry("tagline", "One model. Nine views.")

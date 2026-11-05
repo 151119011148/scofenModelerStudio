@@ -105,11 +105,23 @@ public class RepositoryConfiguration {
             refsByKind.put("stm", List.of("stm-vcu", "state-idle"));
             refsByKind.put("uc", List.of("uc-charge", "actor-driver"));
 
+            Map<String, String> diagramOwner = new LinkedHashMap<>();
+            diagramOwner.put("pkg", "pkg-1");
+            diagramOwner.put("req", "pkg-req");
+            diagramOwner.put("bdd", "pkg-ctrl");
+            diagramOwner.put("ibd", "pkg-ctrl");
+            diagramOwner.put("par", "pkg-ctrl");
+            diagramOwner.put("act", "pkg-1");
+            diagramOwner.put("seq", "pkg-1");
+            diagramOwner.put("stm", "pkg-1");
+            diagramOwner.put("uc", "pkg-1");
+
             for (DiagramKind kind : DiagramKind.values()) {
                 run(executor, "CREATE_DIAGRAM", Map.of(
                         "id", "d-" + kind.code(),
                         "kind", kind.code(),
                         "name", kind.label() + "示例",
+                        "ownerId", diagramOwner.getOrDefault(kind.code(), ""),
                         "elementIds", refsByKind.getOrDefault(kind.code(), List.of())));
             }
 

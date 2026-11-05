@@ -104,16 +104,17 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 
 .workspace {
   display: grid;
-  grid-template-columns: 270px minmax(0, 1fr) 280px;
+  grid-template-columns: 284px minmax(0, 1fr);
   gap: 1px;
   background: var(--line);
   flex: 1;
   min-height: 460px;
 }
 
-.tree, .panel { background: var(--surface); padding: 14px 16px; overflow-y: auto; }
-.tree { min-height: 420px; }
-.canvas { background: var(--surface); padding: 12px; overflow: auto; display: flex; flex-direction: column; }
+.tree { background: var(--surface); display: flex; flex-direction: column; min-height: 420px; padding: 0; }
+.browser { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; }
+.props { border-top: 1px solid var(--line); padding: 12px 16px; max-height: 48%; overflow-y: auto; background: var(--surface); }
+.canvas { background: var(--surface); padding: 0; overflow: hidden; display: flex; flex-direction: column; }
 .canvas svg { width: 100%; flex: 1; min-height: 420px; display: block; touch-action: none; }
 .canvas-hint { font-size: 11.5px; color: var(--text-3); margin: 6px 2px 0; }
 
@@ -180,6 +181,35 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   color: var(--text-3);
   flex: none;
 }
+
+.diagram-badge {
+  color: #1f7a5a;
+  background: #e6f4ef;
+}
+
+.tree-row.diagram .tree-label { font-style: normal; }
+.tree-row.diagram.selected { background: #e6f4ef; color: #1f7a5a; }
+
+.diagram-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+  flex: none;
+}
+.diagram-toolbar .dt-kind {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 5px;
+  padding: 2px 9px;
+}
+.diagram-toolbar .dt-name { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.diagram-toolbar .dt-actions { margin-left: auto; display: flex; gap: 6px; }
+.diagram-toolbar .dt-actions button { font-size: 12px; padding: 4px 10px; }
 
 .node { cursor: grab; }
 .node.dragging { cursor: grabbing; }
@@ -294,6 +324,7 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 .modal-actions button.primary { width: auto; min-width: 96px; }
 
 @media (max-width: 900px) {
-  .workspace { grid-template-columns: 200px minmax(0, 1fr); }
-  .panel { grid-column: 1 / -1; }
+  .workspace { grid-template-columns: 1fr; }
+  .tree { max-height: 320px; }
+  .props { max-height: 220px; }
 }

@@ -22,4 +22,16 @@ public record Diagram(
     public static Diagram of(String id, DiagramKind kind, String name, List<String> elementIds) {
         return new Diagram(id, kind, name, null, elementIds, List.of());
     }
+
+    public static Diagram of(String id, DiagramKind kind, String name, String ownerId, List<String> elementIds) {
+        return new Diagram(id, kind, name, ownerId, elementIds, List.of());
+    }
+
+    public Diagram withName(String name) {
+        return new Diagram(id, kind, name, ownerId, elementIds, relationshipIds);
+    }
+
+    public Diagram withOwnerId(String ownerId) {
+        return new Diagram(id, kind, name, ownerId, elementIds, relationshipIds);
+    }
 }

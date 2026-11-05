@@ -41,7 +41,8 @@ public class ModelController {
     }
 
     @GetMapping("/health")
-    public Map<String, Object> health() {
+    public Map<String, Object> health(
+            @RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId) {
         return Map.of(
                 "status", "UP",
                 "product", PRODUCT_NAME,
@@ -49,7 +50,9 @@ public class ModelController {
                 "revision", executor.revision(),
                 "diagramKinds", MetamodelRegistry.diagramCount(),
                 "onlineSessions", broker.sessionCount(),
-                "persistence", persistence.describe());
+                "persistence", persistence.describe(),
+                "undoDepth", executor.undoDepth(sessionId),
+                "redoDepth", executor.redoDepth(sessionId));
     }
 
     @GetMapping("/model")
@@ -119,6 +122,11 @@ public class ModelController {
     @PostMapping("/commands/undo")
     public Patch undo(@RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId) {
         return executor.undo(sessionId);
+    }
+
+    @PostMapping("/commands/redo")
+    public Patch redo(@RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId) {
+        return executor.redo(sessionId);
     }
 
     @GetMapping("/export/scofen.json")

@@ -105,6 +105,13 @@ public final class ValidationEngine {
                 }
             }
             case "DELETE_RELATIONSHIP", "DELETE_DIAGRAM" -> require(cmd.str("id"), "id");
+            case "RENAME_DIAGRAM" -> {
+                require(cmd.str("id"), "id");
+                require(cmd.str("name"), "name");
+                if (repository.findDiagram(cmd.str("id")).isEmpty()) {
+                    throw new ValidationException("Unknown diagram: " + cmd.str("id"));
+                }
+            }
             case "CREATE_DIAGRAM" -> {
                 require(cmd.str("id"), "id");
                 require(cmd.str("name"), "name");

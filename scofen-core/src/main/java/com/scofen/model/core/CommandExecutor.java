@@ -42,11 +42,23 @@ public final class CommandExecutor {
     }
 
     public synchronized Patch undo(String sessionId) {
-        Command inverse = undoStack.pop(sessionId)
+        UndoStack.UndoEntry entry = undoStack.popUndo(sessionId)
                 .orElseThrow(() -> new IllegalStateException("Nothing to undo for session " + sessionId));
-        Command rebased = new Command(inverse.type(), inverse.payload(), repository.revision(),
+        Command rebased = new Command(entry.inverse().type(), entry.inverse().payload(), repository.revision(),
                 "undo-" + UUID.randomUUID());
-        return executeInternal(sessionId, rebased, false);
+        Patch patch = executeInternal(sessionId, rebased, false);
+        undoStack.pushRedo(sessionId, entry);
+        return patch;
+    }
+
+    public synchronized Patch redo(String sessionId) {
+        UndoStack.UndoEntry entry = undoStack.popRedo(sessionId)
+                .orElseThrow(() -> new IllegalStateException("Nothing to redo for session " + sessionId));
+        Command rebased = new Command(entry.forward().type(), entry.forward().payload(), repository.revision(),
+                "redo-" + UUID.randomUUID());
+        Patch patch = executeInternal(sessionId, rebased, false);
+        undoStack.push(sessionId, entry.forward(), entry.inverse());
+        return patch;
     }
 
     private Patch executeInternal(String sessionId, Command cmd, boolean recordUndo) {
@@ -69,7 +81,7 @@ public final class CommandExecutor {
 
         idempotency.put(key, patch);
         if (recordUndo && patch.inverse() != null) {
-            undoStack.push(sessionId, patch.inverse());
+            undoStack.push(sessionId, cmd, patch.inverse());
         }
         if (persistence.isEnabled()) {
             persistence.save(repository.snapshot());
@@ -97,6 +109,10 @@ public final class CommandExecutor {
     }
 
     public int undoDepth(String sessionId) {
-        return undoStack.size(sessionId);
+        return undoStack.undoSize(sessionId);
+    }
+
+    public int redoDepth(String sessionId) {
+        return undoStack.redoSize(sessionId);
     }
 }

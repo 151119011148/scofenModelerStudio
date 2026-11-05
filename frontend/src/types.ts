@@ -54,6 +54,8 @@ export interface Health {
   diagramKinds: number
   onlineSessions: number
   persistence: string
+  undoDepth?: number
+  redoDepth?: number
 }
 
 export interface DiagramSpec {

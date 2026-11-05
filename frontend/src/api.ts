@@ -16,7 +16,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return (await response.json()) as T
 }
 
-export const getHealth = () => request<Health>(`${BASE}api/health`)
+export const getHealth = () =>
+  request<Health>(`${BASE}api/health`, { headers: { 'X-Scofen-Session': 'web-ui' } })
 export const getModel = () => request<ModelSnapshot>(`${BASE}api/model`)
 export const getDiagrams = () => request<DiagramSpec[]>(`${BASE}api/metamodel/diagrams`)
 export const getContainment = () => request<ContainmentSpec>(`${BASE}api/metamodel/containment`)
@@ -30,6 +31,12 @@ export const postCommand = (command: CommandRequest) =>
 
 export const undo = () =>
   request<Patch>(`${BASE}api/commands/undo`, {
+    method: 'POST',
+    headers: { 'X-Scofen-Session': 'web-ui' },
+  })
+
+export const redo = () =>
+  request<Patch>(`${BASE}api/commands/redo`, {
     method: 'POST',
     headers: { 'X-Scofen-Session': 'web-ui' },
   })
