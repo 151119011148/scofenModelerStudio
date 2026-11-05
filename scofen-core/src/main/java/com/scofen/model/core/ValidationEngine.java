@@ -202,7 +202,14 @@ public final class ValidationEngine {
             return;
         }
         ModelElement parent = repository.findElement(ownerId)
-                .orElseThrow(() -> new ValidationException("Owner element not found: " + ownerId));
+                .orElseThrow(() -> {
+                    if (repository.findDiagram(ownerId).isPresent()) {
+                        throw new ValidationException(
+                                "Containment violation (SysML 规范): 不能在「图」下创建模型元素；"
+                                        + "元素必须挂在包/块等模型元素下，图仅通过引用承载元素。");
+                    }
+                    throw new ValidationException("Owner element not found: " + ownerId);
+                });
         ElementType parentType = ElementType.fromAny(parent.type())
                 .orElseThrow(() -> new ValidationException("Unknown owner element type: " + parent.type()));
         if (!ContainmentRules.allows(parentType, child)) {

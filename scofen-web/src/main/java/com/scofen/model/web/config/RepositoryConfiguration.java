@@ -105,15 +105,17 @@ public class RepositoryConfiguration {
             refsByKind.put("stm", List.of("stm-vcu", "state-idle"));
             refsByKind.put("uc", List.of("uc-charge", "actor-driver"));
 
+            // 图归其语义宿主所有：IBD/Par 归块/约束块，Act/Seq/Stm 归其对应行为元素，
+            // 这样从图工具箱拖出的元素在 ContainmentRules 下都能合法挂载（见下方工具箱需求）。
             Map<String, String> diagramOwner = new LinkedHashMap<>();
             diagramOwner.put("pkg", "pkg-1");
             diagramOwner.put("req", "pkg-req");
             diagramOwner.put("bdd", "pkg-ctrl");
-            diagramOwner.put("ibd", "pkg-ctrl");
-            diagramOwner.put("par", "pkg-ctrl");
-            diagramOwner.put("act", "pkg-1");
-            diagramOwner.put("seq", "pkg-1");
-            diagramOwner.put("stm", "pkg-1");
+            diagramOwner.put("ibd", "e-vcu");
+            diagramOwner.put("par", "cb-eff");
+            diagramOwner.put("act", "act-charge");
+            diagramOwner.put("seq", "int-charge");
+            diagramOwner.put("stm", "stm-vcu");
             diagramOwner.put("uc", "pkg-1");
 
             for (DiagramKind kind : DiagramKind.values()) {

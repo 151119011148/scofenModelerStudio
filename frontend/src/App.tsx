@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import { getContainment, getDiagrams, getHealth, getModel, postCommand, redo, undo } from './api'
 import type {
   ContainmentSpec,
@@ -699,6 +699,54 @@ export default function App() {
     }
   }
 
+  // 每张图允许放置的元素类型（来自后端元模型注册表），作为图工具箱的“可拖放元素”清单。
+  const paletteEntries = useMemo<ElementTypeInfo[]>(() => {
+    if (!activeSpec) {
+      return []
+    }
+    return (activeSpec.allowedTypes ?? [])
+      .map((code) => typeInfo.get(code))
+      .filter((item): item is ElementTypeInfo => item !== undefined)
+  }, [activeSpec, typeInfo])
+
+  // 从工具箱创建元素：owner 取当前图的语义宿主（块/交互/活动等），并加入当前图，
+  // 再移动到放置坐标。符合 SysML 规范——元素挂在模型元素下，图只引用承载它。
+  const createElementFromPalette = async (typeCode: string, x: number, y: number) => {
+    if (!activeDiagramObj || !activeDiagramId) {
+      return
+    }
+    const info = typeInfo.get(typeCode)
+    const id = `e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+    const payload: Record<string, unknown> = {
+      id,
+      type: info?.uml ?? typeCode,
+      name: `新建${info?.label ?? typeCode} ${model.elements.length + 1}`,
+      ownerId: activeDiagramObj.ownerId ?? '',
+      stereotypes: info?.stereotype ? [info.stereotype] : [],
+      diagramId: activeDiagramId,
+    }
+    const ok = await runCommand('CREATE_ELEMENT', payload)
+    if (ok) {
+      setSelectedId(id)
+      await runCommand('MOVE_NOTATION', {
+        diagramId: activeDiagramId,
+        elementId: id,
+        x: Math.round(clamp(x, 0, canvas.maxX)),
+        y: Math.round(clamp(y, 0, canvas.maxY)),
+      })
+    }
+  }
+
+  const handleCanvasDrop = (event: ReactDragEvent<SVGSVGElement>) => {
+    event.preventDefault()
+    const code = event.dataTransfer.getData('text/scofen-type')
+    if (!code) {
+      return
+    }
+    const point = toSvgPoint(event.clientX, event.clientY)
+    void createElementFromPalette(code, point.x, point.y)
+  }
+
   const toggleExpanded = (id: string) => {
     setExpanded((previous) => {
       const next = new Set(previous)
@@ -994,64 +1042,92 @@ export default function App() {
             {model.relationships.length === 0 && <p className="hint">暂无关系</p>}
           </div>
 
-          <div className="props">
-            <div className="panel-title">属性</div>
-            {selectedDiagram ? (
-              <>
-                <div className="kv"><span>类型</span><code>图 · {activeSpec?.label ?? selectedDiagram.kind}</code></div>
-                <label className="field">
-                  <span>图名称</span>
-                  <input
-                    defaultValue={selectedDiagram.name}
-                    key={selectedDiagram.id}
-                    onBlur={(event) => handleRenameDiagram(selectedDiagram.id, event.target.value)}
-                  />
-                </label>
-                <div className="kv"><span>所有者</span><code>{selectedDiagram.ownerId || '模型根'}</code></div>
-                <div className="kv"><span>元素数</span><code>{selectedDiagram.elementIds.length} 个</code></div>
-                <div className="kv"><span>ID</span><code>{selectedDiagram.id}</code></div>
-              </>
-            ) : selected ? (
-              <>
-                <label className="field">
-                  <span>名称</span>
-                  <input
-                    ref={renameRef}
-                    value={draftName}
-                    onChange={(event) => setDraftName(event.target.value)}
-                  />
-                </label>
-                <div className="kv"><span>ID</span><code>{selected.id}</code></div>
-                <div className="kv"><span>类型</span><code>{selected.type}</code></div>
-                <div className="kv"><span>构造型</span><code>{selected.stereotypes.join(', ') || '—'}</code></div>
-                <div className="kv"><span>所有者</span><code>{selected.ownerId || '模型根'}</code></div>
-                <div className="kv"><span>子元素</span><code>{descendants(selected.id).length} 个后代</code></div>
-                <button type="button" className="primary" onClick={handleRename} disabled={busy}>提交改名</button>
-              </>
-            ) : (
-              <p className="hint">在左侧模型树或画布中选择一个元素或图</p>
-            )}
-            <div className="panel-title">模型概要</div>
-            <div className="kv"><span>版本 rev</span><code>{health?.revision ?? model.revision}</code></div>
-            <div className="kv"><span>持久化</span><code>{health?.persistence ?? '—'}</code></div>
-            <div className="kv"><span>元素 / 关系 / 图</span><code>{model.elements.length} / {model.relationships.length} / {model.diagrams.length}</code></div>
-            <div className="validation">{message}</div>
-          </div>
+        </aside>
+
+        <aside className="props-dock" aria-label="属性窗口（常驻）">
+          <div className="panel-title">属性</div>
+          {selectedDiagram ? (
+            <>
+              <div className="kv"><span>类型</span><code>图 · {activeSpec?.label ?? selectedDiagram.kind}</code></div>
+              <label className="field">
+                <span>图名称</span>
+                <input
+                  defaultValue={selectedDiagram.name}
+                  key={selectedDiagram.id}
+                  onBlur={(event) => handleRenameDiagram(selectedDiagram.id, event.target.value)}
+                />
+              </label>
+              <div className="kv"><span>所有者</span><code>{selectedDiagram.ownerId || '模型根'}</code></div>
+              <div className="kv"><span>元素数</span><code>{selectedDiagram.elementIds.length} 个</code></div>
+              <div className="kv"><span>ID</span><code>{selectedDiagram.id}</code></div>
+            </>
+          ) : selected ? (
+            <>
+              <label className="field">
+                <span>名称</span>
+                <input
+                  ref={renameRef}
+                  value={draftName}
+                  onChange={(event) => setDraftName(event.target.value)}
+                />
+              </label>
+              <div className="kv"><span>ID</span><code>{selected.id}</code></div>
+              <div className="kv"><span>类型</span><code>{selected.type}</code></div>
+              <div className="kv"><span>构造型</span><code>{selected.stereotypes.join(', ') || '—'}</code></div>
+              <div className="kv"><span>所有者</span><code>{selected.ownerId || '模型根'}</code></div>
+              <div className="kv"><span>子元素</span><code>{descendants(selected.id).length} 个后代</code></div>
+              <button type="button" className="primary" onClick={handleRename} disabled={busy}>提交改名</button>
+            </>
+          ) : (
+            <p className="hint">在左侧模型树或画布中选择一个元素或图</p>
+          )}
+          <div className="panel-title">模型概要</div>
+          <div className="kv"><span>版本 rev</span><code>{health?.revision ?? model.revision}</code></div>
+          <div className="kv"><span>持久化</span><code>{health?.persistence ?? '—'}</code></div>
+          <div className="kv"><span>元素 / 关系 / 图</span><code>{model.elements.length} / {model.relationships.length} / {model.diagrams.length}</code></div>
+          <div className="validation">{message}</div>
         </aside>
 
         <main className="canvas">
           <div className="diagram-toolbar">
-            <span className="dt-kind">{activeSpec?.label ?? '未选择图'}</span>
-            <span className="dt-name">{activeDiagramObj?.name ?? '—'}</span>
-            <div className="dt-actions">
-              {activeDiagramObj && (
-                <>
-                  <button type="button" onClick={() => openDiagramDialog(activeDiagramObj.ownerId, activeDiagramObj)} disabled={busy}>重命名图</button>
-                  <button type="button" onClick={() => setRelationDialog({ sourceId: selectedId ?? '', targetId: '', type: RELATION_TYPES[0] })} disabled={busy}>新建关系</button>
-                  <button type="button" onClick={exportSvg} disabled={!activeDiagramObj}>导出 SVG</button>
-                </>
-              )}
+            <div className="dt-head">
+              <span className="dt-kind">{activeSpec?.label ?? '未选择图'}</span>
+              <span className="dt-name">{activeDiagramObj?.name ?? '—'}</span>
+              <div className="dt-actions">
+                {activeDiagramObj && (
+                  <>
+                    <button type="button" onClick={() => openDiagramDialog(activeDiagramObj.ownerId, activeDiagramObj)} disabled={busy}>重命名图</button>
+                    <button type="button" onClick={() => setRelationDialog({ sourceId: selectedId ?? '', targetId: '', type: RELATION_TYPES[0] })} disabled={busy}>新建关系</button>
+                    <button type="button" onClick={exportSvg} disabled={!activeDiagramObj}>导出 SVG</button>
+                  </>
+                )}
+              </div>
             </div>
+            {paletteEntries.length > 0 && (
+              <div className="dt-palette" onDragOver={(event) => event.preventDefault()}>
+                <span className="dt-palette-label">本图可放置</span>
+                {paletteEntries.map((type) => (
+                  <button
+                    key={type.code}
+                    type="button"
+                    className="palette-chip"
+                    draggable
+                    onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
+                    onClick={() =>
+                      void createElementFromPalette(
+                        type.code,
+                        canvas.width / 2 - nodeSize.width / 2,
+                        canvas.height / 2 - nodeSize.height / 2,
+                      )
+                    }
+                    disabled={busy}
+                    title={`点击或拖拽到画布以新建「${type.label}」（${type.stereotype}）`}
+                  >
+                    {type.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
           <svg
             ref={svgRef}
@@ -1061,6 +1137,8 @@ export default function App() {
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={handleCanvasDrop}
           >
             <defs />
             {portLinks.map((link, index) => (
