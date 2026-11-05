@@ -28,6 +28,8 @@
 | 建表脚本 | `V1__init.sql`，按 MySQL 8.4 六条约束编写（默认关闭 Flyway，待持久化适配器接入） |
 | 登录与会话 | JWT(HS256) + PBKDF2 口令哈希，两个超管账号（`scofen` / `gaofeng`）共用口令；`/api/**` 与 WebSocket 握手都校验登录态，401 自动回登录页 |
 | 打开项目 | 顶栏项目选择器点击即打开、新建后自动打开；每个项目分配独立内存态模型运行时（唯一根 Model + 九图），统计 / revision / 撤销栈互不串写 |
+| 规范属性窗口 | 按 UML 2.5.1 元类继承链 + SysML 1.6 构造型展开每种元素类型的元属性（标准 / 专家 / 全部三档）；文本、布尔、枚举、数值、列表均可编辑，走通用 `UPDATE_PROPERTY` 命令（校验 + 乐观锁 + 撤销）；计算属性与派生属性（`id` / `qualifiedName` / 各类统计量）只读并由前端实时求值 |
+| 拖放加入图 | 模型树中把元素拖到「图」节点即把该元素加入该图并生成记法（自动排布落点、单条 `ADD_TO_DIAGRAM`、可撤销）；图只是视图，不复制、不拥有模型元素 |
 
 ## 尚未实现（后续里程碑）
 
@@ -96,6 +98,7 @@ SCOFEN_BASE=/scofen/modelerStudio/ ./build.sh
 | GET | `/api/model` | 当前项目 / 当前 revision 下的四对象快照 |
 | GET | `/api/metamodel/diagrams` | 九图规格与该图允许的元素类型 (`allowedTypes`) |
 | GET | `/api/metamodel/containment` | 元素类型中文标签/构造型、父子包含规则、根类型、画布边界 |
+| GET | `/api/metamodel/properties` | UML 2.5.1 + SysML 1.6 元属性全集：元类继承链、每种元素类型的属性表、标准/专家/全部三档计数 |
 | POST | `/api/commands` | 唯一写入口；请求头 `X-Scofen-Session` 指定撤销栈 |
 | POST | `/api/commands/undo` | 按 session 撤销上一步 |
 | GET | `/api/export/scofen.json` | 自有无损格式导出 |

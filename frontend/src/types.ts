@@ -7,6 +7,69 @@ export interface ModelElement {
   documentation: string
   taggedValues: Record<string, string>
   xmiId: string | null
+  /** 规范元属性：键为 UML/SysML 原名，值为已编辑过的属性。 */
+  properties?: Record<string, unknown>
+}
+
+/** 属性档位：标准 / 专家 / 全部（全部含计算与派生只读属性）。 */
+export type PropertyView = 'STANDARD' | 'EXPERT' | 'ALL'
+
+export type PropertyValueKind =
+  | 'STRING'
+  | 'TEXT'
+  | 'BOOLEAN'
+  | 'INTEGER'
+  | 'REAL'
+  | 'UNLIMITED_NATURAL'
+  | 'ENUM'
+  | 'REFERENCE'
+  | 'REFERENCE_LIST'
+  | 'STRING_LIST'
+
+/** 单条元属性定义，全部由服务端 /api/metamodel/properties 下发。 */
+export interface PropertySpec {
+  key: string
+  umlName: string
+  label: string
+  metaclass: string
+  metaclassName: string
+  metaclassLabel: string
+  spec: string
+  kind: PropertyValueKind
+  level: 'STANDARD' | 'EXPERT' | 'DERIVED'
+  computed: boolean
+  editable: boolean
+  options: string[]
+  defaultValue: string | null
+}
+
+export interface PropertyMetaclass {
+  code: string
+  name: string
+  label: string
+  spec: string
+  parents: string[]
+  propertyCount: number
+}
+
+export interface PropertyViewLevel {
+  code: PropertyView
+  label: string
+  description: string
+}
+
+export interface PropertyCatalogType {
+  metaclasses: string[]
+  properties: PropertySpec[]
+  counts: Record<PropertyView, number>
+}
+
+export interface PropertyCatalogInfo {
+  levels: PropertyViewLevel[]
+  metaclasses: PropertyMetaclass[]
+  types: Record<string, PropertyCatalogType>
+  totalDefinitions: number
+  specification: string
 }
 
 export interface Diagram {

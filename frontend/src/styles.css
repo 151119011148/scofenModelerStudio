@@ -368,8 +368,8 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 
 .props-dock {
   flex: 0 0 auto;
-  max-height: 46%;
-  min-height: 168px;
+  max-height: 52%;
+  min-height: 226px;
   overflow-y: auto;
   background: var(--surface);
   border-top: 1px solid var(--line-2);
@@ -398,6 +398,11 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   padding: 0 14px;
   border-bottom: 1px solid var(--line);
   background: var(--surface-2);
+  flex: none;
+  /* 属性清单很长时页签保持可见 */
+  position: sticky;
+  top: 0;
+  z-index: 3;
 }
 .props-tab {
   border: none;
@@ -426,6 +431,7 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   padding: 4px 0 10px;
   margin-bottom: 6px;
   border-bottom: 1px solid var(--line);
+  flex: none;
 }
 .props-object-name {
   font-size: 13px;
@@ -439,6 +445,129 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 .props-object-kind { font-family: var(--mono); font-size: 10px; color: var(--text-3); flex: none; }
 .props-placeholder { width: 20px; height: 20px; color: var(--text-3); text-align: center; }
 .tags-panel .kv { font-size: 11.5px; }
+
+/* ── 属性窗口：规范属性三档（全部 / 专家 / 标准）+ 按元类分组 ── */
+.prop-view-switch {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  margin: 0 0 6px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  flex: none;
+}
+.prop-view-switch button {
+  flex: 1;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  padding: 4px 2px;
+  font-size: 11.5px;
+  color: var(--text-3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.prop-view-switch button:hover:not(:disabled) { background: transparent; color: var(--accent); border: none; }
+.prop-view-switch button.active {
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
+}
+.prop-view-switch button span {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--text-3);
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 0 4px;
+}
+.prop-view-switch button.active span { background: var(--accent-soft); color: var(--accent); }
+.prop-meta {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--text-3);
+  margin: 0 0 6px;
+  flex: none;
+}
+.prop-list {
+  /* 整个属性面板一起滚动（不再内嵌第二个滚动区，避免行被挤成一条）。 */
+  margin: 0 -6px 4px 0;
+  padding-right: 4px;
+  flex: 0 0 auto;
+}
+.prop-group { margin-bottom: 6px; }
+.prop-group-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 3px 2px;
+  font-size: 10.5px;
+  font-family: var(--mono);
+  color: var(--text-3);
+  letter-spacing: .04em;
+  border-bottom: 1px dashed var(--line);
+  border-radius: 0;
+}
+.prop-group-head:hover:not(:disabled) { background: transparent; border-color: var(--line); color: var(--accent); }
+.prop-group-twisty { width: 10px; flex: none; }
+.prop-group-label { flex: 1; text-align: left; text-transform: uppercase; }
+.prop-group-count { flex: none; color: var(--text-3); }
+.prop-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  min-height: 24px;
+}
+.prop-row .prop-label {
+  flex: 0 0 92px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prop-row .prop-label em {
+  font-style: normal;
+  font-size: 9px;
+  color: var(--text-3);
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  padding: 0 3px;
+  flex: none;
+}
+.prop-row .prop-value { flex: 1; min-width: 0; display: flex; }
+.prop-row input,
+.prop-row select,
+.prop-row textarea {
+  width: 100%;
+  font-size: 11.5px;
+  padding: 3px 6px;
+  min-width: 0;
+}
+.prop-row textarea { resize: vertical; min-height: 40px; line-height: 1.5; }
+.prop-row.readonly .prop-static {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-3);
+  background: var(--surface-2);
+  border-radius: 4px;
+  padding: 2px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
 .canvas { background: var(--surface); padding: 0; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
 /* 只作用于画布本身；工具箱里的 16px 图标 SVG 是后代，不能被这条规则撑成宽 100% 的大块。 */
 .canvas > svg { width: 100%; flex: 1 1 auto; min-height: 0; display: block; touch-action: none; }
@@ -452,6 +581,7 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   letter-spacing: .06em;
   text-transform: uppercase;
   margin: 4px 0 10px;
+  flex: none;
 }
 
 .tree-row {
@@ -512,6 +642,13 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   flex: none;
 }
 .tree-row.root-node { font-weight: 600; }
+
+/* 图节点作为拖放目标：元素拖到「图」上即加入该图 */
+.tree-row.diagram.drop-target {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  color: var(--accent);
+}
 .tree-row.root-node .tree-label { color: var(--text); }
 
 .child-count {
@@ -772,7 +909,7 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 .checkbox { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); margin: 4px 0 12px; }
 .checkbox input { width: auto; }
 
-.kv { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; padding: 5px 0; border-bottom: 1px solid var(--line); }
+.kv { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; padding: 5px 0; border-bottom: 1px solid var(--line); flex: none; }
 .kv span { color: var(--text-3); }
 .kv code { font-family: var(--mono); font-size: 11px; color: var(--text-2); word-break: break-all; }
 
@@ -785,6 +922,7 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   padding: 9px 11px;
   margin-bottom: 12px;
   word-break: break-word;
+  flex: none;
 }
 
 .tree > .panel-title { padding: 10px 16px 0; margin-bottom: 0; }

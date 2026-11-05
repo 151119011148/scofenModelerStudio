@@ -165,6 +165,34 @@ public final class InMemoryModelRepository {
                     inverse = Command.of("UPDATE_DOCUMENTATION", revision, id + ":inverse",
                             Map.of("id", id, "documentation", orEmpty(before.documentation())));
                 }
+                case "UPDATE_PROPERTY" -> {
+                    String id = cmd.str("id");
+                    String key = cmd.str("key");
+                    ModelElement before = requireElement(id);
+                    Object oldValue = before.property(key);
+                    boolean remove = Boolean.TRUE.equals(cmd.payload().get("remove"));
+                    ModelElement after = before.withProperty(key, remove ? null : cmd.payload().get("value"));
+                    elements.put(id, after);
+                    changes.add(new Change("update", "element", id, before, after));
+                    affected.add(id);
+                    if ("name".equals(key)) {
+                        for (Diagram diagram : diagrams.values()) {
+                            if (diagram.elementIds().contains(id)) {
+                                affected.add(diagram.id());
+                            }
+                        }
+                    }
+                    Map<String, Object> inversePayload = new LinkedHashMap<>();
+                    inversePayload.put("id", id);
+                    inversePayload.put("key", key);
+                    if (oldValue == null) {
+                        inversePayload.put("remove", Boolean.TRUE);
+                    } else {
+                        inversePayload.put("value", oldValue);
+                    }
+                    inverse = Command.of("UPDATE_PROPERTY", revision, id + ":" + key + ":inverse",
+                            inversePayload);
+                }
                 case "DELETE_ELEMENT" -> {
                     String rootId = cmd.str("id");
                     requireElement(rootId);
@@ -232,7 +260,7 @@ public final class InMemoryModelRepository {
                         ModelElement element = new ModelElement(str(row, "id"), str(row, "type"), str(row, "name"),
                                 strList(row, "stereotypes"), blankToNull(str(row, "ownerId")),
                                 orEmpty(str(row, "documentation")), strMap(row, "taggedValues"),
-                                blankToNull(str(row, "xmiId")));
+                                blankToNull(str(row, "xmiId")), objectMap(row, "properties"));
                         elements.put(element.id(), element);
                         changes.add(new Change("add", "element", element.id(), null, element));
                         affected.add(element.id());
@@ -522,6 +550,7 @@ public final class InMemoryModelRepository {
         row.put("documentation", orEmpty(element.documentation()));
         row.put("taggedValues", element.taggedValues());
         row.put("xmiId", orEmpty(element.xmiId()));
+        row.put("properties", element.properties());
         return row;
     }
 
@@ -572,6 +601,21 @@ public final class InMemoryModelRepository {
         Map<String, String> result = new LinkedHashMap<>();
         for (Map.Entry<?, ?> entry : map.entrySet()) {
             result.put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+        }
+        return Map.copyOf(result);
+    }
+
+    /** 扩展属性包：删除-撤销（RESTORE_SUBTREE）时完整恢复，不能丢掉用户填的规范属性。 */
+    private static Map<String, Object> objectMap(Map<String, Object> row, String key) {
+        Object value = row.get(key);
+        if (!(value instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getValue() != null) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
         }
         return Map.copyOf(result);
     }

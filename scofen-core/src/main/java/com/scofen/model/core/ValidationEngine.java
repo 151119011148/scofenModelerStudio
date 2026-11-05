@@ -8,6 +8,7 @@ import com.scofen.model.metamodel.MetamodelRegistry;
 import com.scofen.model.metamodel.ModelElement;
 import com.scofen.model.metamodel.ModelSnapshot;
 import com.scofen.model.metamodel.Notation;
+import com.scofen.model.metamodel.PropertyCatalog;
 import com.scofen.model.metamodel.Relationship;
 import com.scofen.model.metamodel.RelationshipType;
 
@@ -67,6 +68,29 @@ public final class ValidationEngine {
                 require(cmd.str("id"), "id");
                 if (!repository.elementExists(cmd.str("id"))) {
                     throw new ValidationException("Unknown element: " + cmd.str("id"));
+                }
+            }
+            case "UPDATE_PROPERTY" -> {
+                require(cmd.str("id"), "id");
+                require(cmd.str("key"), "key");
+                ModelElement element = repository.findElement(cmd.str("id"))
+                        .orElseThrow(() -> new ValidationException("Unknown element: " + cmd.str("id")));
+                ElementType type = ElementType.fromAny(element.type())
+                        .orElseThrow(() -> new ValidationException("Unknown element type: " + element.type()));
+                String key = cmd.str("key");
+                PropertyCatalog.PropertySpec spec = PropertyCatalog.find(type, key);
+                if (spec == null) {
+                    throw new ValidationException("属性不在 " + type.umlName() + " 的 UML/SysML 规范清单中: " + key);
+                }
+                if (!spec.editable()) {
+                    throw new ValidationException("计算属性 / 派生属性不可修改（UML 规范只读）: " + key);
+                }
+                boolean remove = Boolean.TRUE.equals(cmd.payload().get("remove"));
+                Object value = cmd.payload().get("value");
+                assertPropertyValue(spec, value, remove);
+                if ("name".equals(key) && !remove) {
+                    assertNameFormat(String.valueOf(value));
+                    assertNameIsUnique(repository, element.ownerId(), String.valueOf(value), element.id());
                 }
             }
             case "DELETE_ELEMENT" -> {
@@ -277,6 +301,55 @@ public final class ValidationEngine {
         if (!MetamodelRegistry.allows(kind, type)) {
             throw new ValidationException("Element type " + type
                     + " is not allowed on " + kind.label());
+        }
+    }
+
+    /** 通用属性写入的值类型校验：与 PropertyCatalog 声明的 ValueKind 一致。 */
+    private void assertPropertyValue(PropertyCatalog.PropertySpec spec, Object value, boolean remove) {
+        if (remove) {
+            return;
+        }
+        if (value == null) {
+            throw new ValidationException("Missing property value: " + spec.key());
+        }
+        if ("taggedValues".equals(spec.key())) {
+            if (!(value instanceof Map<?, ?>)) {
+                throw new ValidationException("taggedValues 必须是 JSON 对象");
+            }
+            return;
+        }
+        switch (spec.kind()) {
+            case BOOLEAN -> {
+                if (!(value instanceof Boolean)) {
+                    throw new ValidationException("Boolean property expects true/false: " + spec.key());
+                }
+            }
+            case INTEGER, REAL -> {
+                if (!(value instanceof Number)) {
+                    throw new ValidationException("Numeric property expects a number: " + spec.key());
+                }
+            }
+            case UNLIMITED_NATURAL -> {
+                if (!(value instanceof Number) && !"*".equals(String.valueOf(value))) {
+                    throw new ValidationException("UnlimitedNatural expects a number or '*': " + spec.key());
+                }
+            }
+            case ENUM -> {
+                if (!spec.options().contains(String.valueOf(value))) {
+                    throw new ValidationException("Invalid enumeration value for " + spec.key()
+                            + ": " + value + " (allowed: " + spec.options() + ")");
+                }
+            }
+            case REFERENCE_LIST, STRING_LIST -> {
+                if (!(value instanceof List<?>)) {
+                    throw new ValidationException("List property expects an array: " + spec.key());
+                }
+            }
+            case STRING, TEXT, REFERENCE -> {
+                if (!(value instanceof String || value instanceof Number || value instanceof Boolean)) {
+                    throw new ValidationException("Text property expects a scalar: " + spec.key());
+                }
+            }
         }
     }
 

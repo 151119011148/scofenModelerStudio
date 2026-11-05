@@ -10,6 +10,7 @@ import com.scofen.model.metamodel.DiagramKind;
 import com.scofen.model.metamodel.ElementType;
 import com.scofen.model.metamodel.MetamodelRegistry;
 import com.scofen.model.metamodel.ModelSnapshot;
+import com.scofen.model.metamodel.PropertyCatalog;
 import com.scofen.model.metamodel.RelationshipType;
 import com.scofen.model.web.project.ProjectRegistry;
 import com.scofen.model.web.ws.PatchBroker;
@@ -115,6 +116,15 @@ public class ModelController {
                     "family", type.family()));
         }
         return result;
+    }
+
+    /**
+     * UML 2.5.1 / SysML 1.6 元属性全集：档位定义、元类继承链、每种元素类型的完整属性表。
+     * 前端不得硬编码属性清单，按 types[type].properties 渲染属性窗口。
+     */
+    @GetMapping("/metamodel/properties")
+    public Map<String, Object> properties() {
+        return PropertyCatalog.describe();
     }
 
     /** 元模型包含规则下发给前端：右键菜单只列出规范允许的父子组合。 */

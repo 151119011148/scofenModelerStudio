@@ -8,6 +8,7 @@ import {
   getHealth,
   getModel,
   getProjectId,
+  getProperties,
   getRelationships,
   getWorkspaces,
   loadSession,
@@ -27,6 +28,9 @@ import type {
   Health,
   ModelElement,
   ModelSnapshot,
+  PropertyCatalogInfo,
+  PropertySpec,
+  PropertyView,
   RelationshipTypeInfo,
   Session,
   WorkspaceDirectoryInfo,
@@ -165,10 +169,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [activeDiagramId, setActiveDiagramId] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedDiagramId, setSelectedDiagramId] = useState<string | null>(null)
-  const [draftName, setDraftName] = useState('')
   const [message, setMessage] = useState('正在连接服务端…')
   const [busy, setBusy] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
+  // 模型树拖放：元素拖到图节点上时高亮可接收的图。
+  const [treeDropTarget, setTreeDropTarget] = useState<string | null>(null)
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [createDialog, setCreateDialog] = useState<CreateDialogState | null>(null)
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null)
@@ -189,6 +194,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [relationTool, setRelationTool] = useState<string | null>(null)
   const [relationSource, setRelationSource] = useState<string | null>(null)
   const [propsTab, setPropsTab] = useState<'attrs' | 'tags'>('attrs')
+  // 属性窗口：UML 2.5.1 / SysML 1.6 元属性目录由服务端下发，三档只影响展示数量。
+  const [propCatalog, setPropCatalog] = useState<PropertyCatalogInfo | null>(null)
+  const [propView, setPropView] = useState<PropertyView>('STANDARD')
+  const [collapsedPropGroups, setCollapsedPropGroups] = useState<Set<string>>(() => new Set())
   // 空间 / 项目导航：列表收进顶栏项目选择器，完整面板按需展开为左侧抽屉。
   const [workspace, setWorkspace] = useState<WorkspaceDirectoryInfo | null>(null)
   const [openSpaces, setOpenSpaces] = useState<Set<string>>(() => new Set(['personal', 'team']))
@@ -240,6 +249,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     getContainment()
       .then(setContainment)
       .catch((error: unknown) => setMessage(`元模型规则加载失败：${errorMessage(error)}`))
+    getProperties()
+      .then(setPropCatalog)
+      .catch((error: unknown) => setMessage(`属性目录加载失败：${errorMessage(error)}`))
   }, [])
 
   // 首次进入与每次「打开项目」都重新拉取该项目的权威快照。
@@ -435,9 +447,261 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     [model.diagrams, selectedDiagramId],
   )
 
-  useEffect(() => {
-    setDraftName(selected?.name ?? '')
-  }, [selected?.id, selected?.name])
+  /**
+   * 属性窗口按当前元素的完整元类继承链分组：清单来自服务端 /api/metamodel/properties，
+   * 前端只按 STANDARD / EXPERT / ALL 三档过滤，不硬编码任何属性名。
+   */
+  const selectedTypeCode = selected ? codeOf(selected.type) : null
+  const propEntry = selectedTypeCode ? propCatalog?.types[selectedTypeCode] ?? null : null
+  const propGroups = useMemo(() => {
+    if (!propEntry) {
+      return [] as { code: string; label: string; specs: PropertySpec[] }[]
+    }
+    const filtered = propEntry.properties.filter((spec) =>
+      propView === 'ALL'
+        ? true
+        : propView === 'EXPERT'
+          ? spec.level !== 'DERIVED'
+          : spec.level === 'STANDARD')
+    const groups = new Map<string, PropertySpec[]>()
+    for (const spec of filtered) {
+      const list = groups.get(spec.metaclass)
+      if (list) {
+        list.push(spec)
+      } else {
+        groups.set(spec.metaclass, [spec])
+      }
+    }
+    return [...groups.entries()].map(([code, specs]) => ({
+      code,
+      label: propCatalog?.metaclasses.find((item) => item.code === code)?.label ?? code,
+      specs,
+    }))
+  }, [propEntry, propCatalog, propView])
+  const propViewCount = (view: PropertyView): number => propEntry?.counts?.[view] ?? 0
+
+  /** 属性当前值的文本形式：核心字段走快照顶层，其余读 properties 包。 */
+  const propertyText = (spec: PropertySpec): string => {
+    if (!selected) {
+      return ''
+    }
+    switch (spec.key) {
+      case 'name': return selected.name
+      case 'documentation': return selected.documentation
+      case 'stereotypes': return selected.stereotypes.join(', ')
+      case 'xmiId': return selected.xmiId ?? ''
+      case 'taggedValues': return JSON.stringify(selected.taggedValues)
+      default: break
+    }
+    const raw = selected.properties?.[spec.key]
+    if (raw === undefined || raw === null) {
+      return ''
+    }
+    if (Array.isArray(raw)) {
+      return raw.join(', ')
+    }
+    if (typeof raw === 'object') {
+      return JSON.stringify(raw)
+    }
+    return String(raw)
+  }
+
+  /** 按子元素类型列出名称，供「拥有的部件 / 端口 / 约束」等派生属性使用。 */
+  const childNamesOfTypes = (types: string[]): string => {
+    if (!selected) {
+      return '—'
+    }
+    const names = (childrenByOwner.get(selected.id) ?? [])
+      .filter((child) => types.includes(codeOf(child.type)))
+      .map((child) => child.name)
+    return names.join(', ') || '—'
+  }
+
+  /** 计算 / 派生属性在客户端按当前快照实时求值，不落库、不可写。 */
+  const derivedText = (key: string): string => {
+    if (!selected) {
+      return '—'
+    }
+    switch (key) {
+      case 'id': return selected.id
+      case 'elementType': return selectedTypeCode ?? selected.type
+      case 'ownerId':
+      case 'owner':
+      case 'namespace':
+        return model.elements.find((element) => element.id === selected.ownerId)?.name
+          ?? selected.ownerId ?? '—'
+      case 'ownedElement':
+      case 'ownedMember':
+        return (childrenByOwner.get(selected.id) ?? []).map((child) => child.name).join(', ') || '—'
+      case 'ownedPart': return childNamesOfTypes(['PART'])
+      case 'ownedPort': return childNamesOfTypes(['PORT', 'FLOW_PORT'])
+      case 'ownedConnector': return childNamesOfTypes(['CONNECTOR'])
+      case 'ownedConstraint': return childNamesOfTypes(['CONSTRAINT_PROPERTY'])
+      case 'ownedParameter': return childNamesOfTypes(['CONSTRAINT_PARAMETER'])
+      case 'xmiId': return selected.xmiId || '—'
+      case 'revision': return String(health?.revision ?? model.revision)
+      case 'qualifiedName': {
+        const names: string[] = []
+        let cursor: ModelElement | undefined = selected
+        while (cursor) {
+          names.unshift(cursor.name)
+          const ownerId: string | null = cursor.ownerId
+          cursor = ownerId ? model.elements.find((element) => element.id === ownerId) : undefined
+        }
+        return names.join('::')
+      }
+      case 'ownedElementCount': return String((childrenByOwner.get(selected.id) ?? []).length)
+      case 'descendantCount': return String(descendants(selected.id).length)
+      case 'diagramRefCount':
+        return String(model.diagrams.filter((diagram) => diagram.elementIds.includes(selected.id)).length)
+      case 'relationshipCount':
+        return String(model.relationships.filter(
+          (relation) => relation.sourceId === selected.id || relation.targetId === selected.id,
+        ).length)
+      case 'isProjectRoot': return isProjectRoot(selected) ? '是' : '否'
+      default: return '—'
+    }
+  }
+
+  /**
+   * 属性提交：按注册表声明的值类型转换后走 UPDATE_PROPERTY，
+   * 由服务端做规范校验、乐观锁与撤销栈；派生 / 计算属性不会走到这里。
+   */
+  const commitProperty = (spec: PropertySpec, rawInput: string) => {
+    if (!selected || !spec.editable) {
+      return
+    }
+    const raw = rawInput.trim()
+    if (raw === propertyText(spec).trim()) {
+      return
+    }
+    if (raw === '') {
+      void runCommand('UPDATE_PROPERTY', { id: selected.id, key: spec.key, remove: true })
+      return
+    }
+    // 标记值是 JSON 对象，单独解析，避免把字符串当成对象提交。
+    if (spec.key === 'taggedValues') {
+      try {
+        const parsed: unknown = JSON.parse(raw)
+        if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          throw new Error('not an object')
+        }
+        void runCommand('UPDATE_PROPERTY', { id: selected.id, key: spec.key, value: parsed })
+      } catch {
+        setMessage('「标记值」需要 JSON 对象，例如 {"owner":"张三"}')
+      }
+      return
+    }
+    let value: unknown = raw
+    switch (spec.kind) {
+      case 'BOOLEAN':
+        value = raw === 'true'
+        break
+      case 'INTEGER':
+      case 'REAL': {
+        const parsed = spec.kind === 'INTEGER' ? Number.parseInt(raw, 10) : Number.parseFloat(raw)
+        if (Number.isNaN(parsed)) {
+          setMessage(`「${spec.label}」需要数字，已忽略本次输入`)
+          return
+        }
+        value = parsed
+        break
+      }
+      case 'UNLIMITED_NATURAL': {
+        if (raw === '*') {
+          value = raw
+          break
+        }
+        const parsed = Number.parseInt(raw, 10)
+        if (Number.isNaN(parsed)) {
+          setMessage(`「${spec.label}」需要自然数或 *，已忽略本次输入`)
+          return
+        }
+        value = parsed
+        break
+      }
+      case 'STRING_LIST':
+      case 'REFERENCE_LIST':
+        value = raw.split(/\s*,\s*/).filter(Boolean)
+        break
+      case 'ENUM':
+        if (!spec.options.includes(raw)) {
+          setMessage(`「${spec.label}」只能取：${spec.options.join(' / ')}`)
+          return
+        }
+        break
+      default:
+        break
+    }
+    void runCommand('UPDATE_PROPERTY', { id: selected.id, key: spec.key, value })
+  }
+
+  const renderPropertyRow = (spec: PropertySpec): ReactNode => {
+    if (!selected) {
+      return null
+    }
+    const readOnly = !spec.editable
+    const title = `${spec.metaclassLabel} · ${spec.umlName} · ${spec.spec}${readOnly ? ' · 只读' : ''}`
+    const value = propertyText(spec)
+    let control: ReactNode
+    if (readOnly) {
+      control = <code className="prop-static">{derivedText(spec.key)}</code>
+    } else if (spec.kind === 'BOOLEAN') {
+      control = (
+        <select
+          value={value === '' ? '' : value === 'true' ? 'true' : 'false'}
+          onChange={(event) => commitProperty(spec, event.target.value)}
+        >
+          <option value="">未设置</option>
+          <option value="true">true</option>
+          <option value="false">false</option>
+        </select>
+      )
+    } else if (spec.kind === 'ENUM') {
+      control = (
+        <select value={value} onChange={(event) => commitProperty(spec, event.target.value)}>
+          <option value="">未设置</option>
+          {spec.options.map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+      )
+    } else if (spec.kind === 'TEXT') {
+      control = (
+        <textarea
+          rows={2}
+          key={`${selected.id}:${spec.key}:${value}`}
+          defaultValue={value}
+          onBlur={(event) => commitProperty(spec, event.target.value)}
+        />
+      )
+    } else {
+      control = (
+        <input
+          ref={spec.key === 'name' ? renameRef : undefined}
+          key={`${selected.id}:${spec.key}:${value}`}
+          defaultValue={value}
+          placeholder={spec.kind === 'STRING_LIST' || spec.kind === 'REFERENCE_LIST' ? '逗号分隔' : '—'}
+          onBlur={(event) => commitProperty(spec, event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              event.currentTarget.blur()
+            }
+          }}
+        />
+      )
+    }
+    return (
+      <div className={`prop-row${readOnly ? ' readonly' : ''}`} key={spec.key} title={title}>
+        <span className="prop-label">
+          {spec.label}
+          {readOnly && <em>只读</em>}
+        </span>
+        <div className="prop-value">{control}</div>
+      </div>
+    )
+  }
 
   const visibleElements = useMemo(() => {
     if (!activeDiagramObj) {
@@ -682,13 +946,6 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }
 
-  const handleRename = () => {
-    if (!selected || !draftName.trim()) {
-      return
-    }
-    void runCommand('RENAME_ELEMENT', { id: selected.id, name: draftName.trim() })
-  }
-
   const handleRenameDiagram = (diagramId: string, name: string) => {
     if (!name.trim()) {
       return
@@ -782,8 +1039,36 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     setMenu(null)
   }
 
-  const locateInDiagram = (elementId: string) => {
-    const diagram = model.diagrams.find((item) => item.elementIds.includes(elementId))
+  /**
+   * 模型树拖放：把已有元素拖到「图」节点上 → 真正加入该图并生成记法。
+   * 语义同画布拖放（图只是视图，不拥有元素），落点按该图已有记法数量自动排布。
+   */
+  const addElementToDiagram = async (diagramId: string, elementId: string) => {
+    const diagram = model.diagrams.find((item) => item.id === diagramId)
+    const element = model.elements.find((item) => item.id === elementId)
+    if (!diagram || !element) {
+      return
+    }
+    if (diagram.elementIds.includes(elementId)) {
+      setActiveDiagramId(diagramId)
+      setSelectedId(elementId)
+      setMessage(`「${element.name}」已在「${diagram.name}」中，已切换到该图`)
+      return
+    }
+    const placed = model.notations.filter((notation) => notation.diagramId === diagramId).length
+    const x = Math.round(clamp(36 + (placed % 3) * 196, 0, canvas.maxX))
+    const y = Math.round(clamp(36 + Math.floor(placed / 3) * 128, 0, canvas.maxY))
+    const ok = await runCommand('ADD_TO_DIAGRAM', { diagramId, elementId, x, y })
+    if (ok) {
+      setActiveDiagramId(diagramId)
+      setSelectedId(elementId)
+      setSelectedDiagramId(null)
+      setExpanded((previous) => new Set(previous).add(diagramId))
+      setMessage(`已把「${element.name}」加入「${diagram.name}」并落在 (${x}, ${y})`)
+    }
+  }
+
+  const locateInDiagram = (elementId: string) => {    const diagram = model.diagrams.find((item) => item.elementIds.includes(elementId))
     if (diagram) {
       setActiveDiagramId(diagram.id)
       setSelectedId(elementId)
@@ -1176,7 +1461,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return (
       <div key={`${node.type}:${node.ref.id}`}>
         <div
-          className={`tree-row ${node.type}${isSelected ? ' selected' : ''}${isRoot ? ' root-node' : ''}`}
+          className={`tree-row ${node.type}${isSelected ? ' selected' : ''}${isRoot ? ' root-node' : ''}${!isElement && treeDropTarget === diagram!.id ? ' drop-target' : ''}`}
           style={{ paddingLeft: 6 + depth * 15 }}
           draggable={isElement && !isRoot}
           onDragStart={(event) => {
@@ -1187,7 +1472,34 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             event.dataTransfer.setData('text/scofen-element', element!.id)
             event.dataTransfer.effectAllowed = 'link'
           }}
-          title={isElement ? `${info?.label ?? element!.type} · 可拖入画布放置` : '图 · 点击切换'}
+          onDragOver={(event) => {
+            // 图节点接收模型树里的元素：先建引用（记法），不复制模型元素。
+            if (isElement || !event.dataTransfer.types.includes('text/scofen-element')) {
+              return
+            }
+            event.preventDefault()
+            event.dataTransfer.dropEffect = 'link'
+            if (treeDropTarget !== diagram!.id) {
+              setTreeDropTarget(diagram!.id)
+            }
+          }}
+          onDragLeave={() => {
+            if (!isElement) {
+              setTreeDropTarget((current) => (current === diagram!.id ? null : current))
+            }
+          }}
+          onDrop={(event) => {
+            if (isElement) {
+              return
+            }
+            event.preventDefault()
+            setTreeDropTarget(null)
+            const droppedId = event.dataTransfer.getData('text/scofen-element')
+            if (droppedId) {
+              void addElementToDiagram(diagram!.id, droppedId)
+            }
+          }}
+          title={isElement ? `${info?.label ?? element!.type} · 可拖入画布或图节点` : '图 · 点击切换 · 可接收拖入的元素'}
           onClick={() => {
             if (isElement) {
               setSelectedId(element!.id)
@@ -1688,20 +2000,60 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               </>
             ) : selected ? (
               <>
-                <label className="field">
-                  <span>名称</span>
-                  <input
-                    ref={renameRef}
-                    value={draftName}
-                    onChange={(event) => setDraftName(event.target.value)}
-                  />
-                </label>
-                <div className="kv"><span>ID</span><code>{selected.id}</code></div>
-                <div className="kv"><span>类型</span><code>{selected.type}</code></div>
-                <div className="kv"><span>构造型</span><code>{selected.stereotypes.join(', ') || '—'}</code></div>
-                <div className="kv"><span>所有者</span><code>{selected.ownerId || projectRoot?.name || '模型根'}</code></div>
-                <div className="kv"><span>子元素</span><code>{descendants(selected.id).length} 个后代</code></div>
-                <button type="button" className="primary" onClick={handleRename} disabled={busy}>提交改名</button>
+                <div className="prop-view-switch" role="tablist" aria-label="属性档位">
+                  {(propCatalog?.levels ?? [
+                    { code: 'STANDARD' as PropertyView, label: '标准', description: '最常用属性' },
+                    { code: 'EXPERT' as PropertyView, label: '专家', description: '规范扩展属性' },
+                    { code: 'ALL' as PropertyView, label: '全部', description: '含派生只读属性' },
+                  ]).map((level) => (
+                    <button
+                      key={level.code}
+                      type="button"
+                      role="tab"
+                      aria-selected={propView === level.code}
+                      className={propView === level.code ? 'active' : ''}
+                      title={level.description}
+                      onClick={() => setPropView(level.code)}
+                    >
+                      {level.label}
+                      <span>{propViewCount(level.code)}</span>
+                    </button>
+                  ))}
+                </div>
+                <div className="prop-meta">
+                  {propCatalog?.specification ?? 'UML 2.5.1 + SysML 1.6'}
+                  {propEntry && <span> · {propEntry.metaclasses.length} 个元类</span>}
+                </div>
+                <div className="prop-list">
+                  {propGroups.length === 0 && (
+                    <p className="hint">该类型暂无属性定义（属性目录加载中或服务端未登记）</p>
+                  )}
+                  {propGroups.map((group) => {
+                    const collapsed = collapsedPropGroups.has(group.code)
+                    return (
+                      <section className={`prop-group${collapsed ? ' collapsed' : ''}`} key={group.code}>
+                        <button
+                          type="button"
+                          className="prop-group-head"
+                          onClick={() => setCollapsedPropGroups((previous) => {
+                            const next = new Set(previous)
+                            if (next.has(group.code)) {
+                              next.delete(group.code)
+                            } else {
+                              next.add(group.code)
+                            }
+                            return next
+                          })}
+                        >
+                          <span className="prop-group-twisty">{collapsed ? '▸' : '▾'}</span>
+                          <span className="prop-group-label">{group.label}</span>
+                          <span className="prop-group-count">{group.specs.length}</span>
+                        </button>
+                        {!collapsed && group.specs.map((spec) => renderPropertyRow(spec))}
+                      </section>
+                    )
+                  })}
+                </div>
               </>
             ) : (
               <p className="hint">在左侧模型树或画布中选择一个元素或图</p>

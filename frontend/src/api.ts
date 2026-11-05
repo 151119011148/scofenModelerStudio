@@ -6,6 +6,7 @@ import type {
   Health,
   ModelSnapshot,
   Patch,
+  PropertyCatalogInfo,
   RelationshipTypeInfo,
   Session,
   WorkspaceDirectoryInfo,
@@ -103,6 +104,8 @@ export const getDiagrams = () => request<DiagramSpec[]>(`${BASE}api/metamodel/di
 export const getRelationships = () =>
   request<RelationshipTypeInfo[]>(`${BASE}api/metamodel/relationships`)
 export const getContainment = () => request<ContainmentSpec>(`${BASE}api/metamodel/containment`)
+export const getProperties = () =>
+  request<PropertyCatalogInfo>(`${BASE}api/metamodel/properties`)
 export const getWorkspaces = () => request<WorkspaceDirectoryInfo>(`${BASE}api/workspaces`)
 export const createProject = (payload: { spaceCode: string; name: string; description: string }) =>
   request<{ id: string; name: string; spaceCode: string }>(`${BASE}api/workspaces/projects`, {
