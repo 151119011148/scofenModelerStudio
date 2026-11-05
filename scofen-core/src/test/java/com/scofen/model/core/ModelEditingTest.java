@@ -58,6 +58,45 @@ class ModelEditingTest {
     }
 
     @Test
+    void dropCoordinatesAreWrittenByASingleCommand() {
+        cmd("CREATE_ELEMENT", Map.of("id", "pkg", "type", "Package", "name", "系统", "ownerId", ""));
+        cmd("CREATE_DIAGRAM", Map.of("id", "d-pkg", "kind", "pkg", "name", "包图"));
+
+        // 工具箱拖放：CREATE_ELEMENT 自带坐标，一条命令即生成指定位置的 Notation。
+        cmd("CREATE_ELEMENT", Map.of("id", "drop-pkg", "type", "Package", "name", "拖入包",
+                "ownerId", "pkg", "diagramId", "d-pkg", "x", 222.0, "y", 137.0));
+        assertThat(notation("d-pkg", "drop-pkg").x()).isEqualTo(222.0);
+        assertThat(notation("d-pkg", "drop-pkg").y()).isEqualTo(137.0);
+
+        // 撤销一次即移除拖入的元素与其记法（不再需要撤销两次），重做后坐标仍保留。
+        executor.undo(SESSION);
+        assertThat(executor.snapshot().elements()).extracting(ModelElement::id).doesNotContain("drop-pkg");
+        assertThat(executor.snapshot().notations()).noneMatch(n -> n.elementId().equals("drop-pkg"));
+        executor.redo(SESSION);
+        assertThat(notation("d-pkg", "drop-pkg").x()).isEqualTo(222.0);
+
+        // 模型树已有元素拖入：ADD_TO_DIAGRAM 自带坐标，同样单命令落位。
+        cmd("ADD_TO_DIAGRAM", Map.of("diagramId", "d-pkg", "elementId", "pkg", "x", 12.0, "y", 34.0));
+        assertThat(notation("d-pkg", "pkg").x()).isEqualTo(12.0);
+        assertThat(notation("d-pkg", "pkg").y()).isEqualTo(34.0);
+    }
+
+    @Test
+    void dropCoordinatesOutsideCanvasAreRejected() {
+        cmd("CREATE_ELEMENT", Map.of("id", "pkg", "type", "Package", "name", "系统", "ownerId", ""));
+        cmd("CREATE_DIAGRAM", Map.of("id", "d-pkg", "kind", "pkg", "name", "包图"));
+        assertThatThrownBy(() -> cmd("ADD_TO_DIAGRAM", Map.of(
+                "diagramId", "d-pkg", "elementId", "pkg", "x", 999.0, "y", 34.0)))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("out of canvas");
+        assertThatThrownBy(() -> cmd("CREATE_ELEMENT", Map.of(
+                "id", "bad", "type", "Package", "name", "越界包", "ownerId", "pkg",
+                "diagramId", "d-pkg", "x", 10.0, "y", -5.0)))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("out of canvas");
+    }
+
+    @Test
     void relationshipTypeMustBeRegisteredAndAllowedOnDiagram() {
         cmd("CREATE_ELEMENT", Map.of("id", "pkg", "type", "Package", "name", "系统", "ownerId", ""));
         cmd("CREATE_ELEMENT", Map.of("id", "blk", "type", "Block", "name", "控制器", "ownerId", "pkg"));

@@ -6,6 +6,7 @@ import type {
   ModelSnapshot,
   Patch,
   RelationshipTypeInfo,
+  WorkspaceDirectoryInfo,
 } from './types'
 
 // Vite 构建时注入的 base（默认 `/`，子路径部署时为 `/scofen/modelerStudio/`）。
@@ -31,6 +32,13 @@ export const getDiagrams = () => request<DiagramSpec[]>(`${BASE}api/metamodel/di
 export const getRelationships = () =>
   request<RelationshipTypeInfo[]>(`${BASE}api/metamodel/relationships`)
 export const getContainment = () => request<ContainmentSpec>(`${BASE}api/metamodel/containment`)
+export const getWorkspaces = () => request<WorkspaceDirectoryInfo>(`${BASE}api/workspaces`)
+export const createProject = (payload: { spaceCode: string; name: string; description: string }) =>
+  request<{ id: string; name: string; spaceCode: string }>(`${BASE}api/workspaces/projects`, {
+    method: 'POST',
+    headers: { 'X-Scofen-Session': 'web-ui' },
+    body: JSON.stringify(payload),
+  })
 
 export const postCommand = (command: CommandRequest) =>
   request<Patch>(`${BASE}api/commands`, {

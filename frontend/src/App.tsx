@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
-import { getContainment, getDiagrams, getHealth, getModel, getRelationships, postCommand, redo, undo } from './api'
+import { createProject, getContainment, getDiagrams, getHealth, getModel, getRelationships, getWorkspaces, postCommand, redo, undo } from './api'
 import type {
   ContainmentSpec,
   Diagram,
@@ -10,6 +10,8 @@ import type {
   ModelElement,
   ModelSnapshot,
   RelationshipTypeInfo,
+  WorkspaceDirectoryInfo,
+  WorkspaceProject,
 } from './types'
 import { arrowGeometry, edgePoint, relationshipStyle, shapeOf } from './notation'
 import { DiagramIcon, FAMILIES, RelationIcon, TypeIcon, familyOfType } from './icons'
@@ -140,15 +142,35 @@ export default function App() {
   const [relationTool, setRelationTool] = useState<string | null>(null)
   const [relationSource, setRelationSource] = useState<string | null>(null)
   const [propsTab, setPropsTab] = useState<'attrs' | 'tags'>('attrs')
+  // 空间 / 项目导航：个人空间、团队空间与各自的项目列表（目录数据由服务端下发）。
+  const [workspace, setWorkspace] = useState<WorkspaceDirectoryInfo | null>(null)
+  const [openSpaces, setOpenSpaces] = useState<Set<string>>(() => new Set(['personal', 'team']))
+  const [selectedProjectId, setSelectedProjectId] = useState('')
+  const [newProjectDialog, setNewProjectDialog] = useState(false)
+  const [newProjectSpace, setNewProjectSpace] = useState('personal')
+  const [newProjectName, setNewProjectName] = useState('')
+  const [newProjectDesc, setNewProjectDesc] = useState('')
 
   const svgRef = useRef<SVGSVGElement | null>(null)
   const renameRef = useRef<HTMLInputElement | null>(null)
+  // 命令的 baseRevision 必须取「最新已知 revision」而非渲染闭包里的 model.revision：
+  // 同一次事件里连续发两条命令时，state 尚未更新，旧值会触发 409 乐观锁冲突。
+  const revisionRef = useRef(0)
 
   const refresh = useCallback(async () => {
     try {
-      const [nextHealth, nextModel] = await Promise.all([getHealth(), getModel()])
+      const [nextHealth, nextModel, nextWorkspace] = await Promise.all([
+        getHealth(),
+        getModel(),
+        // 空间目录里的当前项目统计随 WS Patch 一起刷新；目录接口失败不阻断模型加载。
+        getWorkspaces().catch(() => null),
+      ])
+      revisionRef.current = nextModel.revision
       setHealth(nextHealth)
       setModel(nextModel)
+      if (nextWorkspace) {
+        setWorkspace(nextWorkspace)
+      }
       setMessage((current) => (current === '正在连接服务端…' ? '已同步至服务端' : current))
     } catch (error) {
       setMessage(`连接失败：${errorMessage(error)}`)
@@ -228,18 +250,6 @@ export default function App() {
     )
   }, [activeDiagramKind, activeSpec])
 
-  // Esc 退出连线模式（建模工具惯用快捷键）。
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape' && relationTool) {
-        setRelationTool(null)
-        setRelationSource(null)
-        setMessage('已退出连线模式')
-      }
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [relationTool])
 
   // 激活图被删除后回退到第一张
   useEffect(() => {
@@ -460,9 +470,10 @@ export default function App() {
       const patch = await postCommand({
         type,
         payload,
-        baseRevision: model.revision,
+        baseRevision: revisionRef.current,
         clientCmdId: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       })
+      revisionRef.current = patch.revision
       setMessage(
         `已应用 rev ${patch.revision} · ${patch.affectedIds.length} 个对象受影响 · 校验：${patch.validationDelta}`,
       )
@@ -621,10 +632,11 @@ export default function App() {
     void runCommand('RENAME_DIAGRAM', { id: diagramId, name: name.trim() })
   }
 
-  const handleUndo = async () => {
+  const handleUndo = useCallback(async () => {
     setBusy(true)
     try {
       const patch = await undo()
+      revisionRef.current = patch.revision
       setMessage(`已撤销至 rev ${patch.revision}`)
       await refresh()
     } catch (error) {
@@ -632,12 +644,13 @@ export default function App() {
     } finally {
       setBusy(false)
     }
-  }
+  }, [refresh])
 
-  const handleRedo = async () => {
+  const handleRedo = useCallback(async () => {
     setBusy(true)
     try {
       const patch = await redo()
+      revisionRef.current = patch.revision
       setMessage(`已重做至 rev ${patch.revision}`)
       await refresh()
     } catch (error) {
@@ -645,7 +658,57 @@ export default function App() {
     } finally {
       setBusy(false)
     }
-  }
+  }, [refresh])
+
+  /**
+   * 全局快捷键：Ctrl/⌘+Z 撤销、Ctrl/⌘+Shift+Z 或 Ctrl+Y 重做、Esc 退出连线模式。
+   * 输入框 / 文本域 / 下拉框 / 可编辑区不拦截，交给浏览器原生文本撤销；
+   * busy 期间与空撤销栈时只给提示，不向服务端发空请求（否则会 500）。
+   */
+  useEffect(() => {
+    const isTextEntry = (target: EventTarget | null): boolean => {
+      const node = target instanceof HTMLElement ? target : null
+      if (!node) {
+        return false
+      }
+      const tag = node.tagName.toLowerCase()
+      return tag === 'input' || tag === 'textarea' || tag === 'select' || node.isContentEditable
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && relationTool) {
+        setRelationTool(null)
+        setRelationSource(null)
+        setMessage('已退出连线模式')
+        return
+      }
+      if (!(event.ctrlKey || event.metaKey) || event.altKey || event.repeat || isTextEntry(event.target)) {
+        return
+      }
+      const key = event.key.toLowerCase()
+      const wantsUndo = key === 'z' && !event.shiftKey
+      const wantsRedo = key === 'y' || (key === 'z' && event.shiftKey)
+      if (!wantsUndo && !wantsRedo) {
+        return
+      }
+      event.preventDefault()
+      if (busy) {
+        return
+      }
+      if (wantsUndo) {
+        if ((health?.undoDepth ?? 0) === 0) {
+          setMessage('没有可撤销的操作 · Ctrl/⌘ + Z')
+        } else {
+          void handleUndo()
+        }
+      } else if ((health?.redoDepth ?? 0) === 0) {
+        setMessage('没有可重做的操作 · Ctrl/⌘ + Shift + Z 或 Ctrl + Y')
+      } else {
+        void handleRedo()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [handleUndo, handleRedo, relationTool, busy, health])
 
   const addToCurrentDiagram = async (elementId: string) => {
     if (!activeDiagramId) {
@@ -876,8 +939,11 @@ export default function App() {
     }
   }
 
-  // 从工具箱创建元素：owner 取当前图的语义宿主（块/交互/活动等），并加入当前图，
-  // 再移动到放置坐标。符合 SysML 规范——元素挂在模型元素下，图只引用承载它。
+  /**
+   * 从工具箱创建元素：owner 取当前图的语义宿主（块/交互/活动等），并加入当前图。
+   * 坐标随 CREATE_ELEMENT 一条命令下发，由服务端在生成 Notation 时写入——
+   * 不再补发 MOVE_NOTATION，避免连续命令的 409 竞态与「撤销两次才删掉元素」。
+   */
   const createElementFromPalette = async (typeCode: string, x: number, y: number) => {
     if (!activeDiagramObj || !activeDiagramId) {
       return
@@ -891,16 +957,13 @@ export default function App() {
       ownerId: activeDiagramObj.ownerId ?? '',
       stereotypes: info?.stereotype ? [info.stereotype] : [],
       diagramId: activeDiagramId,
+      x: Math.round(clamp(x, 0, canvas.maxX)),
+      y: Math.round(clamp(y, 0, canvas.maxY)),
     }
     const ok = await runCommand('CREATE_ELEMENT', payload)
     if (ok) {
       setSelectedId(id)
-      await runCommand('MOVE_NOTATION', {
-        diagramId: activeDiagramId,
-        elementId: id,
-        x: Math.round(clamp(x, 0, canvas.maxX)),
-        y: Math.round(clamp(y, 0, canvas.maxY)),
-      })
+      setMessage(`已在 (${payload.x}, ${payload.y}) 放置「${payload.name}」`)
     }
   }
 
@@ -911,12 +974,96 @@ export default function App() {
       activateRelationTool(relationCode)
       return
     }
-    const code = event.dataTransfer.getData('text/scofen-type')
-    if (!code) {
+    const point = toSvgPoint(event.clientX, event.clientY)
+    // 以鼠标落点作为图形中心，视觉上更符合「拖到这里就生成在这里」。
+    const x = Math.round(clamp(point.x - nodeSize.width / 2, 0, canvas.maxX))
+    const y = Math.round(clamp(point.y - nodeSize.height / 2, 0, canvas.maxY))
+
+    // 模型树里已有的元素：已在当前图 → 移动；未在当前图 → 加入图并落在指定位置。
+    const elementId = event.dataTransfer.getData('text/scofen-element')
+    if (elementId) {
+      const inCurrentDiagram = activeDiagramObj?.elementIds.includes(elementId) ?? false
+      void runCommand(inCurrentDiagram ? 'MOVE_NOTATION' : 'ADD_TO_DIAGRAM', {
+        diagramId: activeDiagramId,
+        elementId,
+        x,
+        y,
+      })
+      setSelectedId(elementId)
+      setMessage(`已把「${model.elements.find((e) => e.id === elementId)?.name ?? elementId}」放置在 (${x}, ${y})`)
       return
     }
-    const point = toSvgPoint(event.clientX, event.clientY)
-    void createElementFromPalette(code, point.x, point.y)
+
+    const code = event.dataTransfer.getData('text/scofen-type')
+    if (code) {
+      void createElementFromPalette(code, x, y)
+    }
+  }
+
+  // ── 空间 / 项目导航（个人空间、团队空间、空间下的项目列表） ──
+  const allProjects = useMemo(
+    () => workspace?.spaces.flatMap((space) => space.projects) ?? [],
+    [workspace],
+  )
+  const selectedProject = useMemo<WorkspaceProject | null>(
+    () => allProjects.find((project) => project.id === selectedProjectId)
+      ?? allProjects.find((project) => project.current)
+      ?? null,
+    [allProjects, selectedProjectId],
+  )
+  const currentSpaceLabel = useMemo(
+    () => workspace?.spaces.find((space) => space.projects.some((project) => project.current))?.label
+      ?? '个人空间',
+    [workspace],
+  )
+
+  const toggleSpace = (code: string) => {
+    setOpenSpaces((previous) => {
+      const next = new Set(previous)
+      if (next.has(code)) {
+        next.delete(code)
+      } else {
+        next.add(code)
+      }
+      return next
+    })
+  }
+
+  const openProject = (project: WorkspaceProject) => {
+    setSelectedProjectId(project.id)
+    setMessage(project.editable
+      ? `当前编辑项目：${project.name}`
+      : `「${project.name}」为目录项 · M0 阶段仅当前项目接入服务端模型`)
+  }
+
+  const openNewProject = (spaceCode: string) => {
+    setNewProjectSpace(spaceCode)
+    setNewProjectName('')
+    setNewProjectDesc('')
+    setNewProjectDialog(true)
+  }
+
+  const submitNewProject = async () => {
+    if (!newProjectName.trim()) {
+      return
+    }
+    setBusy(true)
+    try {
+      const created = await createProject({
+        spaceCode: newProjectSpace,
+        name: newProjectName.trim(),
+        description: newProjectDesc.trim(),
+      })
+      setNewProjectDialog(false)
+      setOpenSpaces((previous) => new Set(previous).add(created.spaceCode))
+      setSelectedProjectId(created.id)
+      await refresh()
+      setMessage(`已创建项目「${created.name}」（目录项）`)
+    } catch (error) {
+      setMessage(`新建项目失败：${errorMessage(error)}`)
+    } finally {
+      setBusy(false)
+    }
   }
 
   const toggleExpanded = (id: string) => {
@@ -952,6 +1099,16 @@ export default function App() {
         <div
           className={`tree-row ${node.type}${isSelected ? ' selected' : ''}${isRoot ? ' root-node' : ''}`}
           style={{ paddingLeft: 6 + depth * 15 }}
+          draggable={isElement && !isRoot}
+          onDragStart={(event) => {
+            if (!isElement || isRoot) {
+              event.preventDefault()
+              return
+            }
+            event.dataTransfer.setData('text/scofen-element', element!.id)
+            event.dataTransfer.effectAllowed = 'link'
+          }}
+          title={isElement ? `${info?.label ?? element!.type} · 可拖入画布放置` : '图 · 点击切换'}
           onClick={() => {
             if (isElement) {
               setSelectedId(element!.id)
@@ -1183,6 +1340,13 @@ export default function App() {
             <p>One model. Nine views.</p>
           </div>
         </div>
+        <div className="crumb" title="当前空间 / 当前项目">
+          <span>{currentSpaceLabel}</span>
+          <span className="crumb-sep">/</span>
+          <TypeIcon code="MODEL" size={14} />
+          <strong>{workspace?.currentProjectName ?? projectRoot?.name ?? '未命名项目'}</strong>
+          <span className="crumb-tag">当前项目</span>
+        </div>
         <div className="top-actions">
           <span className="pill">SysML 1.6 · 九图</span>
           {projectRoot && (
@@ -1192,8 +1356,8 @@ export default function App() {
           )}
           <button type="button" onClick={() => openCreate(null)} disabled={busy}>新建元素</button>
           <button type="button" onClick={() => openDiagramDialog(null)} disabled={busy}>新建图</button>
-          <button type="button" onClick={() => void handleUndo()} disabled={busy || (health?.undoDepth ?? 0) === 0}>撤销</button>
-          <button type="button" onClick={() => void handleRedo()} disabled={busy || (health?.redoDepth ?? 0) === 0}>重做</button>
+          <button type="button" title="撤销 · Ctrl/⌘ + Z" onClick={() => void handleUndo()} disabled={busy || (health?.undoDepth ?? 0) === 0}>撤销</button>
+          <button type="button" title="重做 · Ctrl/⌘ + Shift + Z 或 Ctrl + Y" onClick={() => void handleRedo()} disabled={busy || (health?.redoDepth ?? 0) === 0}>重做</button>
         </div>
       </header>
 
@@ -1213,6 +1377,94 @@ export default function App() {
       </nav>
 
       <div className="workspace">
+        {/* 最左侧：个人空间 / 团队空间 + 空间下的项目列表 */}
+        <aside className="space-dock" aria-label="空间与项目导航">
+          <div className="space-head">
+            <span className="space-title">工作空间</span>
+            <button
+              type="button"
+              className="space-add"
+              title="新建项目"
+              onClick={() => openNewProject('personal')}
+            >＋</button>
+          </div>
+          <div className="space-scroll">
+            {(workspace?.spaces ?? []).map((space) => (
+              <div className="space-group" key={space.code}>
+                <button
+                  type="button"
+                  className={`space-group-head ${openSpaces.has(space.code) ? 'open' : ''}`}
+                  onClick={() => toggleSpace(space.code)}
+                >
+                  <span className={`space-glyph ${space.kind}`} aria-hidden="true">
+                    {space.kind === 'personal' ? '◉' : '◎'}
+                  </span>
+                  <span className="space-group-label">{space.label}</span>
+                  <span className="space-count">{space.projectCount}</span>
+                  <span className="space-caret">{openSpaces.has(space.code) ? '⌄' : '›'}</span>
+                </button>
+                {openSpaces.has(space.code) && (
+                  <div className="space-projects">
+                    <div className="space-owner">
+                      {space.owner} · {space.memberCount} 成员
+                      <button
+                        type="button"
+                        className="space-owner-add"
+                        title={`在${space.label}新建项目`}
+                        onClick={() => openNewProject(space.code)}
+                      >＋</button>
+                    </div>
+                    {space.projects.map((project) => (
+                      <button
+                        type="button"
+                        key={project.id}
+                        className={`space-project ${project.id === selectedProject?.id ? 'selected' : ''} ${project.current ? 'current' : ''}`}
+                        onClick={() => openProject(project)}
+                        title={`${project.name} · ${project.description || project.status}`}
+                      >
+                        <TypeIcon code={project.current ? 'MODEL' : 'PACKAGE'} size={15} />
+                        <span className="space-project-body">
+                          <span className="space-project-name">{project.name}</span>
+                          <span className="space-project-meta">
+                            {project.current
+                              ? `${project.diagramCount} 图 · ${project.elementCount} 元素 · rev ${project.revision}`
+                              : `${project.status} · ${project.owner}`}
+                          </span>
+                        </span>
+                        {project.current && <span className="space-current-dot" title="当前编辑项目" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+            {!workspace && <p className="hint">正在加载空间目录…</p>}
+
+            {/* 项目详情与目录说明跟随列表一起滚动，不占用项目列表的可视高度 */}
+            {selectedProject && (
+              <div className="space-detail">
+                <div className="space-detail-head">
+                  <TypeIcon code={selectedProject.current ? 'MODEL' : 'PACKAGE'} size={16} />
+                  <strong>{selectedProject.name}</strong>
+                </div>
+                <p className="space-detail-desc">{selectedProject.description || '暂无描述'}</p>
+                <div className="kv"><span>所属空间</span><code>{workspace?.spaces.find((s) => s.code === selectedProject.spaceCode)?.label ?? '—'}</code></div>
+                <div className="kv"><span>负责人</span><code>{selectedProject.owner}</code></div>
+                <div className="kv"><span>状态</span><code>{selectedProject.status}</code></div>
+                {selectedProject.current ? (
+                  <>
+                    <div className="kv"><span>图 / 元素</span><code>{selectedProject.diagramCount} / {selectedProject.elementCount}</code></div>
+                    <div className="kv"><span>关系 / 修订</span><code>{selectedProject.relationshipCount} / rev {selectedProject.revision}</code></div>
+                  </>
+                ) : (
+                  <p className="space-detail-note">M0 阶段仅当前项目接入服务端模型，此项目为目录项，暂不可编辑。</p>
+                )}
+              </div>
+            )}
+            <div className="space-foot">{workspace?.note ?? '空间目录加载中…'}</div>
+          </div>
+        </aside>
+
         <div className="left-dock">
         <aside className="tree">
           <div className="tree-head">
@@ -1555,7 +1807,12 @@ export default function App() {
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
-            onDragOver={(event) => event.preventDefault()}
+            onDragOver={(event) => {
+              event.preventDefault()
+              event.dataTransfer.dropEffect = event.dataTransfer.types.includes('text/scofen-element')
+                ? 'link'
+                : 'copy'
+            }}
             onDrop={handleCanvasDrop}
           >
             <defs />
@@ -1644,7 +1901,7 @@ export default function App() {
       </div>
 
       <footer className="statusbar">
-        <span>已同步至服务端 · rev {health?.revision ?? model.revision} · 在线会话 {health?.onlineSessions ?? 0}</span>
+        <span>已同步至服务端 · rev {health?.revision ?? model.revision} · 在线会话 {health?.onlineSessions ?? 0} · Ctrl/⌘+Z 撤销 / Ctrl+Y 重做</span>
         {relationTool && (
           <span className="link-status">
             连线 «{relationLabel(relationTool)}» · {relationSource ? '点击终点元素' : '点击起点元素'} · Esc 退出
@@ -1730,6 +1987,52 @@ export default function App() {
               <button type="button" onClick={() => openDiagramDialog(null)}>在项目根下新建图…</button>
             </>
           )}
+        </div>
+      )}
+
+      {newProjectDialog && (
+        <div className="modal-overlay" onPointerDown={() => setNewProjectDialog(false)}>
+          <div className="modal" onPointerDown={(event) => event.stopPropagation()}>
+            <h2 className="modal-title">
+              <TypeIcon code="MODEL" size={18} />
+              新建项目
+            </h2>
+            <p className="modal-sub">在指定空间下创建项目目录项</p>
+            <label className="field">
+              <span>所属空间</span>
+              <select value={newProjectSpace} onChange={(event) => setNewProjectSpace(event.target.value)}>
+                {(workspace?.spaces ?? []).map((space) => (
+                  <option key={space.code} value={space.code}>{space.label}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>项目名称</span>
+              <input
+                value={newProjectName}
+                onChange={(event) => setNewProjectName(event.target.value)}
+                placeholder="例如：制动系统模型"
+              />
+            </label>
+            <label className="field">
+              <span>描述（可选）</span>
+              <input
+                value={newProjectDesc}
+                onChange={(event) => setNewProjectDesc(event.target.value)}
+                placeholder="一句话说明项目范围"
+              />
+            </label>
+            <p className="hint">M0 阶段新建的是空间下的目录项；多项目模型编辑随 MySQL 持久化里程碑接入。</p>
+            <div className="modal-actions">
+              <button type="button" onClick={() => setNewProjectDialog(false)}>取消</button>
+              <button
+                type="button"
+                className="primary"
+                disabled={busy || !newProjectName.trim()}
+                onClick={() => void submitNewProject()}
+              >创建</button>
+            </div>
+          </div>
         </div>
       )}
 

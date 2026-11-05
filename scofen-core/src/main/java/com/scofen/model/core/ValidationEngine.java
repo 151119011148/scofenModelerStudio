@@ -47,6 +47,7 @@ public final class ValidationEngine {
                 assertNameFormat(cmd.str("name"));
                 assertContainment(repository, cmd.str("ownerId"), child);
                 assertNameIsUnique(repository, cmd.str("ownerId"), cmd.str("name"), null);
+                assertOptionalPosition(cmd);
                 String diagramId = cmd.str("diagramId");
                 if (diagramId != null && !diagramId.isBlank()) {
                     Diagram diagram = repository.findDiagram(diagramId)
@@ -160,6 +161,7 @@ public final class ValidationEngine {
                 ModelElement element = repository.findElement(elementId)
                         .orElseThrow(() -> new ValidationException("Unknown element: " + elementId));
                 ElementType.fromAny(element.type()).ifPresent(type -> assertDiagramAllows(diagram.kind(), type));
+                assertOptionalPosition(cmd);
             }
             case "REMOVE_FROM_DIAGRAM" -> require(cmd.str("diagramId"), "diagramId");
             default -> throw new ValidationException("Unknown command type: " + cmd.type());
@@ -253,6 +255,22 @@ public final class ValidationEngine {
                 && ElementType.fromAny(element.type())
                         .filter(type -> type == ElementType.MODEL)
                         .isPresent();
+    }
+
+    /**
+     * CREATE_ELEMENT / ADD_TO_DIAGRAM 可携带 x、y（拖放落点）。
+     * 未提供时走默认格点布局；提供时必须与 MOVE_NOTATION 使用同一套画布边界。
+     */
+    private void assertOptionalPosition(Command cmd) {
+        if (cmd.payload().get("x") == null && cmd.payload().get("y") == null) {
+            return;
+        }
+        double x = cmd.decimal("x");
+        double y = cmd.decimal("y");
+        if (!Double.isFinite(x) || !Double.isFinite(y)
+                || x < 0 || y < 0 || x > CANVAS_MAX_X || y > CANVAS_MAX_Y) {
+            throw new ValidationException("Notation position out of canvas: " + x + "," + y);
+        }
     }
 
     private void assertDiagramAllows(DiagramKind kind, ElementType type) {

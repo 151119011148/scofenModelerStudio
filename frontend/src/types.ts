@@ -98,6 +98,40 @@ export interface ContainmentSpec {
   node: { width: number; height: number }
 }
 
+/** 空间下的项目目录项；当前项目的统计由服务端模型快照实时填充。 */
+export interface WorkspaceProject {
+  id: string
+  name: string
+  description: string
+  owner: string
+  updatedAt: string
+  status: string
+  current: boolean
+  editable: boolean
+  spaceCode: string
+  diagramCount: number
+  elementCount: number
+  relationshipCount: number
+  revision: number
+}
+
+export interface WorkspaceSpace {
+  code: string
+  label: string
+  kind: string
+  owner: string
+  memberCount: number
+  projectCount: number
+  projects: WorkspaceProject[]
+}
+
+export interface WorkspaceDirectoryInfo {
+  currentProjectId: string
+  currentProjectName: string
+  spaces: WorkspaceSpace[]
+  note: string
+}
+
 export interface Patch {
   seq: number
   revision: number

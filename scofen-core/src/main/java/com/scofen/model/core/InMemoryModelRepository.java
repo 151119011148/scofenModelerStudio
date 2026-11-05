@@ -129,7 +129,11 @@ public final class InMemoryModelRepository {
                         diagrams.put(diagramId, after);
                         changes.add(new Change("update", "diagram", diagramId, before, after));
                         affected.add(diagramId);
-                        Notation notation = defaultNotation(diagramId, id, refs.size() - 1);
+                        // 拖放落位：命令自带坐标时由服务端一次性写入 Notation，
+                        // 避免「CREATE_ELEMENT + MOVE_NOTATION」两条命令引发的 baseRevision 竞态。
+                        Notation notation = hasPosition(cmd)
+                                ? placedNotation(diagramId, id, cmd.decimal("x"), cmd.decimal("y"))
+                                : defaultNotation(diagramId, id, refs.size() - 1);
                         notations.put(notation.id(), notation);
                         changes.add(new Change("add", "notation", notation.id(), null, notation));
                         affected.add(notation.id());
@@ -396,10 +400,21 @@ public final class InMemoryModelRepository {
                     changes.add(new Change("update", "diagram", diagramId, before, after));
                     affected.add(diagramId);
                     String notationId = notationId(diagramId, elementId);
-                    if (!notations.containsKey(notationId)) {
-                        Notation notation = defaultNotation(diagramId, elementId, refs.size() - 1);
+                    Notation current = notations.get(notationId);
+                    if (current == null) {
+                        Notation notation = hasPosition(cmd)
+                                ? placedNotation(diagramId, elementId, cmd.decimal("x"), cmd.decimal("y"))
+                                : defaultNotation(diagramId, elementId, refs.size() - 1);
                         notations.put(notationId, notation);
                         changes.add(new Change("add", "notation", notationId, null, notation));
+                        affected.add(notationId);
+                    } else if (hasPosition(cmd)) {
+                        // 已在图中但再次拖入：直接更新坐标，保持「单命令落位」语义。
+                        Notation moved = new Notation(notationId, diagramId, elementId,
+                                cmd.decimal("x"), cmd.decimal("y"),
+                                current.width(), current.height(), current.style());
+                        notations.put(notationId, moved);
+                        changes.add(new Change("update", "notation", notationId, current, moved));
                         affected.add(notationId);
                     }
                     inverse = Command.of("REMOVE_FROM_DIAGRAM", revision, diagramId + ":inverse",
@@ -484,6 +499,17 @@ public final class InMemoryModelRepository {
         return new Notation(notationId(diagramId, elementId), diagramId, elementId,
                 36 + (index % 3) * GRID_X, 36 + (index / 3) * GRID_Y,
                 NODE_WIDTH, NODE_HEIGHT, Map.of());
+    }
+
+    /** 命令是否携带放置坐标：由 ValidationEngine 先做边界校验，这里只负责写入。 */
+    private static boolean hasPosition(Command cmd) {
+        return cmd.payload().get("x") instanceof Number && cmd.payload().get("y") instanceof Number;
+    }
+
+    /** 拖放落点：服务端权威生成记法，前端不再补发 MOVE_NOTATION。 */
+    private static Notation placedNotation(String diagramId, String elementId, double x, double y) {
+        return new Notation(notationId(diagramId, elementId), diagramId, elementId,
+                x, y, NODE_WIDTH, NODE_HEIGHT, Map.of());
     }
 
     private static Map<String, Object> elementToMap(ModelElement element) {
