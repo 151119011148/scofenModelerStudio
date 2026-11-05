@@ -52,6 +52,9 @@
 | `SCOFEN_AUTH_ADMIN_PASSWORD_HASH` | 直接替换哈希（`pbkdf2$迭代$salt$hash`） |
 | `SCOFEN_AUTH_JWT_SECRET` | 固定 JWT 密钥；未设置时每次启动随机生成，重启后需重新登录 |
 
+线上由 `deploy/install-remote.sh` 首次部署时自动生成 `/etc/scofen/modeler.env`（chmod 600）并写入固定密钥，
+因此服务重启不会让已登录会话失效；本地默认仍是随机密钥。
+
 未登录访问任何 `/api/**`（`/api/health` 与 `/api/auth/login` 除外）返回 401 JSON；
 WebSocket 握手通过 `?token=<JWT>` 校验。所有 `/api/**` 请求带 `X-Scofen-Project: <projectId>`
 指定当前打开的项目，带 `X-Scofen-Session` 指定撤销栈。
@@ -132,6 +135,7 @@ curl -X POST http://localhost:8080/api/commands \
 | JDK | `/usr/lib/jvm/java-17-openjdk/bin/java` |
 | Nginx 片段 | `/etc/nginx/conf.d/scofen.locations`，由 `emotion-web.conf` 的 server 内 include |
 | WebSocket | `/scofen/modelerStudio/ws/patches`（独立 location，带 Upgrade 头与 3600s 超时） |
+| 登录密钥 | `/etc/scofen/modeler.env`（首次部署自动生成，`chmod 600`），由 systemd `EnvironmentFile` 注入 |
 | 日志 | `journalctl -u scofen.service -f` |
 
 一键发版（要求远端已配置 SSH 免密，本机已按子路径构建）：
