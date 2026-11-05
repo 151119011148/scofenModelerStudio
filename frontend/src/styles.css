@@ -959,7 +959,24 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   outline: none;
 }
 .auth-form input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
-.auth-error { font-size: 12px; color: var(--danger); margin: 0; }
+/* 密码框右侧「显示」开关：便于核对浏览器是否自动填充了其它站点的凭据。 */
+.auth-password { position: relative; display: flex; align-items: center; }
+.auth-password input { padding-right: 56px; }
+.auth-eye {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 11.5px;
+  padding: 4px 7px;
+  cursor: pointer;
+}
+.auth-eye:hover { color: var(--accent); background: var(--surface-2); }
+.auth-error { font-size: 12px; color: var(--danger); margin: 0; line-height: 1.65; }
 .auth-submit {
   width: 100%;
   padding: 9px;
@@ -973,3 +990,10 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 .auth-submit:hover:not(:disabled) { color: #fff; }
 .auth-submit:disabled { opacity: .6; cursor: not-allowed; }
 .auth-tip { margin: 20px 0 0; font-size: 11px; color: var(--text-3); line-height: 1.7; text-align: center; }
+.auth-tip code {
+  font: inherit;
+  color: var(--accent);
+  background: var(--accent-soft);
+  padding: 1px 5px;
+  border-radius: 4px;
+}

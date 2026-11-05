@@ -29,8 +29,8 @@ import java.util.Date;
  * {@code SCOFEN_AUTH_ADMIN_PASSWORD} 覆盖，或直接替换
  * {@code SCOFEN_AUTH_ADMIN_PASSWORD_HASH}。</p>
  *
- * <p>JWT 密钥默认每次启动随机生成（重启后需重新登录，这与 M0 内存态模型的复位语义一致）。
- * 生产环境可设置 {@code SCOFEN_AUTH_JWT_SECRET} 固定密钥，避免重启踢人。</p>
+ * <p>未配置 JWT 密钥时每次启动随机生成（重启后需重新登录）；线上部署通过
+ * {@code /etc/scofen/modeler.env} 注入 {@code SCOFEN_AUTH_JWT_SECRET} 固定密钥，避免重启踢人。</p>
  */
 @Service
 public class AuthService {
@@ -38,7 +38,7 @@ public class AuthService {
     private static final Logger log = LoggerFactory.getLogger(AuthService.class);
     public static final String TYP_AUTH = "auth";
 
-    /** scofen / Gf651125 的 PBKDF2 哈希，仅作为默认值；运维可用环境变量覆盖。 */
+    /** 初始超管口令的 PBKDF2 哈希；口令明文不写入源码，运维可用环境变量覆盖。 */
     public static final String DEFAULT_PASSWORD_HASH =
             "pbkdf2$120000$FyYB352zZu761LvHz45RAQ==$gnT0cyiVWou/+gm3KNEFWYcts+PsXomh9bbyOiIB56A=";
 
