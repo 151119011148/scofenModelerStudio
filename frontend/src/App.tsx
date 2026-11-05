@@ -24,6 +24,13 @@ const FALLBACK_CANVAS = { maxX: 480, maxY: 340, width: 640, height: 420 }
 const FALLBACK_NODE = { width: 168, height: 84 }
 const ROOT_KEY = '__root__'
 
+// 工具箱分组：形状类别 → 分组名，用于把「本图可放置」拆成带分隔线的 ribbon 段。
+const PALETTE_FAMILY: Record<string, string> = {
+  block: '结构', package: '结构', port: '结构', frame: '结构', object: '结构', default: '结构',
+  action: '行为', control: '行为', state: '行为', pseudostate: '行为', actor: '行为', usecase: '行为',
+  requirement: '需求', comment: '注释',
+}
+
 type MenuTarget =
   | { kind: 'element'; id: string }
   | { kind: 'diagram'; id: string }
@@ -86,6 +93,99 @@ function clamp(value: number, min: number, max: number): number {
 type TreeNode =
   | { type: 'element'; ref: ModelElement }
   | { type: 'diagram'; ref: Diagram }
+
+// 工具栏图标：与画布形状一一对应，复用 shapeOf 分类，保证工具箱与图面视觉一致。
+function ShapeGlyph({ shape }: { shape: string }) {
+  const s = {
+    fill: 'none',
+    stroke: 'currentColor',
+    strokeWidth: 1.5,
+    strokeLinejoin: 'round' as const,
+    strokeLinecap: 'round' as const,
+  }
+  switch (shape) {
+    case 'package':
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2 5h4V3h8v10H2z" {...s} />
+        </svg>
+      )
+    case 'requirement':
+    case 'comment':
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <path d="M2 2h9l3 3v9H2z" {...s} strokeDasharray={shape === 'comment' ? '3 2' : undefined} />
+          <path d="M11 2v3h3" {...s} strokeDasharray={shape === 'comment' ? '3 2' : undefined} />
+        </svg>
+      )
+    case 'usecase':
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <ellipse cx="8" cy="8" rx="6" ry="4.5" {...s} />
+        </svg>
+      )
+    case 'state':
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="2" y="3" width="12" height="10" rx="3" {...s} />
+        </svg>
+      )
+    case 'pseudostate':
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="8" cy="8" r="4.5" fill="currentColor" stroke="none" />
+        </svg>
+      )
+    case 'actor':
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <circle cx="8" cy="3.4" r="2" {...s} />
+          <line x1="8" y1="5.4" x2="8" y2="11" {...s} />
+          <line x1="3.5" y1="14" x2="12.5" y2="14" {...s} />
+          <line x1="5" y1="11" x2="11" y2="11" {...s} />
+        </svg>
+      )
+    case 'port':
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="4" y="4" width="8" height="8" fill="currentColor" stroke="none" opacity="0.25" />
+          <rect x="4" y="4" width="8" height="8" fill="none" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      )
+    case 'frame':
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="2" y="4" width="12" height="10" {...s} />
+          <path d="M2 4v-2h5v2" {...s} />
+        </svg>
+      )
+    case 'action':
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="2" y="5" width="12" height="6" rx="3" {...s} />
+        </svg>
+      )
+    case 'control':
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="2" y="5" width="12" height="6" rx="1.5" {...s} />
+        </svg>
+      )
+    case 'object':
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="2" y="4" width="12" height="8" {...s} />
+          <line x1="2" y1="7" x2="14" y2="7" {...s} />
+        </svg>
+      )
+    default:
+      return (
+        <svg viewBox="0 0 16 16" aria-hidden="true">
+          <rect x="2" y="3" width="12" height="10" rx="1.5" {...s} />
+        </svg>
+      )
+  }
+}
 
 const RELATION_TYPES = [
   'satisfy',
@@ -709,6 +809,22 @@ export default function App() {
       .filter((item): item is ElementTypeInfo => item !== undefined)
   }, [activeSpec, typeInfo])
 
+  // 参考 EA / StarUML 工具箱：按「结构 / 行为 / 需求 · 注释」把工具按钮分组，
+  // 组间用竖分隔线隔开，形成一条 ribbon，而不是一长串等距按钮。
+  const paletteGroups = useMemo(() => {
+    const groups: { key: string; label: string; items: ElementTypeInfo[] }[] = []
+    let lastKey = ''
+    for (const item of paletteEntries) {
+      const key = PALETTE_FAMILY[shapeOf(item.code)] ?? '其他'
+      if (key !== lastKey || groups.length === 0) {
+        groups.push({ key, label: key, items: [] })
+        lastKey = key
+      }
+      groups[groups.length - 1].items.push(item)
+    }
+    return groups
+  }, [paletteEntries])
+
   // 从工具箱创建元素：owner 取当前图的语义宿主（块/交互/活动等），并加入当前图，
   // 再移动到放置坐标。符合 SysML 规范——元素挂在模型元素下，图只引用承载它。
   const createElementFromPalette = async (typeCode: string, x: number, y: number) => {
@@ -1026,6 +1142,7 @@ export default function App() {
       </nav>
 
       <div className="workspace">
+        <div className="left-dock">
         <aside className="tree">
           <div className="panel-title">模型浏览器 · 右键操作</div>
           <div className="browser">
@@ -1044,8 +1161,12 @@ export default function App() {
 
         </aside>
 
-        <aside className="props-dock" aria-label="属性窗口（常驻）">
-          <div className="panel-title">属性</div>
+        <aside className="props-dock" aria-label="属性窗口（常驻左下角）">
+          <div className="props-grip" aria-hidden="true" />
+          <div className="props-head">
+            <span className="props-tab active">属性</span>
+            <span className="props-head-note">常驻 · 左下角</span>
+          </div>
           {selectedDiagram ? (
             <>
               <div className="kv"><span>类型</span><code>图 · {activeSpec?.label ?? selectedDiagram.kind}</code></div>
@@ -1087,6 +1208,7 @@ export default function App() {
           <div className="kv"><span>元素 / 关系 / 图</span><code>{model.elements.length} / {model.relationships.length} / {model.diagrams.length}</code></div>
           <div className="validation">{message}</div>
         </aside>
+        </div>
 
         <main className="canvas">
           <div className="diagram-toolbar">
@@ -1106,26 +1228,35 @@ export default function App() {
             {paletteEntries.length > 0 && (
               <div className="dt-palette" onDragOver={(event) => event.preventDefault()}>
                 <span className="dt-palette-label">本图可放置</span>
-                {paletteEntries.map((type) => (
-                  <button
-                    key={type.code}
-                    type="button"
-                    className="palette-chip"
-                    draggable
-                    onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
-                    onClick={() =>
-                      void createElementFromPalette(
-                        type.code,
-                        canvas.width / 2 - nodeSize.width / 2,
-                        canvas.height / 2 - nodeSize.height / 2,
-                      )
-                    }
-                    disabled={busy}
-                    title={`点击或拖拽到画布以新建「${type.label}」（${type.stereotype}）`}
-                  >
-                    {type.label}
-                  </button>
-                ))}
+                <div className="dt-palette-tools">
+                  {paletteGroups.map((group, groupIndex) => (
+                    <div className="dt-palette-group" key={`${group.key}-${groupIndex}`} title={`${group.label}类元素`}>
+                      {groupIndex > 0 && <span className="dt-palette-sep" aria-hidden="true" />}
+                      {group.items.map((type) => (
+                        <button
+                          key={type.code}
+                          type="button"
+                          className="palette-chip"
+                          draggable
+                          onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
+                          onClick={() =>
+                            void createElementFromPalette(
+                              type.code,
+                              canvas.width / 2 - nodeSize.width / 2,
+                              canvas.height / 2 - nodeSize.height / 2,
+                            )
+                          }
+                          disabled={busy}
+                          title={`点击或拖拽到画布以新建「${type.label}」（${type.stereotype}）`}
+                        >
+                          <ShapeGlyph shape={shapeOf(type.code)} />
+                          <span>{type.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+                <span className="dt-palette-hint">点击 / 拖入画布</span>
               </div>
             )}
           </div>
