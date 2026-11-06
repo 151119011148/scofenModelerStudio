@@ -122,8 +122,8 @@ public final class InMemoryModelRepository {
                     }
                     ModelElement element = new ModelElement(id, cmd.str("type"), cmd.str("name"),
                             cmd.strList("stereotypes"), blankToNull(cmd.str("ownerId")),
-                            orEmpty(cmd.str("documentation")), Map.of(), blankToNull(cmd.str("xmiId")));
-                    elements.put(id, element);
+                            orEmpty(cmd.str("documentation")), Map.of(), blankToNull(cmd.str("xmiId")),
+                            objectMap(cmd.payload(), "properties"));                    elements.put(id, element);
                     changes.add(new Change("add", "element", id, null, element));
                     affected.add(id);
 
@@ -227,64 +227,55 @@ public final class InMemoryModelRepository {
                 case "DELETE_ELEMENT" -> {
                     String rootId = cmd.str("id");
                     requireElement(rootId);
-                    Set<String> subtree = collectSubtree(rootId);
+                    DeletedSubtree removed = removeSubtree(collectSubtree(rootId), changes, affected);
 
-                    List<Map<String, Object>> removedElements = new ArrayList<>();
-                    List<Map<String, Object>> removedRelationships = new ArrayList<>();
-                    List<Map<String, Object>> removedNotations = new ArrayList<>();
-                    List<Map<String, Object>> diagramRefs = new ArrayList<>();
-
-                    for (Diagram diagram : diagrams.values()) {
-                        if (diagram.elementIds().stream().anyMatch(subtree::contains)) {
-                            Map<String, Object> ref = new LinkedHashMap<>();
-                            ref.put("diagramId", diagram.id());
-                            ref.put("elementIds", List.copyOf(diagram.elementIds()));
-                            diagramRefs.add(ref);
-                        }
-                    }
-                    for (String id : subtree) {
-                        ModelElement removed = elements.remove(id);
-                        if (removed != null) {
-                            removedElements.add(elementToMap(removed));
-                            changes.add(new Change("remove", "element", id, removed, null));
-                            affected.add(id);
-                        }
-                    }
-                    for (String id : List.copyOf(relationships.keySet())) {
-                        Relationship relation = relationships.get(id);
-                        if (subtree.contains(relation.sourceId()) || subtree.contains(relation.targetId())) {
-                            relationships.remove(id);
-                            removedRelationships.add(relationshipToMap(relation));
-                            changes.add(new Change("remove", "relationship", id, relation, null));
-                            affected.add(id);
-                        }
-                    }
-                    for (String id : List.copyOf(notations.keySet())) {
-                        Notation notation = notations.get(id);
-                        if (subtree.contains(notation.elementId())) {
-                            notations.remove(id);
-                            removedNotations.add(notationToMap(notation));
-                            changes.add(new Change("remove", "notation", id, notation, null));
-                            affected.add(id);
-                        }
-                    }
-                    for (String diagramId : List.copyOf(diagrams.keySet())) {
-                        Diagram before = diagrams.get(diagramId);
-                        if (before.elementIds().stream().noneMatch(subtree::contains)) {
-                            continue;
-                        }
-                        Diagram after = withRefs(before,
-                                before.elementIds().stream().filter(ref -> !subtree.contains(ref)).toList());
-                        diagrams.put(diagramId, after);
-                        changes.add(new Change("update", "diagram", diagramId, before, after));
-                        affected.add(diagramId);
-                    }
                     inverse = Command.of("RESTORE_SUBTREE", revision, rootId + ":inverse", Map.of(
                             "rootId", rootId,
-                            "elements", removedElements,
-                            "relationships", removedRelationships,
-                            "notations", removedNotations,
-                            "diagramRefs", diagramRefs));
+                            "elements", removed.elements(),
+                            "relationships", removed.relationships(),
+                            "notations", removed.notations(),
+                            "diagramRefs", removed.diagramRefs()));
+                }
+                case "CREATE_ELEMENTS" -> {
+                    // 批量建元素：通用扩展包等系统内容用它一次落库，
+                    // 只推进一次 revision、只广播一个 Patch。
+                    List<Map<String, Object>> rows = cmd.mapList("elements");
+                    List<String> created = new ArrayList<>();
+                    for (Map<String, Object> row : rows) {
+                        String id = str(row, "id");
+                        if (elements.containsKey(id)) {
+                            throw new ValidationException("Element already exists: " + id);
+                        }
+                        ModelElement element = new ModelElement(id, str(row, "type"), str(row, "name"),
+                                strList(row, "stereotypes"), blankToNull(str(row, "ownerId")),
+                                orEmpty(str(row, "documentation")), strMap(row, "taggedValues"),
+                                blankToNull(str(row, "xmiId")), objectMap(row, "properties"));
+                        elements.put(id, element);
+                        changes.add(new Change("add", "element", id, null, element));
+                        affected.add(id);
+                        created.add(id);
+                    }
+                    inverse = Command.of("DELETE_ELEMENTS", revision, "create-elements:inverse",
+                            Map.of("ids", List.copyOf(created)));
+                }
+                case "DELETE_ELEMENTS" -> {
+                    List<String> ids = cmd.strList("ids");
+                    if (ids.isEmpty()) {
+                        throw new ValidationException("DELETE_ELEMENTS requires at least one id");
+                    }
+                    Set<String> subtree = new LinkedHashSet<>();
+                    for (String id : ids) {
+                        requireElement(id);
+                        subtree.addAll(collectSubtree(id));
+                    }
+                    DeletedSubtree removed = removeSubtree(subtree, changes, affected);
+
+                    inverse = Command.of("RESTORE_SUBTREE", revision, "delete-elements:inverse", Map.of(
+                            "rootId", ids.get(0),
+                            "elements", removed.elements(),
+                            "relationships", removed.relationships(),
+                            "notations", removed.notations(),
+                            "diagramRefs", removed.diagramRefs()));
                 }
                 case "RESTORE_SUBTREE" -> {
                     for (Map<String, Object> row : cmd.mapList("elements")) {
@@ -560,6 +551,73 @@ public final class InMemoryModelRepository {
             }
         }
         return collected;
+    }
+
+    /** 一次删除中被摘掉的模型内容，DELETE_ELEMENT / DELETE_ELEMENTS 共用。 */
+    private record DeletedSubtree(List<Map<String, Object>> elements,
+                                  List<Map<String, Object>> relationships,
+                                  List<Map<String, Object>> notations,
+                                  List<Map<String, Object>> diagramRefs) {
+    }
+
+    /**
+     * 删除一棵子树：连带清理关系、记法与图上的引用。
+     *
+     * <p>删除是按「所有权」而非「图引用」进行的——元素在图上只是被引用，
+     * 因此只把图里的引用摘掉，图本身保留。</p>
+     */
+    private DeletedSubtree removeSubtree(Set<String> subtree, List<Change> changes, List<String> affected) {
+        List<Map<String, Object>> removedElements = new ArrayList<>();
+        List<Map<String, Object>> removedRelationships = new ArrayList<>();
+        List<Map<String, Object>> removedNotations = new ArrayList<>();
+        List<Map<String, Object>> diagramRefs = new ArrayList<>();
+
+        for (Diagram diagram : diagrams.values()) {
+            if (diagram.elementIds().stream().anyMatch(subtree::contains)) {
+                Map<String, Object> ref = new LinkedHashMap<>();
+                ref.put("diagramId", diagram.id());
+                ref.put("elementIds", List.copyOf(diagram.elementIds()));
+                diagramRefs.add(ref);
+            }
+        }
+        for (String id : subtree) {
+            ModelElement removed = elements.remove(id);
+            if (removed != null) {
+                removedElements.add(elementToMap(removed));
+                changes.add(new Change("remove", "element", id, removed, null));
+                affected.add(id);
+            }
+        }
+        for (String id : List.copyOf(relationships.keySet())) {
+            Relationship relation = relationships.get(id);
+            if (subtree.contains(relation.sourceId()) || subtree.contains(relation.targetId())) {
+                relationships.remove(id);
+                removedRelationships.add(relationshipToMap(relation));
+                changes.add(new Change("remove", "relationship", id, relation, null));
+                affected.add(id);
+            }
+        }
+        for (String id : List.copyOf(notations.keySet())) {
+            Notation notation = notations.get(id);
+            if (subtree.contains(notation.elementId())) {
+                notations.remove(id);
+                removedNotations.add(notationToMap(notation));
+                changes.add(new Change("remove", "notation", id, notation, null));
+                affected.add(id);
+            }
+        }
+        for (String diagramId : List.copyOf(diagrams.keySet())) {
+            Diagram before = diagrams.get(diagramId);
+            if (before.elementIds().stream().noneMatch(subtree::contains)) {
+                continue;
+            }
+            Diagram after = withRefs(before,
+                    before.elementIds().stream().filter(ref -> !subtree.contains(ref)).toList());
+            diagrams.put(diagramId, after);
+            changes.add(new Change("update", "diagram", diagramId, before, after));
+            affected.add(diagramId);
+        }
+        return new DeletedSubtree(removedElements, removedRelationships, removedNotations, diagramRefs);
     }
 
     private static Diagram withRefs(Diagram diagram, List<String> refs) {

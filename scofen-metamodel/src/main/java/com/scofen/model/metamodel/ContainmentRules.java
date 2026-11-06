@@ -28,13 +28,14 @@ public final class ContainmentRules {
 
     static {
         // 命名空间容器：包 / 模型 / 模型库可以容纳可打包元素
-        Set<ElementType> namespace = set(MODEL, MODEL_LIBRARY, PACKAGE, PROFILE, STEREOTYPE,
+        Set<ElementType> namespace = set(MODEL, MODEL_LIBRARY, PACKAGE, PROFILE, STEREOTYPE, METACLASS,
                 BLOCK, VALUE_TYPE, CONSTRAINT_BLOCK, REQUIREMENT, TEST_CASE,
                 ACTIVITY, STATE_MACHINE, INTERACTION, USE_CASE, ACTOR, COMMENT);
         allow(MODEL, namespace);
         allow(MODEL_LIBRARY, namespace);
         allow(PACKAGE, namespace);
-        allow(PROFILE, STEREOTYPE, PACKAGE, COMMENT);
+        // 剖面（扩展包）容纳元类与构造型：通用扩展包即由此结构落地。
+        allow(PROFILE, METACLASS, STEREOTYPE, PACKAGE, COMMENT);
 
         // SysML 需求：需求可嵌套、可挂测试用例
         allow(REQUIREMENT, REQUIREMENT, TEST_CASE, COMMENT);
@@ -52,6 +53,8 @@ public final class ContainmentRules {
         allow(PORT, COMMENT);
         allow(FLOW_PORT, COMMENT);
         allow(STEREOTYPE, COMMENT);
+        // 元类可容纳其特化的构造型：UML 里 Stereotype 是 Metaclass 的子类。
+        allow(METACLASS, STEREOTYPE, COMMENT);
 
         // 行为 / 活动
         allow(ACTIVITY, ACTION, CONTROL_NODE, OBJECT_NODE, ACTIVITY_PARTITION, COMMENT);

@@ -4,6 +4,7 @@ import com.scofen.model.metamodel.ContainmentRules;
 import com.scofen.model.metamodel.Diagram;
 import com.scofen.model.metamodel.DiagramKind;
 import com.scofen.model.metamodel.ElementType;
+import com.scofen.model.metamodel.ExtensionLibrary;
 import com.scofen.model.metamodel.MetamodelRegistry;
 import com.scofen.model.metamodel.ModelElement;
 import com.scofen.model.metamodel.ModelSnapshot;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -49,6 +51,15 @@ public final class ValidationEngine {
                 assertContainment(repository, cmd.str("ownerId"), child);
                 assertNameIsUnique(repository, cmd.str("ownerId"), cmd.str("name"), null);
                 assertOptionalPosition(cmd);
+                // 建元素时即可带上规范元属性（如「扩展的元类」），引用目标必须已存在。
+                Map<String, Object> properties = cmdObjectMap(cmd, "properties");
+                if (!properties.isEmpty()) {
+                    ModelElement element = new ModelElement(cmd.str("id"), cmd.str("type"), cmd.str("name"),
+                            cmd.strList("stereotypes"), blankToNull(cmd.str("ownerId")),
+                            orEmpty(cmd.str("documentation")), Map.of(), blankToNull(cmd.str("xmiId")),
+                            properties);
+                    assertElementProperties(repository, Map.of(), element);
+                }
                 String diagramId = cmd.str("diagramId");
                 if (diagramId != null && !diagramId.isBlank()) {
                     Diagram diagram = repository.findDiagram(diagramId)
@@ -124,6 +135,48 @@ public final class ValidationEngine {
                     throw new ValidationException(
                             "项目根节点模型不可删除：Model 是模型树的唯一项目根；"
                                     + "如需清空项目请删除其下的子元素。");
+                }
+                assertNotExtensionRoot(target);
+            }
+            case "DELETE_ELEMENTS" -> {
+                List<String> ids = cmd.strList("ids");
+                if (ids.isEmpty()) {
+                    throw new ValidationException("Missing required field: ids");
+                }
+                for (String id : ids) {
+                    ModelElement target = repository.findElement(id)
+                            .orElseThrow(() -> new ValidationException("Unknown element: " + id));
+                    assertNotExtensionRoot(target);
+                }
+            }
+            case "CREATE_ELEMENTS" -> {
+                // 批量建元素：通用扩展包等系统内容走这条通道。
+                // 校验要「批内可见」——同一批里的父元素与被引用的元类尚未落库，
+                // 因此包含关系与命名唯一性都必须把待建元素一并算进去。
+                List<Map<String, Object>> rows = cmd.mapList("elements");
+                if (rows.isEmpty()) {
+                    throw new ValidationException("Missing required field: elements");
+                }
+                Map<String, ModelElement> pending = new LinkedHashMap<>();
+                for (Map<String, Object> row : rows) {
+                    String id = rowString(row, "id");
+                    require(id, "id");
+                    String typeName = rowString(row, "type");
+                    require(typeName, "type");
+                    String name = rowString(row, "name");
+                    require(name, "name");
+                    ElementType child = ElementType.fromAny(typeName)
+                            .orElseThrow(() -> new ValidationException("Unknown element type: " + typeName));
+                    assertNameFormat(name);
+                    assertContainment(repository, pending, rowString(row, "ownerId"), child);
+                    assertNameIsUnique(repository, pending, rowString(row, "ownerId"), name, null);
+                    ModelElement element = new ModelElement(id, typeName, name,
+                            rowStringList(row, "stereotypes"), blankToNull(rowString(row, "ownerId")),
+                            rowString(row, "documentation") == null ? "" : rowString(row, "documentation"),
+                            rowStringMap(row, "taggedValues"), blankToNull(rowString(row, "xmiId")),
+                            rowObjectMap(row, "properties"));
+                    assertElementProperties(repository, pending, element);
+                    pending.put(id, element);
                 }
             }
             case "RESTORE_SUBTREE" -> {
@@ -265,8 +318,19 @@ public final class ValidationEngine {
         return issues.isEmpty() ? "ok" : String.join("; ", issues);
     }
 
-    /** 所有权规则：根节点只能是顶层容器；非根节点必须挂在允许包含该类型的父元素下。 */
+/** 所有权规则：根节点只能是顶层容器；非根节点必须挂在允许包含该类型的父元素下。 */
     private void assertContainment(InMemoryModelRepository repository, String ownerId, ElementType child) {
+        assertContainment(repository, Map.of(), ownerId, child);
+    }
+
+    /**
+     * 所有权规则（含批内元素）。
+     *
+     * <p>{@code pending} 是同一条批量命令里尚未落库的元素：通用扩展包的子包与元类
+     * 都在同一批里创建，父元素此时还不在仓储中，必须一并纳入判断。</p>
+     */
+    private void assertContainment(InMemoryModelRepository repository, Map<String, ModelElement> pending,
+                                  String ownerId, ElementType child) {
         if (ownerId == null || ownerId.isBlank()) {
             if (!ContainmentRules.isRootAllowed(child)) {
                 throw new ValidationException("Root element must be one of "
@@ -274,22 +338,27 @@ public final class ValidationEngine {
             }
             // 单项目单根：项目根 Model 是模型树的唯一顶层节点，不允许再建第二个顶层 Model。
             if (child == ElementType.MODEL
-                    && repository.elements().stream().anyMatch(ValidationEngine::isProjectRoot)) {
+                    && (repository.elements().stream().anyMatch(ValidationEngine::isProjectRoot)
+                        || pending.values().stream().anyMatch(ValidationEngine::isProjectRoot))) {
                 throw new ValidationException("一个项目只能有一个根 Model；请在已有项目根下新建子元素");
             }
             return;
         }
-        ModelElement parent = repository.findElement(ownerId)
-                .orElseThrow(() -> {
-                    if (repository.findDiagram(ownerId).isPresent()) {
-                        throw new ValidationException(
-                                "Containment violation (SysML 规范): 不能在「图」下创建模型元素；"
-                                        + "元素必须挂在包/块等模型元素下，图仅通过引用承载元素。");
-                    }
-                    throw new ValidationException("Owner element not found: " + ownerId);
-                });
-        ElementType parentType = ElementType.fromAny(parent.type())
-                .orElseThrow(() -> new ValidationException("Unknown owner element type: " + parent.type()));
+        ModelElement parent = pending.get(ownerId);
+        if (parent == null) {
+            parent = repository.findElement(ownerId)
+                    .orElseThrow(() -> {
+                        if (repository.findDiagram(ownerId).isPresent()) {
+                            throw new ValidationException(
+                                    "Containment violation (SysML 规范): 不能在「图」下创建模型元素；"
+                                            + "元素必须挂在包/块等模型元素下，图仅通过引用承载元素。");
+                        }
+                        throw new ValidationException("Owner element not found: " + ownerId);
+                    });
+        }
+        ModelElement owner = parent;
+        ElementType parentType = ElementType.fromAny(owner.type())
+                .orElseThrow(() -> new ValidationException("Unknown owner element type: " + owner.type()));
         if (!ContainmentRules.allows(parentType, child)) {
             throw new ValidationException("Containment rule violation: " + parentType.label()
                     + " (" + parentType + ") cannot own " + child.label() + " (" + child + ")");
@@ -302,6 +371,21 @@ public final class ValidationEngine {
                 && ElementType.fromAny(element.type())
                         .filter(type -> type == ElementType.MODEL)
                         .isPresent();
+    }
+
+    /**
+     * 通用扩展包是每个项目的公共内容，不允许整包删除。
+     *
+     * <p>删掉扩展包等于抽掉全项目的元类与构造型，所有「扩展的元类」引用都会悬空。
+     * 包内的元类、构造型仍可自行增删。</p>
+     */
+    private static void assertNotExtensionRoot(ModelElement element) {
+        if (ExtensionLibrary.SYSML_PROFILE_ID.equals(element.id())
+                || ExtensionLibrary.UML_PROFILE_ID.equals(element.id())) {
+            throw new ValidationException(
+                    "通用扩展包不可删除：SysML / UML 的元类与构造型随项目提供，"
+                            + "如需裁剪请删除包内的具体元类或构造型。");
+        }
     }
 
     /**
@@ -424,6 +508,12 @@ public final class ValidationEngine {
     }
 
     private void assertNameIsUnique(InMemoryModelRepository repository, String ownerId, String name, String selfId) {
+        assertNameIsUnique(repository, Map.of(), ownerId, name, selfId);
+    }
+
+    /** 同命名空间命名唯一（含批内元素）：批量建元素时同批重名也要挡住。 */
+    private void assertNameIsUnique(InMemoryModelRepository repository, Map<String, ModelElement> pending,
+                                    String ownerId, String name, String selfId) {
         String owner = normalizeOwner(ownerId);
         String normalized = normalize(name);
         for (ModelElement element : repository.elements()) {
@@ -434,6 +524,52 @@ public final class ValidationEngine {
                 throw new ValidationException("Duplicate element name in namespace " + owner + ": " + name);
             }
         }
+        for (ModelElement element : pending.values()) {
+            if (Objects.equals(element.id(), selfId)) {
+                continue;
+            }
+            if (normalizeOwner(element.ownerId()).equals(owner) && normalize(element.name()).equals(normalized)) {
+                throw new ValidationException("Duplicate element name in namespace " + owner + ": " + name);
+            }
+        }
+    }
+
+    /**
+     * 批量建元素时的属性值校验：引用型属性指向的元素必须已存在或同批创建。
+     *
+     * <p>通用扩展包里的元类通过「扩展的元类」互相引用，这些目标往往就在同一批里，
+     * 因此存在性判断必须把批内元素算进去。</p>
+     */
+    private void assertElementProperties(InMemoryModelRepository repository,
+                                          Map<String, ModelElement> pending, ModelElement element) {
+        ElementType type = ElementType.fromAny(element.type()).orElse(null);
+        if (type == null) {
+            return;
+        }
+        for (Map.Entry<String, Object> entry : element.properties().entrySet()) {
+            PropertyCatalog.PropertySpec spec = PropertyCatalog.find(type, entry.getKey());
+            if (spec == null || !PropertyCatalog.referencesElement(spec)) {
+                continue;
+            }
+            for (String reference : referenceValues(entry.getValue())) {
+                if (!repository.elementExists(reference) && !pending.containsKey(reference)) {
+                    throw new ValidationException("引用的元素不存在: " + entry.getKey() + " → " + reference);
+                }
+            }
+        }
+    }
+
+    /** 引用型属性值可能是单个 id，也可能是一组 id。 */
+    private static List<String> referenceValues(Object value) {
+        if (value instanceof List<?> list) {
+            return list.stream().map(String::valueOf)
+                    .map(String::trim).filter(item -> !item.isEmpty()).toList();
+        }
+        if (value == null) {
+            return List.of();
+        }
+        String text = String.valueOf(value).trim();
+        return text.isEmpty() ? List.of() : List.of(text);
     }
 
     private boolean createsCycle(String start, String target, Collection<Relationship> existing) {
@@ -473,5 +609,73 @@ public final class ValidationEngine {
         if (value == null || value.isBlank()) {
             throw new ValidationException("Missing required field: " + field);
         }
+    }
+
+    /* ── 批量命令的元素行读取（CREATE_ELEMENTS 的 payload 是一组元素行） ── */
+
+    /** 命令 payload 里的对象型字段（CREATE_ELEMENT 的规范元属性包）。 */
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> cmdObjectMap(Command cmd, String key) {
+        Object value = cmd.payload().get(key);
+        if (!(value instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getValue() != null) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        return Map.copyOf(result);
+    }
+
+    private static String orEmpty(String value) {
+        return value == null ? "" : value;
+    }
+
+    private static String rowString(Map<String, Object> row, String key) {
+        Object value = row.get(key);
+        return value == null ? null : value.toString();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static List<String> rowStringList(Map<String, Object> row, String key) {
+        Object value = row.get(key);
+        if (!(value instanceof List<?> list)) {
+            return List.of();
+        }
+        return list.stream().map(String::valueOf).toList();
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, String> rowStringMap(Map<String, Object> row, String key) {
+        Object value = row.get(key);
+        if (!(value instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        Map<String, String> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            result.put(String.valueOf(entry.getKey()), String.valueOf(entry.getValue()));
+        }
+        return result;
+    }
+
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> rowObjectMap(Map<String, Object> row, String key) {
+        Object value = row.get(key);
+        if (!(value instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : map.entrySet()) {
+            if (entry.getValue() != null) {
+                result.put(String.valueOf(entry.getKey()), entry.getValue());
+            }
+        }
+        return Map.copyOf(result);
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value;
     }
 }

@@ -7,6 +7,13 @@ public enum ElementType {
     MODEL_LIBRARY("ModelLibrary", "模型库", "modelLibrary"),
     PROFILE("Profile", "剖面", "profile"),
     STEREOTYPE("Stereotype", "构造型", "stereotype"),
+    /**
+     * 元类：UML 规范里的 Metaclass（Class 的实例）。
+     *
+     * <p>通用扩展包用它把 SysML / UML 的元类物化成模型元素，
+     * 于是「元素扩展自哪个元类」「构造型特化哪个元类」都是可指向、可定位的引用。</p>
+     */
+    METACLASS("Metaclass", "元类", "metaclass"),
     REQUIREMENT("Requirement", "需求", "requirement"),
     TEST_CASE("TestCase", "测试用例", "testCase"),
     BLOCK("Block", "块", "block"),

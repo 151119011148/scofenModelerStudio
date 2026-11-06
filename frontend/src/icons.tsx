@@ -39,6 +39,7 @@ const TYPE_META: Record<string, { family: string; glyph: string }> = {
   MODEL_LIBRARY: { family: 'namespace', glyph: 'library' },
   PROFILE: { family: 'namespace', glyph: 'profile' },
   STEREOTYPE: { family: 'namespace', glyph: 'guillemet' },
+  METACLASS: { family: 'namespace', glyph: 'metaclass' },
   REQUIREMENT: { family: 'requirement', glyph: 'requirement' },
   TEST_CASE: { family: 'requirement', glyph: 'testcase' },
   BLOCK: { family: 'structure', glyph: 'block' },
@@ -170,6 +171,14 @@ function Glyph({ name }: { name: string }): ReactNode {
       return <path d="M8 2.2l5.4 3.1v5.4L8 13.8l-5.4-3.1V5.3z" {...s} />
     case 'guillemet':
       return <path d="M6.8 4.4L3.6 8l3.2 3.6M9.2 4.4L12.4 8 9.2 11.6" {...s} />
+    case 'metaclass':
+      // 元类：UML 里是「实例为 Class 的 Class」，画成带虚线分栏的框，与普通类区分。
+      return (
+        <>
+          <path d="M2.6 3.4h10.8v9.2H2.6z" {...s} strokeDasharray="2.4 1.6" />
+          <path d="M2.6 7.2h10.8" {...s} strokeDasharray="2.4 1.6" />
+        </>
+      )
     case 'requirement':
       return (
         <>

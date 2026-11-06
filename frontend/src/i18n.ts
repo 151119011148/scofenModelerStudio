@@ -164,6 +164,7 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
   '项目根节点 · 不可删除': { zh: '项目根节点 · 不可删除', en: 'Project root · cannot be deleted' },
   '项目根节点模型不可删除': { zh: '项目根节点模型不可删除', en: 'The project root model cannot be deleted' },
   '项目根节点模型，不可删除': { zh: '项目根节点模型，不可删除', en: 'Project root model, cannot be deleted' },
+  '通用扩展包 · 不可删除': { zh: '通用扩展包 · 不可删除', en: 'Generic extension package · cannot be deleted' },
 
   /* ── 新建 / 删除 ── */
   '新建项目': { zh: '新建项目', en: 'New project' },
@@ -510,6 +511,15 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
   '输入后回车添加': { zh: '输入后回车添加', en: 'Type and press Enter to add' },
   '更换': { zh: '更换', en: 'Change' },
   '选择引用': { zh: '选择引用', en: 'Choose a reference' },
+  '按名称过滤': { zh: '按名称过滤', en: 'Filter by name' },
+  '选择构造型': { zh: '选择构造型', en: 'Choose a stereotype' },
+  '没有匹配的构造型': { zh: '没有匹配的构造型', en: 'No matching stereotype' },
+  '元类': { zh: '元类', en: 'Metaclass' },
+  '扩展包': { zh: '扩展包', en: 'Extension package' },
+  '通用扩展包：SysML / UML 的元类与构造型随项目提供': {
+    zh: '通用扩展包：SysML / UML 的元类与构造型随项目提供',
+    en: 'Generic extension packages: SysML / UML metaclasses and stereotypes ship with every project',
+  },
 
   /* ── 目录与计数 ── */
   '个人空间': { zh: '个人空间', en: 'Personal space' },

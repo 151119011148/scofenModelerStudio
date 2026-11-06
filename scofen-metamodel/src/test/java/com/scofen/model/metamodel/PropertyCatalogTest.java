@@ -82,6 +82,33 @@ class PropertyCatalogTest {
         assertThat(PropertyCatalog.find(ElementType.PACKAGE, "notARealProperty")).isNull();
     }
 
+    /** 元类与构造型引用必须是真引用，并声明目标类型，界面才能收敛候选并定位。 */
+    @Test
+    void metaclassAndStereotypeReferencesTargetRealElements() {
+        PropertyCatalog.PropertySpec extendsMetaclass = PropertyCatalog.find(ElementType.BLOCK, "extendsMetaclass");
+        assertThat(extendsMetaclass).isNotNull();
+        assertThat(extendsMetaclass.kind()).isEqualTo(PropertyCatalog.ValueKind.REFERENCE);
+        assertThat(extendsMetaclass.level()).isEqualTo(PropertyCatalog.Level.STANDARD);
+        assertThat(extendsMetaclass.referenceTarget()).isEqualTo("METACLASS");
+        assertThat(PropertyCatalog.referencesElement(extendsMetaclass)).isTrue();
+
+        PropertyCatalog.PropertySpec metaclassReference =
+                PropertyCatalog.find(ElementType.PROFILE, "metaclassReference");
+        assertThat(metaclassReference.referenceTarget()).isEqualTo("METACLASS");
+        assertThat(PropertyCatalog.referencesElement(metaclassReference)).isTrue();
+
+        PropertyCatalog.PropertySpec appliedStereotype =
+                PropertyCatalog.find(ElementType.BLOCK, "appliedStereotype");
+        assertThat(appliedStereotype.referenceTarget()).isEqualTo("STEREOTYPE");
+        assertThat(PropertyCatalog.referencesElement(appliedStereotype)).isTrue();
+
+        // 指向元模型或表达式的引用仍是自由文本
+        assertThat(PropertyCatalog.referencesElement(
+                PropertyCatalog.find(ElementType.PROFILE, "metamodelReference"))).isFalse();
+        assertThat(PropertyCatalog.referencesElement(
+                PropertyCatalog.find(ElementType.BLOCK, "nameExpression"))).isFalse();
+    }
+
     @Test
     void describeExposesCatalogForEveryTypeWithCounts() {
         Map<String, Object> described = PropertyCatalog.describe();

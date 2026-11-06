@@ -44,6 +44,11 @@ export interface PropertySpec {
    * 界面据此决定渲染「缩略图 + 名称」卡片还是普通文本输入。
    */
   referencesElement?: boolean
+  /**
+   * 引用型属性期望的目标元素类型（如 METACLASS / STEREOTYPE）。
+   * 界面据此把「选择引用」的候选列表收敛到正确类型。
+   */
+  referenceTarget?: string
   level: 'STANDARD' | 'EXPERT' | 'DERIVED'
   computed: boolean
   editable: boolean
@@ -167,6 +172,24 @@ export interface ElementTypeInfo {
   label: string
   labelEn?: string
   stereotype: string
+}
+
+/** 通用扩展包：SysML / UML 的元类与构造型随每个项目提供。 */
+export interface ExtensionPackageInfo {
+  id: string
+  /** 所属扩展包（子包时为父 id，顶层扩展包为空）。 */
+  parentId?: string
+  /** PROFILE（扩展包）或 PACKAGE（元类 / 构造型子包）。 */
+  kind?: string
+  name: string
+  label: string
+  labelEn?: string
+  metaclassCount: number
+  stereotypeCount: number
+}
+
+export interface ExtensionCatalog {
+  packages: ExtensionPackageInfo[]
 }
 
 export interface ContainmentRule {

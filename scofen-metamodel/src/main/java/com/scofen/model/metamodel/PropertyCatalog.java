@@ -44,7 +44,14 @@ public final class PropertyCatalog {
             Level level,
             boolean computed,
             List<String> options,
-            String defaultValue) {
+            String defaultValue,
+            /**
+             * 引用型属性期望的目标元素类型（{@link ElementType} 名称）。
+             *
+             * <p>界面据此把「选择引用」的候选列表收敛到正确类型——元类引用只列元类，
+             * 构造型引用只列构造型——而不是把整个模型的元素都摆出来。</p>
+             */
+            String referenceTarget) {
 
         /** 计算属性与派生属性不可修改；其余均为可编辑的模型属性。 */
         public boolean editable() {
@@ -78,6 +85,8 @@ public final class PropertyCatalog {
             row.put("kind", kind.name());
             // 引用型属性是否指向模型元素：界面据此决定渲染「缩略图 + 名称」还是普通文本框。
             row.put("referencesElement", referencesElement(this));
+            // 引用目标类型：界面据此收敛候选列表（元类引用只列元类）。
+            row.put("referenceTarget", referenceTarget);
             row.put("level", level.name());
             row.put("computed", computed);
             row.put("editable", editable());
@@ -88,18 +97,22 @@ public final class PropertyCatalog {
     }
 
     private record Spec(String key, String umlName, String label, ValueKind kind, Level level,
-                        boolean computed, List<String> options, String defaultValue) {
+                        boolean computed, List<String> options, String defaultValue,
+                        String referenceTarget) {
     }
 
     /**
      * 不指向模型元素的引用型属性。
      *
      * <p>规范里少数 REFERENCE 属性指向的并不是模型里的实例：{@code nameExpression} 是
-     * OCL 表达式文本，{@code metaclassReference} / {@code metamodelReference} 指向元模型
-     * 本身，{@code icon} 指向图形。这些属性的值是自由文本，不做「元素必须存在」的校验。</p>
+     * OCL 表达式文本，{@code metamodelReference} 指向元模型本身，{@code icon} 指向图形。
+     * 这些属性的值是自由文本，不做「元素必须存在」的校验。</p>
+     *
+     * <p>{@code metaclassReference} 不在例外之列：通用扩展包落地后，元类本身
+     * 就是模型里的元素，剖面引用哪些元类应当是一条真实的元素引用。</p>
      */
     private static final Set<String> NON_ELEMENT_REFERENCES = Set.of(
-            "nameExpression", "metaclassReference", "metamodelReference", "icon");
+            "nameExpression", "metamodelReference", "icon");
 
     /** 该引用型属性是否指向模型里的元素（决定服务端是否校验目标存在）。 */
     public static boolean referencesElement(PropertySpec spec) {
@@ -133,7 +146,7 @@ public final class PropertyCatalog {
         /* ── UML 2.5.1 基础层 ── */
         mc(UmlMetaclass.ELEMENT,
                 s("ownedComment", "拥有的注释", REFS, EXP),
-                s("appliedStereotype", "应用的构造型", REFS, EXP),
+                s("appliedStereotype", "应用的构造型", REFS, EXP, "STEREOTYPE"),
                 d("ownedElement", "拥有的元素（派生）", REFS),
                 d("owner", "所有者（派生）", REF));
         mc(UmlMetaclass.RELATIONSHIP,
@@ -354,9 +367,9 @@ public final class PropertyCatalog {
         mc(UmlMetaclass.MODEL,
                 s("viewpoint", "视点", STR, STD));
         mc(UmlMetaclass.PROFILE,
-                s("metaclassReference", "元类引用", REFS, EXP),
+                s("metaclassReference", "元类引用", REFS, EXP, "METACLASS"),
                 s("metamodelReference", "元模型引用", REFS, EXP),
-                s("ownedStereotype", "拥有的构造型", REFS, STD));
+                s("ownedStereotype", "拥有的构造型", REFS, STD, "STEREOTYPE"));
         mc(UmlMetaclass.STEREOTYPE,
                 s("icon", "图标", REFS, EXP),
                 d("profile", "所属剖面（派生）", REF));
@@ -726,6 +739,9 @@ public final class PropertyCatalog {
                 s("documentation", "文档", TXT, STD),
                 s("stereotypes", "构造型", STRS, STD),
                 s("taggedValues", "标记值（JSON 对象）", TXT, EXP),
+                // 「扩展的元类」：模型对象与元模型之间的那条可追溯的连接。
+                // 值是通用扩展包里的元类元素 id，界面据此渲染引用卡片并支持右键树上高亮。
+                s("extendsMetaclass", "扩展的元类", REF, STD, "METACLASS"),
                 d("id", "模型 ID（系统）", STR),
                 d("xmiId", "XMI ID（系统）", STR),
                 d("ownerId", "所有者 ID（系统）", REF),
@@ -758,6 +774,8 @@ public final class PropertyCatalog {
         roots(ElementType.MODEL_LIBRARY, UmlMetaclass.MODEL);
         roots(ElementType.PROFILE, UmlMetaclass.PROFILE);
         roots(ElementType.STEREOTYPE, UmlMetaclass.STEREOTYPE);
+        // 元类即「实例是 Class 的 Class」（UML 2.5.1 §7.5），因此沿用 Class 的属性链。
+        roots(ElementType.METACLASS, UmlMetaclass.CLASS);
         roots(ElementType.REQUIREMENT, UmlMetaclass.SYSML_REQUIREMENT);
         roots(ElementType.TEST_CASE, UmlMetaclass.SYSML_TEST_CASE);
         roots(ElementType.BLOCK, UmlMetaclass.SYSML_BLOCK);
@@ -826,19 +844,24 @@ public final class PropertyCatalog {
     }
 
     private static Spec s(String key, String label, ValueKind kind, Level level) {
-        return new Spec(key, key, label, kind, level, false, List.of(), null);
+        return new Spec(key, key, label, kind, level, false, List.of(), null, null);
+    }
+
+    /** 引用型属性：声明期望的目标元素类型，供界面收敛候选列表。 */
+    private static Spec s(String key, String label, ValueKind kind, Level level, String referenceTarget) {
+        return new Spec(key, key, label, kind, level, false, List.of(), null, referenceTarget);
     }
 
     private static Spec d(String key, String label, ValueKind kind) {
-        return new Spec(key, key, label, kind, Level.DERIVED, true, List.of(), null);
+        return new Spec(key, key, label, kind, Level.DERIVED, true, List.of(), null, null);
     }
 
     private static Spec e(String key, String label, Level level, String... options) {
-        return new Spec(key, key, label, ValueKind.ENUM, level, false, List.of(options), null);
+        return new Spec(key, key, label, ValueKind.ENUM, level, false, List.of(options), null, null);
     }
 
     private static Spec ed(String key, String label, String... options) {
-        return new Spec(key, key, label, ValueKind.ENUM, Level.DERIVED, true, List.of(options), null);
+        return new Spec(key, key, label, ValueKind.ENUM, Level.DERIVED, true, List.of(options), null, null);
     }
 
     private static void mc(UmlMetaclass metaclass, Spec... specs) {
@@ -846,13 +869,25 @@ public final class PropertyCatalog {
         for (Spec spec : specs) {
             rows.add(new PropertySpec(spec.key(), spec.umlName(), spec.label(),
                     metaclass.name(), metaclass.umlName(), metaclass.label(), metaclass.spec(),
-                    spec.kind(), spec.level(), spec.computed(), spec.options(), spec.defaultValue()));
+                    spec.kind(), spec.level(), spec.computed(), spec.options(), spec.defaultValue(),
+                    spec.referenceTarget()));
         }
         BY_METACLASS.put(metaclass, List.copyOf(rows));
     }
 
     private static void roots(ElementType type, UmlMetaclass... metaclasses) {
         ROOTS.put(type, List.of(metaclasses));
+    }
+
+    /**
+     * 该元素类型直接对应的元类（继承链起点）。
+     *
+     * <p>通用扩展包用它把构造型落到正确的元类上：例如 «block» 落在 Block 元类、
+     * «requirement» 落在 Requirement 元类。</p>
+     */
+    public static UmlMetaclass rootMetaclass(ElementType type) {
+        List<UmlMetaclass> roots = ROOTS.get(type);
+        return roots == null || roots.isEmpty() ? UmlMetaclass.NAMED_ELEMENT : roots.get(0);
     }
 
     private static void relationChain(RelationshipType type, UmlMetaclass... metaclasses) {
@@ -869,8 +904,7 @@ public final class PropertyCatalog {
     }
 
     /** 该元素类型在继承链上的全部元类，具体元类在前。 */
-    public static List<UmlMetaclass> metaclassesOf(ElementType type) {
-        LinkedHashSet<UmlMetaclass> chain = new LinkedHashSet<>();
+    public static List<UmlMetaclass> metaclassesOf(ElementType type) {        LinkedHashSet<UmlMetaclass> chain = new LinkedHashSet<>();
         for (UmlMetaclass root : ROOTS.getOrDefault(type, List.of(UmlMetaclass.NAMED_ELEMENT))) {
             collect(root, chain);
         }
@@ -948,7 +982,8 @@ public final class PropertyCatalog {
     private static PropertySpec asDerived(PropertySpec spec) {
         return new PropertySpec(spec.key(), spec.umlName(), spec.label(),
                 spec.metaclass(), spec.metaclassName(), spec.metaclassLabel(), spec.spec(),
-                ValueKind.REFERENCE, Level.DERIVED, true, spec.options(), spec.defaultValue());
+                ValueKind.REFERENCE, Level.DERIVED, true, spec.options(), spec.defaultValue(),
+                spec.referenceTarget());
     }
 
     public static List<PropertySpec> filter(RelationshipType type, View view) {

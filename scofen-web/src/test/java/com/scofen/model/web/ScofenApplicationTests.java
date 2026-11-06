@@ -1,6 +1,7 @@
 package com.scofen.model.web;
 
 import com.scofen.model.core.CommandExecutor;
+import com.scofen.model.metamodel.ExtensionLibrary;
 import com.scofen.model.metamodel.ModelElement;
 import com.scofen.model.metamodel.ModelSnapshot;
 import com.scofen.model.web.api.ModelController;
@@ -24,9 +25,11 @@ class ScofenApplicationTests {
     void contextLoadsAndSeedsHierarchicalModelAndAllNineDiagrams() {
         ModelSnapshot snapshot = executor.snapshot();
         assertThat(snapshot.diagrams()).hasSize(9);
-        assertThat(snapshot.elements()).hasSize(21);
+        // 21 个示例元素 + 通用扩展包（SysML / UML 的元类与构造型）
+        assertThat(snapshot.elements()).hasSize(21 + ExtensionLibrary.size());
         assertThat(snapshot.elements()).extracting(ModelElement::id)
-                .contains("model-root", "pkg-1", "pkg-ctrl", "e-vcu", "part-vcu", "r-range", "life-user");
+                .contains("model-root", "pkg-1", "pkg-ctrl", "e-vcu", "part-vcu", "r-range", "life-user",
+                        ExtensionLibrary.SYSML_PROFILE_ID, ExtensionLibrary.UML_PROFILE_ID);
         // 项目根 Model 是唯一顶层节点，既有顶层包已 reparent 到它下面
         assertThat(snapshot.elements()).filteredOn(e -> e.id().equals("model-root"))
                 .singleElement().satisfies(root -> {
@@ -48,8 +51,19 @@ class ScofenApplicationTests {
     }
 
     @Test
-    void containmentRulesAreExposedToTheBrowser() {
-        var containment = controller.containment();
+    void seededElementsPointAtTheirMetaclassInsideTheExtensionPackage() {
+        ModelSnapshot snapshot = executor.snapshot();
+        ModelElement vcu = snapshot.elements().stream()
+                .filter(item -> item.id().equals("e-vcu"))
+                .findFirst()
+                .orElseThrow();
+        // 「扩展的元类」指向通用扩展包里的元类元素，属性面板可据此右键定位
+        assertThat(vcu.properties()).containsEntry("extendsMetaclass", "mc-SYSML_BLOCK");
+        assertThat(snapshot.elements()).extracting(ModelElement::id).contains("mc-SYSML_BLOCK", "st-block");
+    }
+
+    @Test
+    void containmentRulesAreExposedToTheBrowser() {        var containment = controller.containment();
         assertThat(containment).containsKeys("rootTypes", "rules", "types", "canvas", "node");
         assertThat(containment.get("rootTypes"))
                 .isEqualTo(java.util.List.of("PACKAGE", "MODEL", "MODEL_LIBRARY", "PROFILE"));

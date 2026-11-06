@@ -3,6 +3,7 @@ import type {
   CommandRequest,
   ContainmentSpec,
   DiagramSpec,
+  ExtensionCatalog,
   Health,
   ModelSnapshot,
   Patch,
@@ -106,6 +107,8 @@ export const getRelationships = () =>
 export const getContainment = () => request<ContainmentSpec>(`${BASE}api/metamodel/containment`)
 export const getProperties = () =>
   request<PropertyCatalogInfo>(`${BASE}api/metamodel/properties`)
+export const getExtensionPackages = () =>
+  request<ExtensionCatalog>(`${BASE}api/metamodel/extension`)
 export const getWorkspaces = () => request<WorkspaceDirectoryInfo>(`${BASE}api/workspaces`)
 export const createProject = (payload: { spaceCode: string; name: string; description: string }) =>
   request<{ id: string; name: string; spaceCode: string }>(`${BASE}api/workspaces/projects`, {

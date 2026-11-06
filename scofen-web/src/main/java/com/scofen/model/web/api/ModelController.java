@@ -8,6 +8,7 @@ import com.scofen.model.core.ValidationEngine;
 import com.scofen.model.metamodel.ContainmentRules;
 import com.scofen.model.metamodel.DiagramKind;
 import com.scofen.model.metamodel.ElementType;
+import com.scofen.model.metamodel.ExtensionLibrary;
 import com.scofen.model.metamodel.MetamodelRegistry;
 import com.scofen.model.metamodel.ModelSnapshot;
 import com.scofen.model.metamodel.PropertyCatalog;
@@ -129,10 +130,32 @@ public class ModelController {
         return PropertyCatalog.describe();
     }
 
+    /**
+     * 通用扩展包清单：SysML / UML 的元类与构造型随每个项目提供。
+     *
+     * <p>界面据此把扩展包在模型树里默认折叠，并标出「通用」字样——
+     * 否则一百多个元类会淹没用户自己的模型。</p>
+     */
+    @GetMapping("/metamodel/extension")
+    public Map<String, Object> extension() {
+        List<Map<String, Object>> packages = new ArrayList<>();
+        for (ExtensionLibrary.PackageInfo info : ExtensionLibrary.packages()) {
+            packages.add(Map.of(
+                    "id", info.id(),
+                    "parentId", info.parentId() == null ? "" : info.parentId(),
+                    "kind", info.kind(),
+                    "name", info.name(),
+                    "label", info.label(),
+                    "labelEn", info.labelEn(),
+                    "metaclassCount", info.metaclassCount(),
+                    "stereotypeCount", info.stereotypeCount()));
+        }
+        return Map.of("packages", packages);
+    }
+
     /** 元模型包含规则下发给前端：右键菜单只列出规范允许的父子组合。 */
     @GetMapping("/metamodel/containment")
-    public Map<String, Object> containment() {
-        List<Map<String, Object>> rules = new ArrayList<>();
+    public Map<String, Object> containment() {        List<Map<String, Object>> rules = new ArrayList<>();
         for (ElementType parent : ElementType.values()) {
             rules.add(Map.of(
                     "parent", parent.name(),

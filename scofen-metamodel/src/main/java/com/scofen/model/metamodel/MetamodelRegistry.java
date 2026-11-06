@@ -42,7 +42,8 @@ public final class MetamodelRegistry {
     static {
         register(DiagramKind.PKG,
                 EnumSet.of(ElementType.PACKAGE, ElementType.MODEL, ElementType.MODEL_LIBRARY,
-                        ElementType.PROFILE, ElementType.STEREOTYPE, ElementType.COMMENT),
+                        ElementType.PROFILE, ElementType.STEREOTYPE, ElementType.METACLASS,
+                        ElementType.COMMENT),
                 rel("containment", "import", "access", "generalization"),
                 LAYOUT_ELK, "namespace");
         register(DiagramKind.REQ,

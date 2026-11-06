@@ -2,9 +2,13 @@ package com.scofen.model.web.project;
 
 import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
+import com.scofen.model.core.ExtensionSeeder;
 import com.scofen.model.core.InMemoryModelRepository;
 import com.scofen.model.core.ValidationEngine;
 import com.scofen.model.metamodel.DiagramKind;
+import com.scofen.model.metamodel.ElementType;
+import com.scofen.model.metamodel.ExtensionLibrary;
+import com.scofen.model.metamodel.PropertyCatalog;
 import com.scofen.model.web.workspace.WorkspaceDirectory;
 import com.scofen.model.web.ws.PatchBroker;
 import org.springframework.stereotype.Component;
@@ -70,6 +74,11 @@ public class ProjectRegistry {
                 .orElse("新建项目");
         run(executor, "CREATE_ELEMENT", Map.of(
                 "id", "model-root", "type", "Model", "name", name, "ownerId", ""));
+        // 通用扩展包随项目一起提供：SysML / UML 的元类与构造型。
+        ExtensionSeeder.seed(executor, "model-root");
+        run(executor, "UPDATE_PROPERTY", Map.of(
+                "id", "model-root", "key", "extendsMetaclass",
+                "value", ExtensionLibrary.metaclassId(PropertyCatalog.rootMetaclass(ElementType.MODEL))));
         for (DiagramKind kind : DiagramKind.values()) {
             run(executor, "CREATE_DIAGRAM", Map.of(
                     "id", "d-" + kind.code(),

@@ -2,6 +2,7 @@ package com.scofen.model.web.config;
 
 import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
+import com.scofen.model.core.ExtensionSeeder;
 import com.scofen.model.core.InMemoryModelRepository;
 import com.scofen.model.core.NoopPersistenceService;
 import com.scofen.model.core.PersistenceService;
@@ -9,6 +10,8 @@ import com.scofen.model.core.UndoStack;
 import com.scofen.model.core.ValidationEngine;
 import com.scofen.model.metamodel.DiagramKind;
 import com.scofen.model.metamodel.ElementType;
+import com.scofen.model.metamodel.ExtensionLibrary;
+import com.scofen.model.metamodel.PropertyCatalog;
 import com.scofen.model.web.auth.AuthService;
 import com.scofen.model.web.ws.PatchBroker;
 import com.scofen.model.web.ws.PatchWebSocketHandler;
@@ -69,7 +72,17 @@ public class RepositoryConfiguration {
                 }
             }
             // 项目根：SysML 的 Model 是模型树的唯一顶层节点，所有包/图都归其所有（直接或间接）。
-            element(executor, "model-root", "Model", "车载动力系统工程模型", "");
+            element(executor, "model-root", "Model", "车载动力系统工程模型", "", false);
+
+            // 通用扩展包：SysML / UML 的元类与构造型随项目提供，
+            // 属性面板里的「扩展的元类」「构造型」因此可以右键在模型树上定位。
+            ExtensionSeeder.seed(executor, "model-root");
+
+            // 项目根也是 Model 元类的实例，此时扩展包已就位，可以补上这条引用。
+            run(executor, "UPDATE_PROPERTY", Map.of(
+                    "id", "model-root", "key", "extendsMetaclass",
+                    "value", ExtensionLibrary.metaclassId(PropertyCatalog.rootMetaclass(ElementType.MODEL))));
+
             element(executor, "pkg-1", "Package", "车载动力系统", "model-root");
             element(executor, "pkg-ctrl", "Package", "控制域", "pkg-1");
             element(executor, "e-vcu", "Block", "整车控制器", "pkg-ctrl");
@@ -138,10 +151,27 @@ public class RepositoryConfiguration {
     }
 
     private static void element(CommandExecutor executor, String id, String type, String name, String ownerId) {
+        element(executor, id, type, name, ownerId, true);
+    }
+
+    /**
+     * 种子元素。
+     *
+     * <p>元素自带「扩展的元类」：指向通用扩展包里的元类元素，
+     * 属性面板里因此可以右键在模型树上定位到这条元类。
+     * 项目根例外——它必须先于扩展包存在，那条引用随后单独补写。</p>
+     */
+    private static void element(CommandExecutor executor, String id, String type, String name, String ownerId,
+                                boolean withMetaclass) {
         String stereotype = ElementType.fromAny(type).map(ElementType::stereotype).orElse("");
+        Map<String, Object> properties = new LinkedHashMap<>();
+        if (withMetaclass) {
+            ElementType.fromAny(type).ifPresent(elementType -> properties.put(
+                    "extendsMetaclass", ExtensionLibrary.metaclassId(PropertyCatalog.rootMetaclass(elementType))));
+        }
         run(executor, "CREATE_ELEMENT", Map.of(
                 "id", id, "type", type, "name", name, "ownerId", ownerId,
-                "stereotypes", List.of(stereotype)));
+                "stereotypes", List.of(stereotype), "properties", properties));
     }
 
     private static void run(CommandExecutor executor, String type, Map<String, Object> payload) {

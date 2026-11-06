@@ -1,0 +1,234 @@
+package com.scofen.model.core;
+
+import com.scofen.model.metamodel.ElementType;
+import com.scofen.model.metamodel.ExtensionLibrary;
+import com.scofen.model.metamodel.ModelElement;
+import com.scofen.model.metamodel.ModelSnapshot;
+import com.scofen.model.metamodel.UmlMetaclass;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+
+/** 通用扩展包：SysML / UML 的元类与构造型随每个项目提供，并可被引用定位。 */
+class ExtensionLibraryTest {
+
+    private static final String SESSION = "extension-session";
+
+    private final List<Patch> published = new ArrayList<>();
+    private final PatchSink sink = published::add;
+    private CommandExecutor executor;
+    private int counter;
+
+    @BeforeEach
+    void setUp() {
+        published.clear();
+        counter = 0;
+        executor = new CommandExecutor(new InMemoryModelRepository(), new ValidationEngine(), sink);
+        executor.execute(SESSION, Command.of("CREATE_ELEMENT", executor.revision(), "root",
+                Map.of("id", "model-root", "type", "Model", "name", "示例项目", "ownerId", "")));
+    }
+
+    private Patch cmd(String type, Map<String, Object> payload) {
+        return executor.execute(SESSION,
+                Command.of(type, executor.revision(), "ext-" + (++counter), payload));
+    }
+
+    private ModelElement element(String id) {
+        return executor.snapshot().elements().stream()
+                .filter(item -> item.id().equals(id))
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("元素不存在: " + id));
+    }
+
+    private ModelElement elementOrNull(String id) {
+        return executor.snapshot().elements().stream()
+                .filter(item -> item.id().equals(id))
+                .findFirst()
+                .orElse(null);
+    }
+
+    @Test
+    void everyProjectGetsBothGenericExtensionPackages() {
+        ExtensionSeeder.seed(executor, "model-root");
+        ModelSnapshot snapshot = executor.snapshot();
+
+        assertThat(snapshot.elements()).hasSize(1 + ExtensionLibrary.size());
+        assertThat(element(ExtensionLibrary.SYSML_PROFILE_ID).name()).isEqualTo("SysML 扩展包");
+        assertThat(element(ExtensionLibrary.UML_PROFILE_ID).name()).isEqualTo("UML 扩展包");
+        assertThat(element(ExtensionLibrary.SYSML_PROFILE_ID).type()).isEqualTo("PROFILE");
+        // 扩展包挂在项目根下，是项目的公共内容
+        assertThat(element(ExtensionLibrary.SYSML_PROFILE_ID).ownerId()).isEqualTo("model-root");
+    }
+
+    @Test
+    void extensionPackageCarriesMetaclassesAndStereotypes() {
+        ExtensionSeeder.seed(executor, "model-root");
+
+        long metaclassCount = executor.snapshot().elements().stream()
+                .filter(item -> "METACLASS".equals(item.type()))
+                .count();
+        long stereotypeCount = executor.snapshot().elements().stream()
+                .filter(item -> "STEREOTYPE".equals(item.type()))
+                .count();
+
+        // 每个规范元类（除实现层系统属性外）都有对应的元类元素
+        long expected = java.util.Arrays.stream(UmlMetaclass.values())
+                .filter(mc -> mc != UmlMetaclass.SCOFEN_CORE && mc != UmlMetaclass.SCOFEN_RELATION)
+                .count();
+        assertThat(metaclassCount).isEqualTo(expected);
+        assertThat(stereotypeCount).isEqualTo(ElementType.values().length);
+    }
+
+    @Test
+    void metaclassInheritanceIsExpressedAsResolvableReference() {
+        ExtensionSeeder.seed(executor, "model-root");
+        Set<String> ids = new HashSet<>(executor.snapshot().elements().stream()
+                .map(ModelElement::id).toList());
+
+        for (UmlMetaclass metaclass : UmlMetaclass.values()) {
+            if (metaclass == UmlMetaclass.SCOFEN_CORE || metaclass == UmlMetaclass.SCOFEN_RELATION) {
+                continue;
+            }
+            ModelElement element = element(ExtensionLibrary.metaclassId(metaclass));
+            Object parent = element.properties().get("extendsMetaclass");
+            if (metaclass.parents().isEmpty()) {
+                // 元模型的最顶层（Element）没有父元类
+                assertThat(parent).as("%s 是元模型顶层", element.name()).isNull();
+                continue;
+            }
+            assertThat(parent).as("%s 的父元类", element.name()).isNotNull();
+            assertThat(ids).contains(String.valueOf(parent));
+        }
+    }
+
+    @Test
+    void sysMLMetaclassInheritsFromUMLMetaclass() {
+        ExtensionSeeder.seed(executor, "model-root");
+
+        // SysML 的块扩展自 UML 的类
+        ModelElement block = element(ExtensionLibrary.metaclassId(UmlMetaclass.SYSML_BLOCK));
+        assertThat(block.ownerId()).isEqualTo(ExtensionLibrary.SYSML_PROFILE_ID + ExtensionLibrary.METACLASS_PACKAGE_SUFFIX);
+        assertThat(String.valueOf(block.properties().get("extendsMetaclass")))
+                .isEqualTo(ExtensionLibrary.metaclassId(UmlMetaclass.CLASS));
+
+        // SysML 的需求扩展自 UML 的类
+        ModelElement requirement = element(ExtensionLibrary.metaclassId(UmlMetaclass.SYSML_REQUIREMENT));
+        assertThat(String.valueOf(requirement.properties().get("extendsMetaclass")))
+                .isEqualTo(ExtensionLibrary.metaclassId(UmlMetaclass.CLASS));
+    }
+
+    @Test
+    void stereotypeSpecializesTheMetaclassItAppliesTo() {
+        ExtensionSeeder.seed(executor, "model-root");
+
+        ModelElement blockStereotype = element(ExtensionLibrary.stereotypeId("block"));
+        assertThat(blockStereotype.type()).isEqualTo("STEREOTYPE");
+        assertThat(String.valueOf(blockStereotype.properties().get("extendsMetaclass")))
+                .isEqualTo(ExtensionLibrary.metaclassId(UmlMetaclass.SYSML_BLOCK));
+
+        ModelElement requirementStereotype = element(ExtensionLibrary.stereotypeId("requirement"));
+        assertThat(String.valueOf(requirementStereotype.properties().get("extendsMetaclass")))
+                .isEqualTo(ExtensionLibrary.metaclassId(UmlMetaclass.SYSML_REQUIREMENT));
+    }
+
+    @Test
+    void elementCanReferenceItsMetaclassAndLocateItInTheTree() {
+        ExtensionSeeder.seed(executor, "model-root");
+        cmd("CREATE_ELEMENT", Map.of("id", "e-vcu", "type", "Block", "name", "整车控制器",
+                "ownerId", "model-root", "stereotypes", List.of("block")));
+
+        // 「扩展的元类」指向扩展包里的元类元素
+        cmd("UPDATE_PROPERTY", Map.of("id", "e-vcu", "key", "extendsMetaclass",
+                "value", ExtensionLibrary.metaclassId(UmlMetaclass.SYSML_BLOCK)));
+        assertThat(element("e-vcu").properties().get("extendsMetaclass"))
+                .isEqualTo(ExtensionLibrary.metaclassId(UmlMetaclass.SYSML_BLOCK));
+
+        // 指向不存在的元类必须被服务端拒绝
+        assertThatThrownBy(() -> cmd("UPDATE_PROPERTY", Map.of("id", "e-vcu",
+                "key", "extendsMetaclass", "value", "mc-NOT-A-METACLASS")))
+                .hasMessageContaining("引用的元素不存在");
+    }
+
+    @Test
+    void bulkCreateIsOneRevisionAndReversible() {
+        long before = executor.revision();
+        cmd("CREATE_ELEMENTS", Map.of("elements", List.of(
+                Map.of("id", "p-1", "type", "Package", "name", "包一", "ownerId", "model-root"),
+                Map.of("id", "p-2", "type", "Package", "name", "包二", "ownerId", "p-1"))));
+
+        assertThat(executor.revision()).isEqualTo(before + 1);
+        assertThat(element("p-1").ownerId()).isEqualTo("model-root");
+        assertThat(element("p-2").ownerId()).isEqualTo("p-1");
+
+        executor.undo(SESSION);
+        assertThat(executor.snapshot().elements()).hasSize(1);
+    }
+
+    @Test
+    void bulkCreateRejectsDuplicateNamesWithinTheSameBatch() {
+        assertThatThrownBy(() -> cmd("CREATE_ELEMENTS", Map.of("elements", List.of(
+                Map.of("id", "d-1", "type", "Package", "name", "同名包", "ownerId", "model-root"),
+                Map.of("id", "d-2", "type", "Package", "name", "同名包", "ownerId", "model-root")))))
+                .hasMessageContaining("Duplicate element name");
+    }
+
+    @Test
+    void bulkCreateRejectsDanglingMetaclassReference() {
+        assertThatThrownBy(() -> cmd("CREATE_ELEMENTS", Map.of("elements", List.of(
+                Map.of("id", "m-1", "type", "METACLASS", "name", "孤儿元类", "ownerId", "model-root",
+                        "properties", Map.of("extendsMetaclass", "mc-MISSING"))))))
+                .hasMessageContaining("引用的元素不存在");
+    }
+
+    @Test
+    void extensionPackageCannotBeDeletedWholesale() {
+        ExtensionSeeder.seed(executor, "model-root");
+        assertThatThrownBy(() -> cmd("DELETE_ELEMENT",
+                Map.of("id", ExtensionLibrary.SYSML_PROFILE_ID)))
+                .hasMessageContaining("通用扩展包不可删除");
+        // 包内的具体元类仍可自行增删
+        cmd("DELETE_ELEMENT", Map.of("id", ExtensionLibrary.metaclassId(UmlMetaclass.SYSML_VIEW)));
+        assertThat(elementOrNull(ExtensionLibrary.metaclassId(UmlMetaclass.SYSML_VIEW))).isNull();
+    }
+
+    @Test
+    void packageCatalogDescribesTheWholeExtensionSubtree() {
+        List<ExtensionLibrary.PackageInfo> packages = ExtensionLibrary.packages();
+
+        // 两个顶层扩展包 + 每个扩展包下的「元类」「构造型」两个子包
+        assertThat(packages).hasSize(6);
+        assertThat(packages).extracting(ExtensionLibrary.PackageInfo::id)
+                .containsExactlyInAnyOrder(
+                        ExtensionLibrary.SYSML_PROFILE_ID,
+                        ExtensionLibrary.UML_PROFILE_ID,
+                        ExtensionLibrary.SYSML_PROFILE_ID + ExtensionLibrary.METACLASS_PACKAGE_SUFFIX,
+                        ExtensionLibrary.SYSML_PROFILE_ID + ExtensionLibrary.STEREOTYPE_PACKAGE_SUFFIX,
+                        ExtensionLibrary.UML_PROFILE_ID + ExtensionLibrary.METACLASS_PACKAGE_SUFFIX,
+                        ExtensionLibrary.UML_PROFILE_ID + ExtensionLibrary.STEREOTYPE_PACKAGE_SUFFIX);
+
+        // 顶层扩展包没有父，子包挂在各自的扩展包下
+        ExtensionLibrary.PackageInfo sysml = packages.stream()
+                .filter(item -> ExtensionLibrary.SYSML_PROFILE_ID.equals(item.id()))
+                .findFirst().orElseThrow();
+        assertThat(sysml.parentId()).isNull();
+        assertThat(sysml.kind()).isEqualTo("PROFILE");
+
+        ExtensionLibrary.PackageInfo sysmlMetaclasses = packages.stream()
+                .filter(item -> (ExtensionLibrary.SYSML_PROFILE_ID + ExtensionLibrary.METACLASS_PACKAGE_SUFFIX)
+                        .equals(item.id()))
+                .findFirst().orElseThrow();
+        assertThat(sysmlMetaclasses.parentId()).isEqualTo(ExtensionLibrary.SYSML_PROFILE_ID);
+        assertThat(sysmlMetaclasses.kind()).isEqualTo("PACKAGE");
+        // 子包计数 = 其直接子元素数，与扩展包内的实际数量一致
+        assertThat(sysmlMetaclasses.metaclassCount()).isPositive();
+        assertThat(sysmlMetaclasses.stereotypeCount()).isZero();
+    }
+}

@@ -5,6 +5,7 @@ import {
   createProject,
   getContainment,
   getDiagrams,
+  getExtensionPackages,
   getHealth,
   getModel,
   getProjectId,
@@ -25,6 +26,7 @@ import type {
   Diagram,
   DiagramSpec,
   ElementTypeInfo,
+  ExtensionPackageInfo,
   Health,
   ModelElement,
   ModelSnapshot,
@@ -227,10 +229,15 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [treeLocateId, setTreeLocateId] = useState<string | null>(null)
   // 引用选择器：当前打开的属性（key）与其在数组中的位置（-1 表示单值引用）。
   const [refPicker, setRefPicker] = useState<{ key: string; index: number } | null>(null)
+  // 引用 / 构造型选择器的名称过滤：扩展包里有上百个元类，需要能按名字收敛。
+  const [refSearch, setRefSearch] = useState('')
   // 列表型属性的待提交草稿：键为「属性 key」。
   const [listDraft, setListDraft] = useState<Record<string, string>>({})
   // 空间 / 项目导航：列表收进顶栏项目选择器，完整面板按需展开为左侧抽屉。
   const [workspace, setWorkspace] = useState<WorkspaceDirectoryInfo | null>(null)
+  // 通用扩展包清单：SysML / UML 的元类与构造型随项目提供，模型树默认折叠它们。
+  const [extensionPackages, setExtensionPackages] = useState<ExtensionPackageInfo[]>([])
+  const [extensionCatalogReady, setExtensionCatalogReady] = useState(false)
   const [openSpaces, setOpenSpaces] = useState<Set<string>>(() => new Set(['personal', 'team']))
   const [activeProjectId, setActiveProjectId] = useState(() => getProjectId())
   const [projectPickerOpen, setProjectPickerOpen] = useState(false)
@@ -283,6 +290,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     getProperties()
       .then(setPropCatalog)
       .catch((error: unknown) => say('属性目录加载失败：{error}', { error: errorMessage(error) }))
+    // 通用扩展包清单：用于在模型树里识别并折叠系统提供的公共内容。
+    getExtensionPackages()
+      .then((catalog) => setExtensionPackages(catalog.packages ?? []))
+      .catch(() => setExtensionPackages([]))
+      .finally(() => setExtensionCatalogReady(true))
   }, [])
 
   // 首次进入与每次「打开项目」都重新拉取该项目的权威快照。
@@ -462,20 +474,43 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     [codeOf],
   )
 
+  // 扩展包元素 id 集合：模型树默认不展开它们，避免上百个元类淹没用户模型。
+  const extensionPackageIds = useMemo(
+    () => new Set(extensionPackages.map((item) => item.id)),
+    [extensionPackages],
+  )
+  // 顶层扩展包（SysML / UML 扩展包）本身：在树上标「通用」以便与用户模型区分。
+  const extensionRootIds = useMemo(
+    () =>
+      new Set(
+        extensionPackages
+          .filter((item) => (item.kind ?? 'PROFILE') === 'PROFILE')
+          .map((item) => item.id),
+      ),
+    [extensionPackages],
+  )
+
   useEffect(() => {
+    // 扩展包清单未就绪前不做自动展开：否则一百多个元类会先把树铺满再被折叠。
+    if (!extensionCatalogReady) {
+      return
+    }
     setExpanded((previous) => {
       if (previous.size > 0) {
         return previous
       }
       const next = new Set<string>()
       for (const element of model.elements) {
+        if (extensionPackageIds.has(element.id)) {
+          continue
+        }
         if ((childrenByOwner.get(element.id) ?? []).length > 0) {
           next.add(element.id)
         }
       }
       return next
     })
-  }, [childrenByOwner, model.elements])
+  }, [childrenByOwner, model.elements, extensionCatalogReady, extensionPackageIds])
 
   const descendants = useCallback(
     (id: string): string[] => {
@@ -503,6 +538,20 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     () => new Map(model.elements.map((element) => [element.id, element])),
     [model.elements],
   )
+
+  /**
+   * 构造型名 → 构造型元素：通用扩展包把 SysML / UML 的构造型物化成模型元素，
+   * 元素的构造型属性存的仍是构造型名，因此按名解析即可还原成可定位的引用。
+   */
+  const stereotypeByName = useMemo(() => {
+    const map = new Map<string, ModelElement>()
+    for (const element of model.elements) {
+      if (codeOf(element.type) === 'STEREOTYPE') {
+        map.set(element.name.trim().toLowerCase(), element)
+      }
+    }
+    return map
+  }, [model.elements, codeOf])
 
   const selectedDiagram = useMemo(
     () => model.diagrams.find((diagram) => diagram.id === selectedDiagramId) ?? null,
@@ -820,23 +869,99 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }
 
   /**
+   * 构造型 chip：构造型属性存的是构造型名，按名解析到通用扩展包里的构造型元素，
+   * 于是它同样能以「缩略图 + 名称 + id」呈现，右键即可在模型树上定位。
+   * 解析不到（用户自造的构造型名）时退回普通文本。
+   */
+  const renderStereotypeChip = (
+    spec: PropertySpec,
+    stereotypeName: string,
+    index: number,
+  ): ReactNode => {
+    const target = stereotypeByName.get(stereotypeName.trim().toLowerCase())
+    if (!target) {
+      return <span className="prop-chip-text">{stereotypeName}</span>
+    }
+    return renderReferenceCard(spec, target.id, index)
+  }
+
+  /**
+   * 构造型选择器：列出通用扩展包提供的 SysML / UML 构造型，点击即加入构造型列表。
+   *
+   * <p>构造型属性的值仍是构造型名（与 XMI 导出保持一致），
+   * 但名字背后对应扩展包里的一个真实构造型元素。</p>
+   */
+  const renderStereotypePicker = (
+    onPick: (stereotypeName: string) => void,
+  ): ReactNode => {
+    const keyword = refSearch.trim().toLowerCase()
+    const candidates = Array.from(stereotypeByName.values())
+      .filter((element) => !keyword || element.name.toLowerCase().includes(keyword))
+      .sort((a, b) => a.name.localeCompare(b.name))
+    return (
+      <div className="prop-ref-picker-wrap">
+        <div className="prop-ref-search">
+          <input
+            value={refSearch}
+            placeholder={t('按名称过滤')}
+            onChange={(event) => setRefSearch(event.target.value)}
+          />
+          <span className="prop-ref-scope">{t('构造型')}</span>
+        </div>
+        <div className="prop-ref-picker">
+          {candidates.length === 0
+            ? <p className="hint">{t('没有匹配的构造型')}</p>
+            : candidates.map((element) => (
+              <button
+                key={element.id}
+                type="button"
+                className="prop-ref-option"
+                onClick={() => onPick(element.name)}
+              >
+                <TypeIcon code={codeOf(element.type)} size={14} />
+                <span className="prop-ref-name">{element.name}</span>
+                <span className="prop-ref-type">{typeLabel(element.type)}</span>
+              </button>
+            ))}
+        </div>
+        <button type="button" className="prop-link" onClick={() => setRefPicker(null)}>{t('取消')}</button>
+      </div>
+    )
+  }
+
+  /**
    * 引用选择器：列出可被引用的模型元素（缩略图 + 名称 + 类型），点击即选中。
    *
    * <p>可选元素按全模型列出（与当前图无关），排除自己避免自引用；
-   * 顶部保留「直接输入 id」入口——部分规范属性引用的是模型中尚未建模的实例。</p>
+   * 若服务端声明了 {@code referenceTarget}（元类引用只列元类、构造型引用只列构造型），
+   * 候选就收敛到该类型；顶部保留「直接输入 id」入口——部分规范属性引用的是
+   * 模型中尚未建模的实例。</p>
    */
   const renderReferencePicker = (
     spec: PropertySpec,
     onPick: (elementId: string) => void,
   ): ReactNode => {
+    const keyword = refSearch.trim().toLowerCase()
     const candidates = model.elements
       .filter((element) => element.id !== propTargetId)
+      .filter((element) => !spec.referenceTarget || codeOf(element.type) === spec.referenceTarget)
+      .filter((element) => !keyword || element.name.toLowerCase().includes(keyword))
       .slice()
       .sort((a, b) => a.name.localeCompare(b.name))
     const manualKey = `${propTargetId}:${spec.key}:manual`
     const manual = listDraft[manualKey] ?? ''
     return (
       <div className="prop-ref-picker-wrap">
+        <div className="prop-ref-search">
+          <input
+            value={refSearch}
+            placeholder={t('按名称过滤')}
+            onChange={(event) => setRefSearch(event.target.value)}
+          />
+          {spec.referenceTarget && (
+            <span className="prop-ref-scope">{typeLabel(spec.referenceTarget)}</span>
+          )}
+        </div>
         <div className="prop-ref-manual">
           <input
             value={manual}
@@ -905,6 +1030,41 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         void runCommand('UPDATE_PROPERTY', { id: propTargetId, key: spec.key, value: next })
       }
     }
+    // 内联输入：直接录入一个值（回车或点「添加」生效）。构造型属性另有选择器，
+    // 这里保留输入框是为了录入扩展包之外的自定义构造型名。
+    const inlineAdd = (
+      <div className="prop-inline-add">
+        <input
+          value={draft}
+          placeholder={t('输入后回车添加')}
+          onChange={(event) => setListDraft((previous) => ({ ...previous, [draftKey]: event.target.value }))}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              const text = draft.trim()
+              if (!text) {
+                return
+              }
+              commitList([...values, text])
+              setListDraft((previous) => ({ ...previous, [draftKey]: '' }))
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="prop-link"
+          disabled={!draft.trim()}
+          onClick={() => {
+            const text = draft.trim()
+            if (!text) {
+              return
+            }
+            commitList([...values, text])
+            setListDraft((previous) => ({ ...previous, [draftKey]: '' }))
+          }}
+        >{t('添加')}</button>
+      </div>
+    )
     return (
       <div className="prop-list-editor">
         <div className="prop-chips">
@@ -912,7 +1072,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             <span className="prop-chip" key={`${value}:${index}`}>
               {isReference
                 ? renderReferenceCard(spec, value, index)
-                : <span className="prop-chip-text">{value}</span>}
+                : spec.key === 'stereotypes'
+                  ? renderStereotypeChip(spec, value, index)
+                  : <span className="prop-chip-text">{value}</span>}
               <button
                 type="button"
                 className="prop-chip-x"
@@ -933,42 +1095,31 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <button
                 type="button"
                 className="prop-link"
-                onClick={() => setRefPicker({ key: spec.key, index: -1 })}
+                onClick={() => { setRefSearch(''); setRefPicker({ key: spec.key, index: -1 }) }}
               >{t('添加引用')}</button>
             )
+          ) : spec.key === 'stereotypes' ? (
+            // 构造型：从通用扩展包里挑，输入框仍保留给自造构造型名。
+            refPicker?.key === spec.key ? (
+              renderStereotypePicker((stereotypeName) => {
+                if (!values.includes(stereotypeName)) {
+                  commitList([...values, stereotypeName])
+                }
+                setRefPicker(null)
+              })
+            ) : (
+              <div className="prop-add-row">
+                <button
+                  type="button"
+                  className="prop-link"
+                  onClick={() => { setRefSearch(''); setRefPicker({ key: spec.key, index: -1 }) }}
+                >{t('选择构造型')}</button>
+                {inlineAdd}
+              </div>
+            )
           ) : (
-          <div className="prop-inline-add">
-            <input
-              value={draft}
-              placeholder={t('输入后回车添加')}
-              onChange={(event) => setListDraft((previous) => ({ ...previous, [draftKey]: event.target.value }))}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  const text = draft.trim()
-                  if (!text) {
-                    return
-                  }
-                  commitList([...values, text])
-                  setListDraft((previous) => ({ ...previous, [draftKey]: '' }))
-                }
-              }}
-            />
-            <button
-              type="button"
-              className="prop-link"
-              disabled={!draft.trim()}
-              onClick={() => {
-                const text = draft.trim()
-                if (!text) {
-                  return
-                }
-                commitList([...values, text])
-                setListDraft((previous) => ({ ...previous, [draftKey]: '' }))
-              }}
-            >{t('添加')}</button>
-          </div>
-        )}
+            inlineAdd
+          )}
       </div>
     )
   }
@@ -1051,7 +1202,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <button
                 type="button"
                 className="prop-link"
-                onClick={() => setRefPicker({ key: spec.key, index: 0 })}
+                onClick={() => { setRefSearch(''); setRefPicker({ key: spec.key, index: 0 }) }}
               >{current ? t('更换') : t('选择引用')}</button>
             )}
           </div>
@@ -1890,6 +2041,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const isOpen = expanded.has(node.ref.id)
     const info = isElement ? typeInfo.get(codeOf(element!.type)) : null
     const isRoot = isProjectRoot(element)
+    // 顶层扩展包：系统提供的公共内容，树上标「通用」以便与用户自己的模型区分。
+    const isExtensionRoot = isElement && extensionRootIds.has(element!.id)
     const isSelected = isElement ? selectedId === element!.id : selectedDiagramId === diagram!.id
     // 「树上高亮」的目标行：短暂高亮，便于用户在树上一眼看到定位结果。
     const isLocated = treeLocateId === node.ref.id
@@ -1981,6 +2134,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <span className="tree-label">{element!.name}</span>
               {isRoot ? (
                 <span className="root-tag" title={t('项目根节点模型，不可删除')}>{t('项目根')}</span>
+              ) : isExtensionRoot ? (
+                <span
+                  className="root-tag extension-tag"
+                  title={t('通用扩展包：SysML / UML 的元类与构造型随项目提供')}
+                >
+                  {t('通用')}
+                </span>
               ) : (
                 <span className="tree-type">{typeLabel(element!.type)}</span>
               )}
@@ -3044,6 +3204,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 <button type="button" className="disabled-hint" disabled title={t('项目根节点模型不可删除')}>
                   {t('项目根节点 · 不可删除')}
                 </button>
+              ) : extensionRootIds.has(menuElement!.id) ? (
+                // 通用扩展包随项目提供，服务端也会拒绝删除：这里直接给出不可用提示。
+                <button
+                  type="button"
+                  className="disabled-hint"
+                  disabled
+                  title={t('通用扩展包：SysML / UML 的元类与构造型随项目提供')}
+                >
+                  {t('通用扩展包 · 不可删除')}
+                </button>
               ) : (
                 <button
                   type="button"
@@ -3091,7 +3261,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 className="danger"
                 onClick={() => {
                   const spec = propEntry?.properties.find((item) => item.key === menuTarget.propKey)
-                  const ids = spec ? referenceIds(spec) : []
+                  // 构造型属性存的是构造型名（STRING_LIST），其余引用属性存元素 id。
+                  const ids = spec
+                    ? (spec.kind === 'STRING_LIST' ? stringList(spec) : referenceIds(spec))
+                    : []
                   const next = ids.filter((_, index) => index !== menuTarget.index)
                   void runCommand('UPDATE_PROPERTY', {
                     id: propTargetId,

@@ -4,6 +4,8 @@ import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.core.InMemoryModelRepository;
 import com.scofen.model.core.ValidationEngine;
+import com.scofen.model.metamodel.ExtensionLibrary;
+import com.scofen.model.metamodel.ModelElement;
 import com.scofen.model.web.workspace.WorkspaceDirectory;
 import com.scofen.model.web.ws.PatchBroker;
 import com.scofen.model.web.ws.PatchWebSocketHandler;
@@ -38,8 +40,11 @@ class ProjectRegistryTest {
     void openingOtherProjectSeedsRootModelAndNineEmptyDiagrams() {
         CommandExecutor opened = registry.resolve("project-req");
         assertThat(opened).isNotSameAs(primary);
-        assertThat(opened.snapshot().elements()).hasSize(1);
+        // 项目根 + 通用扩展包（SysML / UML 的元类与构造型）
+        assertThat(opened.snapshot().elements()).hasSize(1 + ExtensionLibrary.size());
         assertThat(opened.snapshot().elements().get(0).name()).isEqualTo("需求工程样例");
+        assertThat(opened.snapshot().elements()).extracting(ModelElement::id)
+                .contains(ExtensionLibrary.SYSML_PROFILE_ID, ExtensionLibrary.UML_PROFILE_ID);
         assertThat(opened.snapshot().diagrams()).hasSize(9);
         assertThat(registry.isOpened("project-req")).isTrue();
         assertThat(registry.resolve("project-req")).isSameAs(opened);
@@ -52,7 +57,7 @@ class ProjectRegistryTest {
         other.execute("session-1", Command.of("CREATE_ELEMENT", before, "c-1",
                 Map.of("id", "e-isolated", "type", "Package", "name", "只属于这个项目",
                         "ownerId", "model-root", "stereotypes", List.of("package"))));
-        assertThat(other.snapshot().elements()).hasSize(2);
+        assertThat(other.snapshot().elements()).hasSize(2 + ExtensionLibrary.size());
         assertThat(primary.snapshot().elements()).isEmpty();
         assertThat(primary.revision()).isZero();
     }
