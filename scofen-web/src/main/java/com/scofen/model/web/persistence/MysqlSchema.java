@@ -95,7 +95,7 @@ public final class MysqlSchema {
     }
 
     /** 幂等建表；进程内只执行一次。 */
-    static synchronized void ensure(JdbcTemplate jdbc) {
+    public static synchronized void ensure(JdbcTemplate jdbc) {
         if (ready) {
             return;
         }

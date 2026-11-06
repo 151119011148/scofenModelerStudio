@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 
 /** 账号接口：/login 公开，/me 与 /logout 由 AuthFilter 保护。 */
@@ -50,7 +51,9 @@ public class AuthController {
         return Map.of(
                 "username", principal.username(),
                 "displayName", principal.displayName(),
-                "admin", principal.admin());
+                "admin", principal.admin(),
+                "roles", List.copyOf(principal.roles()),
+                "permissions", List.copyOf(principal.permissions()));
     }
 
     /** JWT 无状态，服务端只需确认调用者仍持有有效 token；清 token 由前端完成。 */

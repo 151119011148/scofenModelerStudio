@@ -13,6 +13,8 @@ import com.scofen.model.metamodel.ModelSnapshot;
 import com.scofen.model.metamodel.PropertyCatalog;
 import com.scofen.model.metamodel.RelationshipType;
 import com.scofen.model.web.persistence.PersistenceServiceFactory;
+import com.scofen.model.web.rbac.Permission;
+import com.scofen.model.web.rbac.RequiresPermission;
 import com.scofen.model.web.project.ProjectRegistry;
 import com.scofen.model.web.ws.PatchBroker;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -84,12 +86,14 @@ public class ModelController {
     }
 
     @GetMapping("/model")
+    @RequiresPermission(Permission.MODEL_VIEW)
     public ModelSnapshot model(
             @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
         return forProject(projectId).snapshot();
     }
 
     @GetMapping("/metamodel/diagrams")
+    @RequiresPermission(Permission.MODEL_VIEW)
     public List<Map<String, Object>> diagrams() {
         List<Map<String, Object>> result = new ArrayList<>();
         for (DiagramKind kind : DiagramKind.values()) {
@@ -110,6 +114,7 @@ public class ModelController {
 
     /** 关系类型目录：组件工具箱「关系」分组与新建关系弹窗共用，前端不硬编码类型清单。 */
     @GetMapping("/metamodel/relationships")
+    @RequiresPermission(Permission.MODEL_VIEW)
     public List<Map<String, Object>> relationships() {
         List<Map<String, Object>> result = new ArrayList<>();
         for (RelationshipType type : RelationshipType.values()) {
@@ -128,6 +133,7 @@ public class ModelController {
      * 前端不得硬编码属性清单，按 types[type].properties 渲染属性窗口。
      */
     @GetMapping("/metamodel/properties")
+    @RequiresPermission(Permission.MODEL_VIEW)
     public Map<String, Object> properties() {
         return PropertyCatalog.describe();
     }
@@ -139,6 +145,7 @@ public class ModelController {
      * 否则一百多个元类会淹没用户自己的模型。</p>
      */
     @GetMapping("/metamodel/extension")
+    @RequiresPermission(Permission.MODEL_VIEW)
     public Map<String, Object> extension() {
         List<Map<String, Object>> packages = new ArrayList<>();
         for (ExtensionLibrary.PackageInfo info : ExtensionLibrary.packages()) {
@@ -157,6 +164,7 @@ public class ModelController {
 
     /** 元模型包含规则下发给前端：右键菜单只列出规范允许的父子组合。 */
     @GetMapping("/metamodel/containment")
+    @RequiresPermission(Permission.MODEL_VIEW)
     public Map<String, Object> containment() {        List<Map<String, Object>> rules = new ArrayList<>();
         for (ElementType parent : ElementType.values()) {
             rules.add(Map.of(
@@ -194,6 +202,7 @@ public class ModelController {
     }
 
     @PostMapping("/commands")
+    @RequiresPermission(Permission.MODEL_EDIT)
     public Patch commands(@RequestBody CommandRequest request,
                           @RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId,
                           @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
@@ -209,6 +218,7 @@ public class ModelController {
     }
 
     @PostMapping("/commands/undo")
+    @RequiresPermission(Permission.MODEL_EDIT)
     public Patch undo(@RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId,
                       @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
         return forProject(projectId).undo(sessionId);
@@ -219,6 +229,7 @@ public class ModelController {
     }
 
     @PostMapping("/commands/redo")
+    @RequiresPermission(Permission.MODEL_EDIT)
     public Patch redo(@RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId,
                       @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
         return forProject(projectId).redo(sessionId);
@@ -229,6 +240,7 @@ public class ModelController {
     }
 
     @GetMapping("/export/scofen.json")
+    @RequiresPermission(Permission.MODEL_EXPORT)
     public Map<String, Object> exportModel(
             @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
         return Map.of(

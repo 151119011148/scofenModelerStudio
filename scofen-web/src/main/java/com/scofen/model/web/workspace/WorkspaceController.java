@@ -6,6 +6,8 @@ import com.scofen.model.metamodel.ModelSnapshot;
 import com.scofen.model.web.project.ProjectRegistry;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import com.scofen.model.web.rbac.Permission;
+import com.scofen.model.web.rbac.RequiresPermission;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -45,6 +47,7 @@ public class WorkspaceController {
     }
 
     @GetMapping
+    @RequiresPermission(Permission.MODEL_VIEW)
     public Map<String, Object> directory(
             @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String activeProjectId) {
         String active = (activeProjectId == null || activeProjectId.isBlank())
@@ -104,6 +107,7 @@ public class WorkspaceController {
 
     /** 在空间下新建项目目录项；创建后前端会立即打开它。 */
     @PostMapping("/projects")
+    @RequiresPermission(Permission.PROJECT_CREATE)
     public Map<String, Object> createProject(@RequestBody Map<String, Object> body) {
         String spaceCode = text(body.get("spaceCode"));
         String name = text(body.get("name"));

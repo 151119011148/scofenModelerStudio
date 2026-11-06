@@ -1,4 +1,6 @@
 import type {
+  AdminRole,
+  AdminUser,
   AuthUser,
   CommandRequest,
   ContainmentSpec,
@@ -134,4 +136,38 @@ export const redo = () =>
   request<Patch>(`${BASE}api/commands/redo`, {
     method: 'POST',
     headers: { 'X-Scofen-Session': 'web-ui' },
+  })
+
+/* ---------------- 用户与角色管理（需要 user.manage / role.manage） ---------------- */
+
+export const getAdminUsers = () =>
+  request<{ users: AdminUser[] }>(`${BASE}api/admin/users`)
+export const saveAdminUser = (payload: {
+  username: string
+  displayName?: string
+  password?: string
+  enabled?: boolean
+  roles?: string[]
+}) =>
+  request<{ username: string }>(`${BASE}api/admin/users`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  })
+export const deleteAdminUser = (username: string) =>
+  request<{ username: string }>(`${BASE}api/admin/users/${encodeURIComponent(username)}`, {
+    method: 'DELETE',
+  })
+export const getAdminRoles = () =>
+  request<{ roles: AdminRole[] }>(`${BASE}api/admin/roles`)
+export const getAdminPermissions = () =>
+  request<{ permissions: { code: string; label: string }[] }>(`${BASE}api/admin/permissions`)
+export const saveAdminRole = (payload: {
+  code: string
+  name?: string
+  description?: string
+  permissions?: string[]
+}) =>
+  request<{ code: string }>(`${BASE}api/admin/roles`, {
+    method: 'POST',
+    body: JSON.stringify(payload),
   })

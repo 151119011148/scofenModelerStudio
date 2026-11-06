@@ -265,9 +265,31 @@ export interface AuthUser {
   username: string
   displayName: string
   admin: boolean
+  /** 角色码，如 admin / editor / viewer。 */
+  roles?: string[]
+  /** 展开后的权限码，如 model.view / model.edit / user.manage。 */
+  permissions?: string[]
 }
 
 export interface Session {
   token: string
   user: AuthUser
+}
+
+/** 用户管理：用户行（口令不返回，只有哈希在服务端）。 */
+export interface AdminUser {
+  username: string
+  displayName: string
+  enabled: boolean
+  builtin: boolean
+  roles: string[]
+}
+
+/** 用户管理：角色行。 */
+export interface AdminRole {
+  code: string
+  name: string
+  description: string
+  builtin: boolean
+  permissions: string[]
 }

@@ -1,5 +1,8 @@
 package com.scofen.model.web.persistence;
 
+import com.scofen.model.web.rbac.JdbcUserDirectory;
+import com.scofen.model.web.rbac.NoopUserDirectory;
+import com.scofen.model.web.rbac.UserDirectory;
 import com.scofen.model.web.workspace.NoopProjectDirectoryStore;
 import com.scofen.model.web.workspace.ProjectDirectoryStore;
 import com.zaxxer.hikari.HikariDataSource;
@@ -35,6 +38,18 @@ public class PersistenceConfig {
     @ConditionalOnProperty(name = "scofen.persistence.mode", havingValue = "memory", matchIfMissing = true)
     public ProjectDirectoryStore noopProjectDirectoryStore() {
         return new NoopProjectDirectoryStore();
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "scofen.persistence.mode", havingValue = "memory", matchIfMissing = true)
+    public UserDirectory noopUserDirectory() {
+        return new NoopUserDirectory();
+    }
+
+    @Bean
+    @ConditionalOnProperty(name = "scofen.persistence.mode", havingValue = "mysql")
+    public UserDirectory jdbcUserDirectory(JdbcTemplate scofenJdbcTemplate) {
+        return new JdbcUserDirectory(scofenJdbcTemplate);
     }
 
     @Bean

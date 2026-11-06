@@ -1,5 +1,7 @@
 package com.scofen.model.web.auth;
 
+import com.scofen.model.web.rbac.NoopUserDirectory;
+import com.scofen.model.web.rbac.Permission;
 import org.junit.jupiter.api.Test;
 
 import java.nio.charset.StandardCharsets;
@@ -17,7 +19,7 @@ class AuthServiceTest {
 
     private AuthService service() {
         return new AuthService("scofen,gaofeng", "", AuthService.DEFAULT_PASSWORD_HASH,
-                "unit-test-secret", 3600);
+                "unit-test-secret", 3600, new NoopUserDirectory());
     }
 
     @Test
@@ -54,14 +56,14 @@ class AuthServiceTest {
         assertThat(auth.validToken(token + "x")).isFalse();
         assertThat(auth.validToken(null)).isFalse();
         AuthService otherKey = new AuthService("scofen,gaofeng", "", AuthService.DEFAULT_PASSWORD_HASH,
-                "another-secret", 3600);
+                "another-secret", 3600, new NoopUserDirectory());
         assertThat(auth.validToken(otherKey.login("scofen", DEFAULT_PASSWORD).token())).isFalse();
     }
 
     @Test
     void plainPasswordEnvironmentOverrideIsHashedAndAccepted() {
         AuthService overridden = new AuthService("scofen,gaofeng", "runtime-secret", "",
-                "unit-test-secret", 3600);
+                "unit-test-secret", 3600, new NoopUserDirectory());
         assertThat(overridden.login("scofen", "runtime-secret").token()).isNotBlank();
         assertThat(overridden.login("gaofeng", "runtime-secret").token()).isNotBlank();
         assertThatThrownBy(() -> overridden.login("scofen", DEFAULT_PASSWORD))
@@ -71,7 +73,7 @@ class AuthServiceTest {
     @Test
     void customUsernamesOverrideDefaults() {
         AuthService custom = new AuthService("only-one", "", AuthService.DEFAULT_PASSWORD_HASH,
-                "unit-test-secret", 3600);
+                "unit-test-secret", 3600, new NoopUserDirectory());
         assertThat(custom.login("only-one", DEFAULT_PASSWORD).user().username()).isEqualTo("only-one");
         assertThatThrownBy(() -> custom.login("scofen", DEFAULT_PASSWORD))
                 .isInstanceOf(SecurityException.class);
@@ -82,7 +84,7 @@ class AuthServiceTest {
     @Test
     void blankUsernamesFallsBackToScofen() {
         AuthService fallback = new AuthService(" , ", "", AuthService.DEFAULT_PASSWORD_HASH,
-                "unit-test-secret", 3600);
+                "unit-test-secret", 3600, new NoopUserDirectory());
         assertThat(fallback.login("scofen", DEFAULT_PASSWORD).token()).isNotBlank();
     }
 }
