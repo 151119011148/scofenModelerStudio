@@ -2,6 +2,8 @@ package com.scofen.model.core;
 
 import com.scofen.model.metamodel.Diagram;
 import com.scofen.model.metamodel.DiagramKind;
+import com.scofen.model.metamodel.ElementType;
+import com.scofen.model.metamodel.ExtensionLibrary;
 import com.scofen.model.metamodel.ModelElement;
 import com.scofen.model.metamodel.ModelSnapshot;
 import com.scofen.model.metamodel.Notation;
@@ -276,6 +278,177 @@ public final class InMemoryModelRepository {
                             "relationships", removed.relationships(),
                             "notations", removed.notations(),
                             "diagramRefs", removed.diagramRefs()));
+                }
+                case "IMPORT_MODEL" -> {
+                    // 整包替换：把导入的模型整体写进项目，只推进一次 revision、
+                    // 只广播一个 Patch——逐条 CREATE_ELEMENT 会把 revision 顶高、WS 打爆。
+                    //
+                    // 「保留扩展包」是这里唯一的例外：通用扩展包是每个项目自带的
+                    // SysML / UML 元类清单，换进来反而会让它与本项目的元模型版本脱节。
+                    Set<String> keepIds = com.scofen.model.metamodel.ExtensionLibrary
+                            .subtreeIds(new ArrayList<>(elements.values()));
+
+                    // 被替换掉的内容留档，供逆命令还原。
+                    List<Map<String, Object>> previousElements = new ArrayList<>();
+                    List<Map<String, Object>> previousRelationships = new ArrayList<>();
+                    List<Map<String, Object>> previousDiagrams = new ArrayList<>();
+                    List<Map<String, Object>> previousNotations = new ArrayList<>();
+                    for (ModelElement element : new ArrayList<>(elements.values())) {
+                        if (keepIds.contains(element.id())) {
+                            continue;
+                        }
+                        elements.remove(element.id());
+                        previousElements.add(elementToMap(element));
+                        changes.add(new Change("remove", "element", element.id(), element, null));
+                        affected.add(element.id());
+                    }
+                    for (Relationship relation : new ArrayList<>(relationships.values())) {
+                        relationships.remove(relation.id());
+                        previousRelationships.add(relationshipToMap(relation));
+                        changes.add(new Change("remove", "relationship", relation.id(), relation, null));
+                        affected.add(relation.id());
+                    }
+                    for (Diagram diagram : new ArrayList<>(diagrams.values())) {
+                        diagrams.remove(diagram.id());
+                        previousDiagrams.add(diagramToMap(diagram));
+                        changes.add(new Change("remove", "diagram", diagram.id(), diagram, null));
+                        affected.add(diagram.id());
+                    }
+                    for (Notation notation : new ArrayList<>(notations.values())) {
+                        notations.remove(notation.id());
+                        previousNotations.add(notationToMap(notation));
+                        changes.add(new Change("remove", "notation", notation.id(), notation, null));
+                        affected.add(notation.id());
+                    }
+
+                    for (Map<String, Object> row : cmd.mapList("elements")) {
+                        String id = str(row, "id");
+                        ModelElement element = new ModelElement(id, str(row, "type"), str(row, "name"),
+                                strList(row, "stereotypes"), blankToNull(str(row, "ownerId")),
+                                orEmpty(str(row, "documentation")), strMap(row, "taggedValues"),
+                                blankToNull(str(row, "xmiId")), objectMap(row, "properties"));
+                        elements.put(id, element);
+                        changes.add(new Change("add", "element", id, null, element));
+                        affected.add(id);
+                    }
+                    for (Map<String, Object> row : cmd.mapList("relationships")) {
+                        String id = str(row, "id");
+                        Relationship relation = new Relationship(id, str(row, "type"),
+                                str(row, "sourceId"), str(row, "targetId"),
+                                orEmpty(str(row, "name")), orEmpty(str(row, "documentation")),
+                                strList(row, "stereotypes"), blankToNull(str(row, "ownerId")),
+                                strMap(row, "taggedValues"), objectMap(row, "properties"));
+                        relationships.put(id, relation);
+                        changes.add(new Change("add", "relationship", id, null, relation));
+                        affected.add(id);
+                        affected.add(relation.sourceId());
+                        affected.add(relation.targetId());
+                    }
+                    for (Map<String, Object> row : cmd.mapList("diagrams")) {
+                        String id = str(row, "id");
+                        Diagram diagram = new Diagram(id, DiagramKind.fromCode(str(row, "kind")),
+                                str(row, "name"), blankToNull(str(row, "ownerId")),
+                                strList(row, "elementIds"), strList(row, "relationshipIds"));
+                        diagrams.put(id, diagram);
+                        changes.add(new Change("add", "diagram", id, null, diagram));
+                        affected.add(id);
+                    }
+                    for (Map<String, Object> row : cmd.mapList("notations")) {
+                        String id = str(row, "id");
+                        Notation notation = new Notation(id, str(row, "diagramId"), str(row, "elementId"),
+                                dbl(row, "x"), dbl(row, "y"),
+                                dbl(row, "width", NODE_WIDTH), dbl(row, "height", NODE_HEIGHT),
+                                strMap(row, "style"));
+                        notations.put(id, notation);
+                        changes.add(new Change("add", "notation", id, null, notation));
+                        affected.add(id);
+                    }
+                    // 逆命令：把替换掉的内容原样写回去。
+                    inverse = Command.of("RESTORE_IMPORTED", revision, "import-model:inverse", Map.of(
+                            "elements", List.copyOf(previousElements),
+                            "relationships", List.copyOf(previousRelationships),
+                            "diagrams", List.copyOf(previousDiagrams),
+                            "notations", List.copyOf(previousNotations)));
+                }
+                case "RESTORE_IMPORTED" -> {
+                    // 撤销导入：清掉导入进来的内容，把替换掉的旧内容写回。
+                    // 扩展包不在其中——它自始至终没有被替换过。
+                    // keepIds 必须一次算完：循环里重算会因为元素被逐步移除而缩水，
+                    // 结果是扩展包的子元素被误删。
+                    Set<String> keepIds = ExtensionLibrary.subtreeIds(new ArrayList<>(elements.values()));
+                    for (ModelElement element : new ArrayList<>(elements.values())) {
+                        if (keepIds.contains(element.id())) {
+                            continue;
+                        }
+                        elements.remove(element.id());
+                        changes.add(new Change("remove", "element", element.id(), element, null));
+                        affected.add(element.id());
+                    }
+                    for (Relationship relation : new ArrayList<>(relationships.values())) {
+                        relationships.remove(relation.id());
+                        changes.add(new Change("remove", "relationship", relation.id(), relation, null));
+                        affected.add(relation.id());
+                    }
+                    for (Diagram diagram : new ArrayList<>(diagrams.values())) {
+                        diagrams.remove(diagram.id());
+                        changes.add(new Change("remove", "diagram", diagram.id(), diagram, null));
+                        affected.add(diagram.id());
+                    }
+                    for (Notation notation : new ArrayList<>(notations.values())) {
+                        notations.remove(notation.id());
+                        changes.add(new Change("remove", "notation", notation.id(), notation, null));
+                        affected.add(notation.id());
+                    }
+                    List<Map<String, Object>> restoredElements = new ArrayList<>();
+                    List<Map<String, Object>> restoredRelationships = new ArrayList<>();
+                    List<Map<String, Object>> restoredDiagrams = new ArrayList<>();
+                    List<Map<String, Object>> restoredNotations = new ArrayList<>();
+                    for (Map<String, Object> row : cmd.mapList("elements")) {
+                        ModelElement element = new ModelElement(str(row, "id"), str(row, "type"), str(row, "name"),
+                                strList(row, "stereotypes"), blankToNull(str(row, "ownerId")),
+                                orEmpty(str(row, "documentation")), strMap(row, "taggedValues"),
+                                blankToNull(str(row, "xmiId")), objectMap(row, "properties"));
+                        elements.put(element.id(), element);
+                        changes.add(new Change("add", "element", element.id(), null, element));
+                        affected.add(element.id());
+                        restoredElements.add(elementToMap(element));
+                    }
+                    for (Map<String, Object> row : cmd.mapList("relationships")) {
+                        Relationship relation = new Relationship(str(row, "id"), str(row, "type"),
+                                str(row, "sourceId"), str(row, "targetId"),
+                                orEmpty(str(row, "name")), orEmpty(str(row, "documentation")),
+                                strList(row, "stereotypes"), blankToNull(str(row, "ownerId")),
+                                strMap(row, "taggedValues"), objectMap(row, "properties"));
+                        relationships.put(relation.id(), relation);
+                        changes.add(new Change("add", "relationship", relation.id(), null, relation));
+                        affected.add(relation.id());
+                        restoredRelationships.add(relationshipToMap(relation));
+                    }
+                    for (Map<String, Object> row : cmd.mapList("diagrams")) {
+                        Diagram diagram = new Diagram(str(row, "id"), DiagramKind.fromCode(str(row, "kind")),
+                                str(row, "name"), blankToNull(str(row, "ownerId")),
+                                strList(row, "elementIds"), strList(row, "relationshipIds"));
+                        diagrams.put(diagram.id(), diagram);
+                        changes.add(new Change("add", "diagram", diagram.id(), null, diagram));
+                        affected.add(diagram.id());
+                        restoredDiagrams.add(diagramToMap(diagram));
+                    }
+                    for (Map<String, Object> row : cmd.mapList("notations")) {
+                        Notation notation = new Notation(str(row, "id"), str(row, "diagramId"),
+                                str(row, "elementId"), dbl(row, "x"), dbl(row, "y"),
+                                dbl(row, "width", NODE_WIDTH), dbl(row, "height", NODE_HEIGHT),
+                                strMap(row, "style"));
+                        notations.put(notation.id(), notation);
+                        changes.add(new Change("add", "notation", notation.id(), null, notation));
+                        affected.add(notation.id());
+                        restoredNotations.add(notationToMap(notation));
+                    }
+                    // 再撤销一次就是重新导入：逆命令带回刚恢复出来的旧内容。
+                    inverse = Command.of("RESTORE_IMPORTED", revision, "restore-imported:inverse", Map.of(
+                            "elements", List.copyOf(restoredElements),
+                            "relationships", List.copyOf(restoredRelationships),
+                            "diagrams", List.copyOf(restoredDiagrams),
+                            "notations", List.copyOf(restoredNotations)));
                 }
                 case "RESTORE_SUBTREE" -> {
                     for (Map<String, Object> row : cmd.mapList("elements")) {
@@ -672,6 +845,17 @@ public final class InMemoryModelRepository {
         row.put("ownerId", orEmpty(relation.ownerId()));
         row.put("taggedValues", relation.taggedValues());
         row.put("properties", relation.properties());
+        return row;
+    }
+
+    private static Map<String, Object> diagramToMap(Diagram diagram) {
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("id", diagram.id());
+        row.put("kind", diagram.kind().code());
+        row.put("name", diagram.name());
+        row.put("ownerId", orEmpty(diagram.ownerId()));
+        row.put("elementIds", diagram.elementIds());
+        row.put("relationshipIds", diagram.relationshipIds());
         return row;
     }
 

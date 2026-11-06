@@ -171,3 +171,61 @@ export const saveAdminRole = (payload: {
     method: 'POST',
     body: JSON.stringify(payload),
   })
+
+/* ---------------- XMI 交换 ---------------- */
+
+/**
+ * 下载服务端生成的交换文件。
+ *
+ * <p>不用 {@code window.open} 直链：接口需要 Bearer 令牌与项目头，
+ * 直链会被 401 拦下。这里显式带上凭据取回文本，再由前端触发下载。</p>
+ */
+async function downloadText(path: string, filename: string): Promise<void> {
+  const token = localStorage.getItem(TOKEN_KEY)
+  const response = await fetch(path, {
+    headers: {
+      'X-Scofen-Project': activeProjectId,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+  })
+  if (!response.ok) {
+    const body = (await response.json().catch(() => ({}))) as { message?: string }
+    throw new Error(body.message ?? `HTTP ${response.status}`)
+  }
+  const text = await response.text()
+  const blob = new Blob([text], { type: response.headers.get('content-type') ?? 'application/octet-stream' })
+  const url = URL.createObjectURL(blob)
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+/** 导出标准 UML 2.5.1 XMI 语义文件（.xmi）。 */
+export const exportXmi = () => downloadText(`${BASE}api/exchange/xmi`, 'model.xmi')
+
+/** 导出布局侧车（.di.json）：图类型、图名与全部记号坐标。 */
+export const exportSidecar = () => downloadText(`${BASE}api/exchange/xmi.di.json`, 'model.di.json')
+
+/** 导出无损自有格式（.scofen.json）。 */
+export const exportNative = () => downloadText(`${BASE}api/exchange/scofen.json`, 'model.scofen.json')
+
+/** 导入：整包替换当前项目。侧车可缺省，缺省时由服务端重排九图。 */
+export const importXmi = (payload: { semantic: string; sidecar?: string }) =>
+  request<Patch>(`${BASE}api/exchange/xmi`, {
+    method: 'POST',
+    headers: { 'X-Scofen-Session': 'web-ui' },
+    body: JSON.stringify(payload),
+  })
+
+/** 侧车概览：图数、记号数与图种类，用于导入前提示用户。 */
+export const getSidecarPreview = () =>
+  request<{
+    format: string
+    version: number
+    diagramCount: number
+    notationCount: number
+    kinds: string[]
+    expectedKinds: number
+  }>(`${BASE}api/exchange/sidecar/preview`)

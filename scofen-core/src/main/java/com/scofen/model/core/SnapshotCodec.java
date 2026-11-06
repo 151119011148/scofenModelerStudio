@@ -45,6 +45,26 @@ public final class SnapshotCodec {
         }
     }
 
+    /** 序列化任意对象（侧车等普通 Map 用这个）。 */
+    public static String toJsonObject(Object value) {
+        try {
+            return MAPPER.writeValueAsString(value);
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("序列化 JSON 失败", ex);
+        }
+    }
+
+    /** 从 JSON 文本还原为普通 Map（侧车解析用）。 */
+    @SuppressWarnings("unchecked")
+    public static Map<String, Object> fromMap(String json) {
+        try {
+            Object value = normalize(MAPPER.readTree(json));
+            return value instanceof Map<?, ?> map ? (Map<String, Object>) map : Map.of();
+        } catch (JsonProcessingException ex) {
+            throw new IllegalStateException("反序列化 JSON 失败", ex);
+        }
+    }
+
     /** 从 JSON 文本还原快照。 */
     public static ModelSnapshot fromJson(String json) {
         try {
@@ -148,7 +168,8 @@ public final class SnapshotCodec {
         }
         Map<String, Object> result = new LinkedHashMap<>();
         node.fields().forEachRemaining(entry -> result.put(entry.getKey(), normalize(entry.getValue())));
-        return Map.copyOf(result);
+        // 不能用 Map.copyOf：它拒绝 null 值，而 JSON 里 null 是合法值。
+        return java.util.Collections.unmodifiableMap(result);
     }
 
     private static Object normalize(JsonNode node) {
@@ -191,7 +212,7 @@ public final class SnapshotCodec {
         if (node.isObject()) {
             Map<String, Object> result = new LinkedHashMap<>();
             node.fields().forEachRemaining(entry -> result.put(entry.getKey(), normalize(entry.getValue())));
-            return Map.copyOf(result);
+            return java.util.Collections.unmodifiableMap(result);
         }
         return node.asText();
     }

@@ -25,9 +25,23 @@ public final class MetamodelRegistry {
 
     private static final Map<DiagramKind, DiagramSpec> SPECS = new EnumMap<>(DiagramKind.class);
 
+    /**
+     * 元素类型的「主图归属」：一个元素类型在九图里最应该出现的那一张。
+     *
+     * <p>与 {@link #allows} 的区别：{@code allows} 说的是「允许出现」，
+     * 一�� Block 既允许出现在需求图也允许出现在模块定义图；而主图归属说的是
+     * 「它本来是哪张图的元素」。导入只吃语义、没有布局侧车时，服务端要按主图归属
+     * 把元素重新排到九张图上——没有这张表就只能靠硬编码猜。</p>
+     */
+    private static final Map<ElementType, DiagramKind> PRIMARY_KIND = new EnumMap<>(ElementType.class);
+
     private static void register(DiagramKind kind, Set<ElementType> elements, Set<RelationshipType> relationships,
                                  String layout, String validationGroup) {
         SPECS.put(kind, new DiagramSpec(kind, elements, relationships, layout, validationGroup));
+    }
+
+    private static void primary(ElementType type, DiagramKind kind) {
+        PRIMARY_KIND.put(type, kind);
     }
 
     private static Set<RelationshipType> rel(String... values) {
@@ -85,6 +99,50 @@ public final class MetamodelRegistry {
                 EnumSet.of(ElementType.USE_CASE, ElementType.ACTOR, ElementType.PACKAGE),
                 rel("association", "include", "extend", "generalization"),
                 LAYOUT_ELK, "usecase");
+
+        // 主图归属：导入只吃语义时的服务端重排依据。
+        // 每种类型只归一张图——一个元素不会同时铺在九张图上。
+        primary(ElementType.MODEL, DiagramKind.PKG);
+        primary(ElementType.MODEL_LIBRARY, DiagramKind.PKG);
+        primary(ElementType.PROFILE, DiagramKind.PKG);
+        primary(ElementType.PACKAGE, DiagramKind.PKG);
+        primary(ElementType.METACLASS, DiagramKind.PKG);
+        primary(ElementType.STEREOTYPE, DiagramKind.PKG);
+        primary(ElementType.COMMENT, DiagramKind.PKG);
+
+        primary(ElementType.REQUIREMENT, DiagramKind.REQ);
+        primary(ElementType.TEST_CASE, DiagramKind.REQ);
+
+        primary(ElementType.BLOCK, DiagramKind.BDD);
+        primary(ElementType.VALUE_TYPE, DiagramKind.BDD);
+
+        primary(ElementType.PART, DiagramKind.IBD);
+        primary(ElementType.PORT, DiagramKind.IBD);
+        primary(ElementType.FLOW_PORT, DiagramKind.IBD);
+        primary(ElementType.CONNECTOR, DiagramKind.IBD);
+
+        primary(ElementType.CONSTRAINT_BLOCK, DiagramKind.PAR);
+        primary(ElementType.CONSTRAINT_PROPERTY, DiagramKind.PAR);
+        primary(ElementType.CONSTRAINT_PARAMETER, DiagramKind.PAR);
+
+        primary(ElementType.ACTIVITY, DiagramKind.ACT);
+        primary(ElementType.ACTION, DiagramKind.ACT);
+        primary(ElementType.CONTROL_NODE, DiagramKind.ACT);
+        primary(ElementType.OBJECT_NODE, DiagramKind.ACT);
+        primary(ElementType.ACTIVITY_PARTITION, DiagramKind.ACT);
+
+        primary(ElementType.INTERACTION, DiagramKind.SEQ);
+        primary(ElementType.LIFELINE, DiagramKind.SEQ);
+        primary(ElementType.MESSAGE, DiagramKind.SEQ);
+        primary(ElementType.COMBINED_FRAGMENT, DiagramKind.SEQ);
+
+        primary(ElementType.STATE_MACHINE, DiagramKind.STM);
+        primary(ElementType.STATE, DiagramKind.STM);
+        primary(ElementType.TRANSITION, DiagramKind.STM);
+        primary(ElementType.PSEUDOSTATE, DiagramKind.STM);
+
+        primary(ElementType.USE_CASE, DiagramKind.UC);
+        primary(ElementType.ACTOR, DiagramKind.UC);
     }
 
     private MetamodelRegistry() {
@@ -92,6 +150,11 @@ public final class MetamodelRegistry {
 
     public static Set<DiagramKind> diagrams() {
         return Set.copyOf(SPECS.keySet());
+    }
+
+    /** 元素类型的主图归属；未登记的类型返回空。 */
+    public static java.util.Optional<DiagramKind> primaryKind(ElementType type) {
+        return java.util.Optional.ofNullable(PRIMARY_KIND.get(type));
     }
 
     public static DiagramSpec spec(DiagramKind kind) {

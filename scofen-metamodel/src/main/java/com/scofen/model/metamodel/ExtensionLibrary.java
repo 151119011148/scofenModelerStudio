@@ -1,9 +1,11 @@
 package com.scofen.model.metamodel;
 
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.EnumSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -169,6 +171,30 @@ public final class ExtensionLibrary {
         }
 
         return List.copyOf(result);
+    }
+
+    /**
+     * 扩展包子树的元素 id 集合（两个扩展包根 + 它们的所有后代）。
+     *
+     * <p>导入时用它区分「系统提供的公共内容」与「用户自己的模型」：
+     * 扩展包随每个项目提供，不随模型交换，导入时应当原样保留。</p>
+     *
+     * @param elements 当前模型的元素集合
+     */
+    public static Set<String> subtreeIds(Collection<ModelElement> elements) {
+        Set<String> result = new LinkedHashSet<>();
+        result.add(SYSML_PROFILE_ID);
+        result.add(UML_PROFILE_ID);
+        boolean changed = true;
+        while (changed) {
+            changed = false;
+            for (ModelElement element : elements) {
+                if (result.contains(element.ownerId()) && result.add(element.id())) {
+                    changed = true;
+                }
+            }
+        }
+        return result;
     }
 
     /** 扩展包元素总数，供测试与界面提示使用。 */

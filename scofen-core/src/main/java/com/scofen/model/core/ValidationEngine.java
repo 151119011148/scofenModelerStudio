@@ -18,6 +18,7 @@ import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -177,6 +178,115 @@ public final class ValidationEngine {
                             rowObjectMap(row, "properties"));
                     assertElementProperties(repository, pending, element);
                     pending.put(id, element);
+                }
+            }
+            case "IMPORT_MODEL" -> {
+                // 整包替换：一次性导入整套模型，元素、关系、图与记号只产生一个
+                // revision 与一个 Patch。逐条 CREATE_ELEMENT 会把 revision 顶高、
+                // WS 广播打爆，因此单独开这条通道。
+                //
+                // 校验的关键在于「校验的是替换后的世界」：旧内容会被整体清掉，
+                // 因此命名唯一性与包含关系不能拿旧内容来比——否则导入自己导出的
+                // 文件会因为「同名旧元素还在库里」而被误判为重名。
+                List<Map<String, Object>> rows = cmd.mapList("elements");
+                if (rows.isEmpty()) {
+                    throw new ValidationException("Missing required field: elements");
+                }
+                // 扩展包保留在项目里，因此它既参与命名唯一性，也算「已存在」。
+                Set<String> keepIds = ExtensionLibrary.subtreeIds(repository.elements());
+                Map<String, ModelElement> pending = new LinkedHashMap<>();
+                // 第一遍：只建索引与基本格式检查。包含关系、命名唯一性与引用存在性
+                // 都要看整批，因此放到第二遍——否则「父元素排在子元素后面」
+                // 这种合法的树形顺序会被误判成「所有者不存在」。
+                for (Map<String, Object> row : rows) {
+                    String id = rowString(row, "id");
+                    require(id, "id");
+                    String typeName = rowString(row, "type");
+                    require(typeName, "type");
+                    String name = rowString(row, "name");
+                    require(name, "name");
+                    ElementType.fromAny(typeName)
+                            .orElseThrow(() -> new ValidationException("Unknown element type: " + typeName));
+                    if (pending.containsKey(id)) {
+                        throw new ValidationException("Duplicate element id in import: " + id);
+                    }
+                    assertNameFormat(name);
+                    pending.put(id, new ModelElement(id, typeName, name,
+                            rowStringList(row, "stereotypes"), blankToNull(rowString(row, "ownerId")),
+                            rowString(row, "documentation") == null ? "" : rowString(row, "documentation"),
+                            rowStringMap(row, "taggedValues"), blankToNull(rowString(row, "xmiId")),
+                            rowObjectMap(row, "properties")));
+                }
+                // 第二遍：在「替换后的世界」里做关系性校验。
+                for (ModelElement element : pending.values()) {
+                    ElementType child = ElementType.fromAny(element.type()).orElseThrow();
+                    // 包含关系：父元素要么在本批，要么是保留下来的扩展包成员。
+                    assertImportContainment(repository, pending, keepIds, element.ownerId(), child, element.id());
+                    assertImportNameIsUnique(repository, pending, keepIds,
+                            element.ownerId(), element.name(), element.id());
+                    assertImportProperties(pending, keepIds, element);
+                }
+                for (Map<String, Object> row : cmd.mapList("relationships")) {
+                    String id = rowString(row, "id");
+                    require(id, "id");
+                    String type = rowString(row, "type");
+                    require(type, "type");
+                    RelationshipType.fromAny(type)
+                            .orElseThrow(() -> new ValidationException("Unknown relationship type: " + type));
+                    String source = rowString(row, "sourceId");
+                    String target = rowString(row, "targetId");
+                    require(source, "sourceId");
+                    require(target, "targetId");
+                    // 端点必须存在于替换后的世界：本批元素或保留下来的扩展包成员。
+                    if (!pending.containsKey(source) && !keepIds.contains(source)) {
+                        throw new ValidationException("Relationship endpoint missing: " + source);
+                    }
+                    if (!pending.containsKey(target) && !keepIds.contains(target)) {
+                        throw new ValidationException("Relationship endpoint missing: " + target);
+                    }
+                }
+                Set<String> diagramIds = new LinkedHashSet<>();
+                for (Map<String, Object> row : cmd.mapList("diagrams")) {
+                    String id = rowString(row, "id");
+                    require(id, "id");
+                    require(rowString(row, "name"), "name");
+                    DiagramKind kind;
+                    try {
+                        kind = DiagramKind.fromCode(rowString(row, "kind"));
+                    } catch (IllegalArgumentException ex) {
+                        throw new ValidationException("Unknown diagram kind: " + rowString(row, "kind"));
+                    }
+                    if (!diagramIds.add(id)) {
+                        throw new ValidationException("Duplicate diagram id in import: " + id);
+                    }
+                    for (String ref : rowStringList(row, "elementIds")) {
+                        ModelElement element = pending.get(ref);
+                        if (element == null && keepIds.contains(ref)) {
+                            element = repository.findElement(ref).orElse(null);
+                        }
+                        if (element == null) {
+                            throw new ValidationException("Diagram references missing element: " + ref);
+                        }
+                        ElementType.fromAny(element.type()).ifPresent(type -> assertDiagramAllows(kind, type));
+                    }
+                }
+                for (Map<String, Object> row : cmd.mapList("notations")) {
+                    String diagramId = rowString(row, "diagramId");
+                    String elementId = rowString(row, "elementId");
+                    require(diagramId, "diagramId");
+                    require(elementId, "elementId");
+                    if (!diagramIds.contains(diagramId)) {
+                        throw new ValidationException("Unknown diagram: " + diagramId);
+                    }
+                    if (!pending.containsKey(elementId) && !keepIds.contains(elementId)) {
+                        throw new ValidationException("Unknown element: " + elementId);
+                    }
+                }
+            }
+            case "RESTORE_IMPORTED" -> {
+                // 撤销导入：校验还原出来的内容自身是否合法。
+                if (cmd.mapList("elements").isEmpty()) {
+                    throw new ValidationException("Nothing to restore");
                 }
             }
             case "RESTORE_SUBTREE" -> {
@@ -371,6 +481,111 @@ public final class ValidationEngine {
                 && ElementType.fromAny(element.type())
                         .filter(type -> type == ElementType.MODEL)
                         .isPresent();
+    }
+
+    /**
+     * 导入时的包含关系校验：在「替换后的世界」里判断。
+     *
+     * <p>与普通建元素的差别只有一处：父元素可以来自保留的扩展包子树，
+     * 也可以来自本批；而库里那些即将被清掉的旧元素不算数。</p>
+     */
+    private void assertImportContainment(InMemoryModelRepository repository, Map<String, ModelElement> pending,
+                                         Set<String> keepIds, String ownerId, ElementType child, String selfId) {
+        if (ownerId == null || ownerId.isBlank()) {
+            if (!ContainmentRules.isRootAllowed(child)) {
+                throw new ValidationException("Root element must be one of "
+                        + ContainmentRules.ROOT_TYPES + "; got " + child);
+            }
+            // 单项目单根：判断的是「替换后的世界」——本批 + 保留的扩展包。
+            // 库里那些即将被清掉的旧元素（含旧项目根）不算数。
+            // selfId 是当前元素本身，统计根数时要把自己排除。
+            if (child == ElementType.MODEL) {
+                int roots = 0;
+                for (ModelElement element : pending.values()) {
+                    if (!Objects.equals(element.id(), selfId) && isProjectRoot(element)) {
+                        roots++;
+                    }
+                }
+                for (ModelElement element : repository.elements()) {
+                    if (keepIds.contains(element.id()) && isProjectRoot(element)) {
+                        roots++;
+                    }
+                }
+                if (roots >= 1) {
+                    throw new ValidationException("一个项目只能有一个根 Model；请在已有项目根下新建子元素");
+                }
+            }
+            return;
+        }
+        ModelElement found = pending.get(ownerId);
+        if (found == null && keepIds.contains(ownerId)) {
+            found = repository.findElement(ownerId).orElse(null);
+        }
+        if (found == null) {
+            throw new ValidationException("Owner element not found: " + ownerId);
+        }
+        final ModelElement parent = found;
+        ElementType parentType = ElementType.fromAny(parent.type())
+                .orElseThrow(() -> new ValidationException("Unknown owner element type: " + parent.type()));
+        if (!ContainmentRules.allows(parentType, child)) {
+            throw new ValidationException("Containment rule violation: " + parentType.label()
+                    + " (" + parentType + ") cannot own " + child.label() + " (" + child + ")");
+        }
+    }
+
+    /**
+     * 导入时的命名唯一性：在「替换后的世界」里判断。
+     *
+     * <p>只与本批元素和保留的扩展包元素比较——库里即将被清掉的旧元素不算数，
+     * 否则导入自己导出的文件会被误判为重名。</p>
+     */
+    private void assertImportNameIsUnique(InMemoryModelRepository repository, Map<String, ModelElement> pending,
+                                           Set<String> keepIds, String ownerId, String name, String selfId) {
+        String owner = normalizeOwner(ownerId);
+        String normalized = normalize(name);
+        for (ModelElement element : repository.elements()) {
+            if (!keepIds.contains(element.id()) || Objects.equals(element.id(), selfId)) {
+                continue;
+            }
+            if (normalizeOwner(element.ownerId()).equals(owner)
+                    && normalize(element.name()).equals(normalized)) {
+                throw new ValidationException("Duplicate element name in namespace " + owner + ": " + name);
+            }
+        }
+        for (ModelElement element : pending.values()) {
+            if (Objects.equals(element.id(), selfId)) {
+                continue;
+            }
+            if (normalizeOwner(element.ownerId()).equals(owner)
+                    && normalize(element.name()).equals(normalized)) {
+                throw new ValidationException("Duplicate element name in namespace " + owner + ": " + name);
+            }
+        }
+    }
+
+    /**
+     * 导入时的引用型属性校验：目标必须在本批或保留的扩展包里。
+     *
+     * <p>与 {@link #assertElementProperties} 的差别在于不查仓储——
+     * 仓储里的旧元素马上要被清掉，引用它们等于留下悬空引用。</p>
+     */
+    private void assertImportProperties(Map<String, ModelElement> pending, Set<String> keepIds,
+                                        ModelElement element) {
+        ElementType type = ElementType.fromAny(element.type()).orElse(null);
+        if (type == null) {
+            return;
+        }
+        for (Map.Entry<String, Object> entry : element.properties().entrySet()) {
+            PropertyCatalog.PropertySpec spec = PropertyCatalog.find(type, entry.getKey());
+            if (spec == null || !PropertyCatalog.referencesElement(spec)) {
+                continue;
+            }
+            for (String reference : referenceValues(entry.getValue())) {
+                if (!pending.containsKey(reference) && !keepIds.contains(reference)) {
+                    throw new ValidationException("引用的元素不存在: " + entry.getKey() + " → " + reference);
+                }
+            }
+        }
     }
 
     /**

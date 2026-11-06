@@ -3,6 +3,9 @@ import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, Pointe
 import {
   clearSession,
   createProject,
+  exportNative,
+  exportSidecar,
+  exportXmi,
   getContainment,
   getDiagrams,
   getExtensionPackages,
@@ -12,6 +15,7 @@ import {
   getProperties,
   getRelationships,
   getWorkspaces,
+  importXmi,
   loadSession,
   logout,
   patchSocketUrl,
@@ -117,6 +121,19 @@ interface MessageState {
 }
 
 /**
+ * 导入对话框状态。
+ *
+ * <p>语义文件必选（.xmi），布局侧车可选（.di.json）。侧车缺省时服务端按元素的主图归属
+ * 重排九图，语义完整但布局不保真。</p>
+ */
+interface ImportDialogState {
+  semantic: string
+  semanticName: string
+  sidecar: string
+  sidecarName: string
+}
+
+/**
  * 画布上方的文档标签：一张图或一个对象各占一个标签页，对齐桌面建模器的多文档交互。
  * 图标签切换画布内容；对象标签只切换属性窗口的编辑对象，画布保持当前图。
  */
@@ -215,6 +232,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const permissions = new Set(session.user.permissions ?? [])
   const canEdit = permissions.has('model.edit')
   const canExport = permissions.has('model.export')
+  const canImport = permissions.has('model.import')
   const canManageUsers = permissions.has('user.manage')
   const [health, setHealth] = useState<Health | null>(null)
   const [model, setModel] = useState<ModelSnapshot>(EMPTY_MODEL)
@@ -283,6 +301,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [newProjectSpace, setNewProjectSpace] = useState('personal')
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectDesc, setNewProjectDesc] = useState('')
+  // 导入对话框：语义文件必选，布局侧车可选。导入语义是「整包替换当前项目」。
+  const [importDialog, setImportDialog] = useState<ImportDialogState | null>(null)
   // ── 桌面建模器式外壳：菜单栏 / 文档标签 / 左栏三视图 / 缩放状态栏 ──
   /** 已打开的文档标签（图 + 对象），顺序即标签顺序。 */
   const [tabs, setTabs] = useState<DocTab[]>([])
@@ -822,7 +842,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       >
         <RelationIcon code={relation.type} size={14} />
         <span className="rel-link-type">{relationLabel(relation.type)}</span>
-        <span className="rel-link-other">{direction === 'out' ? '→' : '←'} {other?.name ?? otherId}</span>
+        <span className="rel-link-other">{other?.name ?? otherId}</span>
       </button>
     )
   }
@@ -1984,6 +2004,93 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     URL.revokeObjectURL(url)
   }
 
+  /* ---------------- XMI 导入导出 ---------------- */
+
+  /** 导出：把服务端生成的交换文件取回本地。 */
+  const runExport = async (kind: 'xmi' | 'sidecar' | 'native') => {
+    setBusy(true)
+    try {
+      if (kind === 'xmi') {
+        await exportXmi()
+        say('已导出 XMI 语义文件 model.xmi')
+      } else if (kind === 'sidecar') {
+        await exportSidecar()
+        say('已导出布局侧车 model.di.json')
+      } else {
+        await exportNative()
+        say('已导出项目快照 model.scofen.json')
+      }
+    } catch (error) {
+      say('导出失败：{error}', { error: errorMessage(error) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const openImportDialog = () => {
+    setImportDialog({ semantic: '', semanticName: '', sidecar: '', sidecarName: '' })
+    setMenu(null)
+  }
+
+  /** 读取用户选择的文件：语义文件与侧车分别读入同一对话框状态。 */
+  const pickImportFile = async (target: 'semantic' | 'sidecar', file: File | undefined) => {
+    if (!file) {
+      return
+    }
+    try {
+      const text = await file.text()
+      setImportDialog((current) => {
+        if (!current) {
+          return current
+        }
+        return target === 'semantic'
+          ? { ...current, semantic: text, semanticName: file.name }
+          : { ...current, sidecar: text, sidecarName: file.name }
+      })
+    } catch (error) {
+      say('读取文件失败：{error}', { error: errorMessage(error) })
+    }
+  }
+
+  /**
+   * 提交导入。
+   *
+   * <p>导入语义是「整包替换当前项目」：当前项目的元素、关系、图与记号会被整体换掉
+   * （通用扩展包除外，它是每个项目自带的系统公共内容）。撤销一次即可回到导入前。</p>
+   */
+  const submitImport = async () => {
+    if (!importDialog || !importDialog.semantic.trim()) {
+      say('请先选择 XMI 语义文件')
+      return
+    }
+    setBusy(true)
+    try {
+      const patch = await importXmi({
+        semantic: importDialog.semantic,
+        sidecar: importDialog.sidecar.trim() ? importDialog.sidecar : undefined,
+      })
+      revisionRef.current = patch.revision
+      setImportDialog(null)
+      // 整包替换后原来的选中项、标签与树展开状态多半已失效，全部复位。
+      setSelectedId(null)
+      setSelectedDiagramId(null)
+      setSelectedRelationId(null)
+      setRelationTool(null)
+      setRelationSource(null)
+      setTabs([])
+      setExpanded(new Set())
+      await refresh()
+      say(importDialog.sidecar.trim()
+        ? '已导入模型（rev {revision}）· {count} 个对象受影响 · 可撤销'
+        : '已导入模型（rev {revision}）· {count} 个对象受影响 · 未提供布局侧车，九图由服务端重排',
+      { revision: patch.revision, count: patch.affectedIds.length })
+    } catch (error) {
+      say('导入失败：{error}', { error: errorMessage(error) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   const toSvgPoint = (clientX: number, clientY: number): { x: number; y: number } => {
     const svg = svgRef.current
     if (!svg) {
@@ -2471,8 +2578,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             }
           }}
           onDoubleClick={() => {
-            // 双击元素：在标签条里开一个对象页签，像桌面建模器那样双击进属性。
+            // 双击元素：选中它并在标签条里开一个对象页签，像桌面建模器那样双击进属性。
             if (isElement) {
+              setSelectedId(element!.id)
+              setSelectedDiagramId(null)
               openTab({ kind: 'element', id: element!.id })
             }
           }}
@@ -2740,6 +2849,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         { label: '新建元素…', run: () => openCreate(null) },
         { label: '新建图…', run: () => openDiagramDialog(null) },
         { label: '新建关系…', run: openRelationDialog, disabled: !canEdit || !activeDiagramObj },
+        'separator',
+        { label: '导入 XMI…', run: openImportDialog, disabled: !canImport },
+        { label: '导出 XMI…', run: () => void runExport('xmi'), disabled: !canExport },
+        { label: '导出布局侧车…', run: () => void runExport('sidecar'), disabled: !canExport },
+        { label: '导出项目快照…', run: () => void runExport('native'), disabled: !canExport },
         'separator',
         { label: '导出当前图为 SVG', run: exportSvg, disabled: !activeDiagramObj },
         'separator',
@@ -3572,11 +3686,19 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           )}
           <div className="props-foot">
             <span>
-              {propsTab === 'attrs' && (selected || selectedRelation)
-                ? t('共 {count} 项', { count: propVisibleCount })
-                : selectedDiagram
-                  ? t('图 · {count} 元素', { count: selectedDiagram.elementIds.length })
-                  : t('未选择对象')}
+              {!selectedDiagram && !selected && !selectedRelation
+                ? t('未选择对象')
+                : propsTab === 'attrs'
+                  ? t('共 {count} 项', { count: propVisibleCount })
+                  : propsTab === 'relations'
+                    ? t('{count} 条连线', { count: selectionRelations.outgoing.length + selectionRelations.incoming.length })
+                    : selectedDiagram
+                      ? t('图 · {count} 元素', { count: selectedDiagram.elementIds.length })
+                      : selected
+                        ? typeLabel(selected.type)
+                        : selectedRelation
+                          ? relationLabel(selectedRelation.type)
+                          : t('未选择对象')}
             </span>
             <span className="props-foot-note">
               {propEntry
@@ -4217,6 +4339,52 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 disabled={busy || !newProjectName.trim()}
                 onClick={() => void submitNewProject()}
               >{t('创建')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {importDialog && (
+        <div className="modal-overlay" onPointerDown={() => setImportDialog(null)}>
+          <div className="modal" onPointerDown={(event) => event.stopPropagation()}>
+            <h2 className="modal-title">
+              <TypeIcon code="MODEL" size={18} />
+              {t('导入 XMI')}
+            </h2>
+            <p className="modal-sub">{t('导入会整包替换当前项目的内容（通用扩展包保留）')}</p>
+            <label className="field">
+              <span>{t('XMI 语义文件（.xmi，必选）')}</span>
+              <input
+                type="file"
+                accept=".xmi,text/xml,application/xml"
+                onChange={(event) => void pickImportFile('semantic', event.target.files?.[0])}
+              />
+              {importDialog.semanticName && (
+                <span className="hint">{importDialog.semanticName}</span>
+              )}
+            </label>
+            <label className="field">
+              <span>{t('布局侧车（.di.json，可选）')}</span>
+              <input
+                type="file"
+                accept=".json,application/json"
+                onChange={(event) => void pickImportFile('sidecar', event.target.files?.[0])}
+              />
+              {importDialog.sidecarName && (
+                <span className="hint">{importDialog.sidecarName}</span>
+              )}
+            </label>
+            <p className="hint">
+              {t('标准 XMI 不承载图类型、图名与坐标；没有侧车时语义完整，但九图布局由服务端重新排布。导入后可通过「撤销」一步回到导入前。')}
+            </p>
+            <div className="modal-actions">
+              <button type="button" onClick={() => setImportDialog(null)}>{t('取消')}</button>
+              <button
+                type="button"
+                className="primary"
+                disabled={busy || !importDialog.semantic.trim()}
+                onClick={() => void submitImport()}
+              >{t('导入')}</button>
             </div>
           </div>
         </div>
