@@ -4,17 +4,23 @@ import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.core.ExtensionSeeder;
 import com.scofen.model.core.InMemoryModelRepository;
+import com.scofen.model.core.NoopPersistenceService;
+import com.scofen.model.core.PersistenceService;
+import com.scofen.model.core.UndoStack;
 import com.scofen.model.core.ValidationEngine;
 import com.scofen.model.metamodel.DiagramKind;
 import com.scofen.model.metamodel.ElementType;
 import com.scofen.model.metamodel.ExtensionLibrary;
+import com.scofen.model.metamodel.ModelSnapshot;
 import com.scofen.model.metamodel.PropertyCatalog;
+import com.scofen.model.web.persistence.PersistenceServiceFactory;
 import com.scofen.model.web.workspace.WorkspaceDirectory;
 import com.scofen.model.web.ws.PatchBroker;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -34,12 +40,15 @@ public class ProjectRegistry {
     private final CommandExecutor primary;
     private final PatchBroker broker;
     private final WorkspaceDirectory directory;
+    private final PersistenceServiceFactory factory;
     private final Map<String, CommandExecutor> runtimes = new ConcurrentHashMap<>();
 
-    public ProjectRegistry(CommandExecutor primary, PatchBroker broker, WorkspaceDirectory directory) {
+    public ProjectRegistry(CommandExecutor primary, PatchBroker broker, WorkspaceDirectory directory,
+                           PersistenceServiceFactory factory) {
         this.primary = primary;
         this.broker = broker;
         this.directory = directory;
+        this.factory = factory;
     }
 
     public CommandExecutor resolve(String projectId) {
@@ -67,8 +76,22 @@ public class ProjectRegistry {
     }
 
     private CommandExecutor create(String projectId) {
+        PersistenceService persistence = factory.forProject(projectId);
+        InMemoryModelRepository repository = new InMemoryModelRepository();
+        // 播种期间先摘掉持久化，避免每条种子命令都写一份整包快照。
         CommandExecutor executor = new CommandExecutor(
-                new InMemoryModelRepository(), new ValidationEngine(), broker);
+                repository, new ValidationEngine(), broker, new UndoStack(), new NoopPersistenceService());
+
+        // 落库模式：优先回载已有快照，重启后模型不丢。
+        if (persistence.isEnabled()) {
+            Optional<ModelSnapshot> latest = persistence.loadLatest();
+            if (latest.isPresent()) {
+                repository.load(latest.get());
+                executor.setPersistence(persistence);
+                return executor;
+            }
+        }
+
         String name = directory.findProject(projectId)
                 .map(WorkspaceDirectory.Project::name)
                 .orElse("新建项目");
@@ -86,6 +109,11 @@ public class ProjectRegistry {
                     "name", kind.label() + "示例",
                     "ownerId", "model-root",
                     "elementIds", List.of()));
+        }
+        // 种子完成才挂上持久化并整包落库一次。
+        executor.setPersistence(persistence);
+        if (persistence.isEnabled()) {
+            persistence.save(executor.snapshot());
         }
         return executor;
     }

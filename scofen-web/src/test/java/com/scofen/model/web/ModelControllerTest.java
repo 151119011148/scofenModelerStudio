@@ -11,6 +11,7 @@ import com.scofen.model.metamodel.MetamodelRegistry;
 import com.scofen.model.web.api.ApiExceptionHandler;
 import com.scofen.model.web.api.CommandRequest;
 import com.scofen.model.web.api.ModelController;
+import com.scofen.model.web.persistence.NoopPersistenceServiceFactory;
 import com.scofen.model.web.ws.PatchBroker;
 import com.scofen.model.web.ws.PatchWebSocketHandler;
 import org.junit.jupiter.api.BeforeEach;
@@ -33,7 +34,7 @@ class ModelControllerTest {
         PatchWebSocketHandler handler = new PatchWebSocketHandler();
         broker = new PatchBroker(handler);
         executor = new CommandExecutor(new InMemoryModelRepository(), new ValidationEngine(), broker);
-        controller = new ModelController(executor, broker, new NoopPersistenceService());
+        controller = new ModelController(executor, broker, new NoopPersistenceServiceFactory());
     }
 
     private Patch post(String type, Map<String, Object> payload, long baseRevision, String cmdId) {

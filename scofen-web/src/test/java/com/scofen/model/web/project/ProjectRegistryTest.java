@@ -6,6 +6,7 @@ import com.scofen.model.core.InMemoryModelRepository;
 import com.scofen.model.core.ValidationEngine;
 import com.scofen.model.metamodel.ExtensionLibrary;
 import com.scofen.model.metamodel.ModelElement;
+import com.scofen.model.web.persistence.NoopPersistenceServiceFactory;
 import com.scofen.model.web.workspace.WorkspaceDirectory;
 import com.scofen.model.web.ws.PatchBroker;
 import com.scofen.model.web.ws.PatchWebSocketHandler;
@@ -27,7 +28,8 @@ class ProjectRegistryTest {
     void setUp() {
         PatchBroker broker = new PatchBroker(new PatchWebSocketHandler());
         primary = new CommandExecutor(new InMemoryModelRepository(), new ValidationEngine(), broker);
-        registry = new ProjectRegistry(primary, broker, new WorkspaceDirectory());
+        registry = new ProjectRegistry(primary, broker, new WorkspaceDirectory(),
+                new NoopPersistenceServiceFactory());
     }
 
     @Test

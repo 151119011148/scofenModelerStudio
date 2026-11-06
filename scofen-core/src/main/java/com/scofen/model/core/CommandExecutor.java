@@ -16,7 +16,7 @@ public final class CommandExecutor {
     private final ValidationEngine validation;
     private final PatchSink sink;
     private final UndoStack undoStack;
-    private final PersistenceService persistence;
+    private PersistenceService persistence;
     private final Map<String, Patch> idempotency = new ConcurrentHashMap<>();
 
     public CommandExecutor(InMemoryModelRepository repository, ValidationEngine validation, PatchSink sink) {
@@ -35,6 +35,17 @@ public final class CommandExecutor {
         this.sink = sink;
         this.undoStack = undoStack;
         this.persistence = persistence;
+    }
+
+    /**
+     * 替换持久化实现。<b>仅限初始化期</b>（播种模型之前挂 {@link NoopPersistenceService}，
+     * 播种完成后换成真实实现并整包落库一次）——避免种子阶段的每条命令都写一份整包快照。
+     * 运行期调用会与正在进行的 apply 交错，不应使用。
+     */
+    public void setPersistence(PersistenceService replacement) {
+        synchronized (this) {
+            this.persistence = replacement == null ? new NoopPersistenceService() : replacement;
+        }
     }
 
     public synchronized Patch execute(String sessionId, Command cmd) {

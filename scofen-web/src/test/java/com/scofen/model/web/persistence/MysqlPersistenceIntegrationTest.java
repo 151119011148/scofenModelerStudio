@@ -3,6 +3,7 @@ package com.scofen.model.web.persistence;
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.core.PersistenceService;
 import com.scofen.model.metamodel.ModelSnapshot;
+import com.scofen.model.web.workspace.WorkspaceDirectory;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -42,14 +43,19 @@ class MysqlPersistenceIntegrationTest {
     }
 
     @Autowired
-    private PersistenceService persistence;
+    private PersistenceServiceFactory factory;
 
     @Autowired
     private CommandExecutor executor;
 
+    private PersistenceService persistence() {
+        return factory.forProject(WorkspaceDirectory.CURRENT_PROJECT_ID);
+    }
+
     @Test
     void seedsAndReloadsSnapshotFromMysql() {
-        assertThat(persistence.isEnabled()).isTrue();
+        assertThat(factory.enabled()).isTrue();
+        PersistenceService persistence = persistence();
 
         ModelSnapshot live = executor.snapshot();
         Optional<ModelSnapshot> reloaded = persistence.loadLatest();
@@ -71,10 +77,25 @@ class MysqlPersistenceIntegrationTest {
                 com.scofen.model.core.Command.of("RENAME_ELEMENT", before, "it-rename",
                         java.util.Map.of("id", "e-vcu", "name", "整车控制器(持久化验证)")));
 
-        Optional<ModelSnapshot> reloaded = persistence.loadLatest();
+        Optional<ModelSnapshot> reloaded = persistence().loadLatest();
         assertThat(reloaded).isPresent();
         assertThat(reloaded.get().revision()).isGreaterThan(before);
         assertThat(reloaded.get().elements())
                 .anyMatch(e -> "e-vcu".equals(e.id()) && "整车控制器(持久化验证)".equals(e.name()));
+    }
+
+    @Test
+    void snapshotsAreIsolatedBetweenProjects() {
+        // 两个项目各写各的快照，不能互相覆盖。
+        PersistenceService other = factory.forProject("project-req");
+        assertThat(other.loadLatest()).isEmpty();
+
+        PersistenceService primary = persistence();
+        long revision = executor.revision();
+        executor.execute("it-session",
+                com.scofen.model.core.Command.of("RENAME_ELEMENT", revision, "it-rename-2",
+                        java.util.Map.of("id", "e-bat", "name", "动力电池(隔离验证)")));
+        assertThat(primary.loadLatest()).isPresent();
+        assertThat(other.loadLatest()).isEmpty();
     }
 }

@@ -10,9 +10,24 @@ import java.util.Optional;
  */
 public final class NoopPersistenceService implements PersistenceService {
 
+    private final String projectId;
+
+    public NoopPersistenceService() {
+        this("");
+    }
+
+    public NoopPersistenceService(String projectId) {
+        this.projectId = projectId == null ? "" : projectId;
+    }
+
     @Override
     public boolean isEnabled() {
         return false;
+    }
+
+    @Override
+    public String projectId() {
+        return projectId;
     }
 
     @Override

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, WheelEvent as ReactWheelEvent } from 'react'
 import {
   clearSession,
   createProject,
@@ -41,7 +41,7 @@ import type {
 } from './types'
 import { arrowGeometry, edgePoint, relationshipStyle, shapeOf } from './notation'
 import { DiagramIcon, FAMILIES, RelationIcon, TypeIcon, familyOfType } from './icons'
-import { pick, t, useLocale } from './i18n'
+import { pick, setLocale, t, useLocale } from './i18n'
 import LocaleSwitch from './LocaleSwitch'
 import LoginView from './LoginView'
 
@@ -56,6 +56,9 @@ const EMPTY_MODEL: ModelSnapshot = {
 const FALLBACK_CANVAS = { maxX: 480, maxY: 340, width: 640, height: 420 }
 const FALLBACK_NODE = { width: 168, height: 84 }
 const ROOT_KEY = '__root__'
+/** 画布缩放边界：低于 40% 看不清记法、高于 250% 只为对位，两侧都不需要。 */
+const ZOOM_MIN = 0.4
+const ZOOM_MAX = 2.5
 
 type MenuTarget =
   | { kind: 'element'; id: string }
@@ -110,6 +113,31 @@ interface DragState {
 interface MessageState {
   key: string
   vars?: Record<string, unknown>
+}
+
+/**
+ * 画布上方的文档标签：一张图或一个对象各占一个标签页，对齐桌面建模器的多文档交互。
+ * 图标签切换画布内容；对象标签只切换属性窗口的编辑对象，画布保持当前图。
+ */
+interface DocTab {
+  kind: 'diagram' | 'element'
+  id: string
+}
+
+/** 顶部菜单栏里的一条命令；`separator` 渲染为分隔线。 */
+interface MenuEntry {
+  label: string
+  run?: () => void
+  disabled?: boolean
+  /** 单选状态（当前图类型、属性档位、左栏视图）。 */
+  checked?: boolean
+  danger?: boolean
+  hint?: string
+}
+
+interface MenuDef {
+  label: string
+  entries: (MenuEntry | 'separator')[]
 }
 
 function errorMessage(error: unknown): string {
@@ -218,7 +246,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   // 连线工具：选中关系组件后在画布上依次点击起点、终点创建关系。
   const [relationTool, setRelationTool] = useState<string | null>(null)
   const [relationSource, setRelationSource] = useState<string | null>(null)
-  const [propsTab, setPropsTab] = useState<'attrs' | 'tags'>('attrs')
+  const [propsTab, setPropsTab] = useState<'attrs' | 'tags' | 'relations' | 'notation'>('attrs')
   // 属性窗口：UML 2.5.1 / SysML 1.6 元属性目录由服务端下发，三档只影响展示数量。
   const [propCatalog, setPropCatalog] = useState<PropertyCatalogInfo | null>(null)
   const [propView, setPropView] = useState<PropertyView>('STANDARD')
@@ -246,12 +274,27 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [newProjectSpace, setNewProjectSpace] = useState('personal')
   const [newProjectName, setNewProjectName] = useState('')
   const [newProjectDesc, setNewProjectDesc] = useState('')
+  // ── 桌面建模器式外壳：菜单栏 / 文档标签 / 左栏三视图 / 缩放状态栏 ──
+  /** 已打开的文档标签（图 + 对象），顺序即标签顺序。 */
+  const [tabs, setTabs] = useState<DocTab[]>([])
+  /** 左栏视图：项目（包树）/ 图表（按图类型）/ 模型库（扩展包与元类构造型）。 */
+  const [leftTab, setLeftTab] = useState<'project' | 'charts' | 'library'>('project')
+  const [treeFilter, setTreeFilter] = useState('')
+  /** 工具箱是否收成图标条：窄屏下把宽度还给画布。 */
+  const [toolboxCollapsed, setToolboxCollapsed] = useState(false)
+  /** 当前展开的顶级菜单名（null 表示全部收起）。 */
+  const [menubarOpen, setMenubarOpen] = useState<string | null>(null)
+  /** 画布缩放与平移：viewBox 只取其中一块视口，pointer 坐标由 getScreenCTM 自动换算。 */
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [panDrag, setPanDrag] = useState<{ startX: number; startY: number; panX: number; panY: number } | null>(null)
 
   // 所有 /api 请求都带当前项目头；在渲染期同步，避免切换项目时首帧请求串到旧项目。
   setProjectId(activeProjectId)
 
   const svgRef = useRef<SVGSVGElement | null>(null)
   const renameRef = useRef<HTMLInputElement | null>(null)
+  const menubarRef = useRef<HTMLElement | null>(null)
   // 命令的 baseRevision 必须取「最新已知 revision」而非渲染闭包里的 model.revision：
   // 同一次事件里连续发两条命令时，state 尚未更新，旧值会触发 409 乐观锁冲突。
   const revisionRef = useRef(0)
@@ -359,6 +402,51 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       setActiveDiagramId(model.diagrams[0].id)
     }
   }, [activeDiagramId, model.diagrams])
+
+  // 当前图必须有对应标签：从模型树、图表视图或菜单切图时自动补一个标签页。
+  useEffect(() => {
+    if (!activeDiagramId) {
+      return
+    }
+    setTabs((previous) => (
+      previous.some((tab) => tab.kind === 'diagram' && tab.id === activeDiagramId)
+        ? previous
+        : [...previous, { kind: 'diagram', id: activeDiagramId }]
+    ))
+  }, [activeDiagramId])
+
+  // 标签自愈：切项目、删图、删元素后，悬空的标签自动消失（内容不变时保持原数组，避免多余重渲染）。
+  useEffect(() => {
+    setTabs((previous) => {
+      const kept = previous.filter((tab) => (
+        tab.kind === 'diagram'
+          ? model.diagrams.some((diagram) => diagram.id === tab.id)
+          : model.elements.some((element) => element.id === tab.id)
+      ))
+      return kept.length === previous.length ? previous : kept
+    })
+  }, [model.diagrams, model.elements])
+
+  // 切项目后视口回到 100%：两个项目的画布尺寸可能不同，沿用旧缩放会落在空白处。
+  useEffect(() => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }, [activeProjectId])
+
+  // 菜单栏点击外部收起：用 ref 判断是否点在菜单区域内部，避免下拉项 click 前被卸载。
+  useEffect(() => {
+    if (!menubarOpen) {
+      return
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      if (menubarRef.current?.contains(event.target as Node)) {
+        return
+      }
+      setMenubarOpen(null)
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    return () => window.removeEventListener('pointerdown', onPointerDown)
+  }, [menubarOpen])
 
   // 切换图：组件内容随图联动，展开元素/关系分组，并清掉新图不允许的连线工具与起点。
   useEffect(() => {
@@ -553,6 +641,78 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return map
   }, [model.elements, codeOf])
 
+  /** 模型树筛选：命中项 + 其祖先链，保证命中行所在的路径可见。 */
+  const treeFilterHits = useMemo(() => {
+    const needle = treeFilter.trim().toLowerCase()
+    if (!needle) {
+      return null
+    }
+    const hits = new Set<string>()
+    for (const element of model.elements) {
+      if (element.name.toLowerCase().includes(needle)) {
+        hits.add(element.id)
+      }
+    }
+    for (const diagram of model.diagrams) {
+      if (diagram.name.toLowerCase().includes(needle)) {
+        hits.add(diagram.id)
+      }
+    }
+    // 祖先链：只留命中项会导致父节点被过滤、子树根本渲染不出来。
+    for (const id of [...hits]) {
+      let cursor = elementById.get(id)?.ownerId ?? null
+      while (cursor) {
+        hits.add(cursor)
+        cursor = elementById.get(cursor)?.ownerId ?? null
+      }
+    }
+    return hits
+  }, [treeFilter, model.elements, model.diagrams, elementById])
+
+  /** 图表视图：按图类型分组，和工具箱的九图语义一致。 */
+  const diagramsByKind = useMemo(() => {
+    const map = new Map<string, Diagram[]>()
+    for (const diagram of model.diagrams) {
+      const list = map.get(diagram.kind)
+      if (list) {
+        list.push(diagram)
+      } else {
+        map.set(diagram.kind, [diagram])
+      }
+    }
+    return [...map.entries()]
+  }, [model.diagrams])
+
+  /** 模型库视图：通用扩展包（SysML / UML）及其元类、构造型数量。 */
+  const libraryPackages = useMemo(() => {
+    const roots = extensionPackages.filter((item) => (item.kind ?? 'PROFILE') === 'PROFILE')
+    return roots.map((pkg) => {
+      let metaclasses = 0
+      let stereotypes = 0
+      for (const element of model.elements) {
+        let cursor: ModelElement | undefined = element
+        let inside = false
+        while (cursor) {
+          if (cursor.id === pkg.id) {
+            inside = true
+            break
+          }
+          cursor = cursor.ownerId ? elementById.get(cursor.ownerId) : undefined
+        }
+        if (!inside) {
+          continue
+        }
+        const code = codeOf(element.type)
+        if (code === 'METACLASS') {
+          metaclasses += 1
+        } else if (code === 'STEREOTYPE') {
+          stereotypes += 1
+        }
+      }
+      return { pkg, metaclasses, stereotypes }
+    })
+  }, [extensionPackages, model.elements, elementById, codeOf])
+
   const selectedDiagram = useMemo(
     () => model.diagrams.find((diagram) => diagram.id === selectedDiagramId) ?? null,
     [model.diagrams, selectedDiagramId],
@@ -605,6 +765,83 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }))
   }, [propEntry, propCatalog, propView, locale])
   const propViewCount = (view: PropertyView): number => propEntry?.counts?.[view] ?? 0
+  /** 当前档位下实际渲染的属性条数：属性面板底部统计条用它，与「共 N 项」一致。 */
+  const propVisibleCount = useMemo(
+    () => propGroups.reduce((sum, group) => sum + group.specs.length, 0),
+    [propGroups],
+  )
+
+  /** 画布视口：zoom 收窄取样范围、pan 平移原点；指针坐标由 getScreenCTM 自动换算。 */
+  const viewBox = `${pan.x} ${pan.y} ${canvas.width / zoom} ${canvas.height / zoom}`
+
+  const applyZoom = useCallback((next: number) => {
+    if (!Number.isFinite(next)) {
+      return
+    }
+    setZoom(clamp(Number(next.toFixed(3)), ZOOM_MIN, ZOOM_MAX))
+  }, [])
+
+  const fitCanvas = useCallback(() => {
+    setZoom(1)
+    setPan({ x: 0, y: 0 })
+  }, [])
+
+  // ── 文档标签：图标签切画布，对象标签只切属性窗口的编辑对象 ──
+  const activeTabKey = selectedId && tabs.some((tab) => tab.kind === 'element' && tab.id === selectedId)
+    ? `element:${selectedId}`
+    : activeDiagramId
+      ? `diagram:${activeDiagramId}`
+      : ''
+
+  const openTab = useCallback((tab: DocTab) => {
+    setTabs((previous) => (
+      previous.some((item) => item.kind === tab.kind && item.id === tab.id) ? previous : [...previous, tab]
+    ))
+  }, [])
+
+  const activateTab = useCallback((tab: DocTab) => {
+    if (tab.kind === 'diagram') {
+      setActiveDiagramId(tab.id)
+      setSelectedDiagramId(tab.id)
+      setSelectedId(null)
+    } else {
+      setSelectedId(tab.id)
+      setSelectedDiagramId(null)
+      setSelectedRelationId(null)
+    }
+  }, [])
+
+  /**
+   * 关闭标签：关掉当前标签时按「右邻 → 左邻 → 任一图标签」回退，避免画布突然空白；
+   * 对象标签关闭只需放开属性窗口的选择，画布不动。
+   */
+  const closeTab = (target: DocTab) => {
+    const index = tabs.findIndex((tab) => tab.kind === target.kind && tab.id === target.id)
+    if (index < 0) {
+      return
+    }
+    const next = tabs.filter((_, position) => position !== index)
+    setTabs(next)
+    const wasActive = target.kind === 'diagram' ? target.id === activeDiagramId : target.id === selectedId
+    if (!wasActive) {
+      return
+    }
+    if (target.kind === 'element') {
+      setSelectedId(null)
+      return
+    }
+    const fallback = next[index] ?? next[index - 1] ?? next.find((tab) => tab.kind === 'diagram') ?? null
+    if (fallback) {
+      activateTab(fallback)
+    } else {
+      setSelectedDiagramId(null)
+    }
+  }
+
+  const closeOtherTabs = (keep: DocTab) => {
+    setTabs([keep])
+    activateTab(keep)
+  }
 
   /** 属性原始值（未经文本化）：引用型属性在这里拿到的是元素 id 或 id 数组。 */
   const propertyRaw = (spec: PropertySpec): unknown => {
@@ -1666,6 +1903,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
     const clone = svg.cloneNode(true) as SVGSVGElement
     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
+    // 导出的是整张图，不是当前视口：缩放平移后的 viewBox 必须还原成完整画布。
+    clone.setAttribute('viewBox', `0 0 ${canvas.width} ${canvas.height}`)
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
     rect.setAttribute('x', '0')
     rect.setAttribute('y', '0')
@@ -1730,7 +1969,42 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     })
   }
 
+  /** 滚轮以光标为锚点缩放：光标下的模型点保持不动，缩放后不会丢掉正在看的目标。 */
+  const handleCanvasWheel = (event: ReactWheelEvent<SVGSVGElement>) => {
+    event.preventDefault()
+    const anchor = toSvgPoint(event.clientX, event.clientY)
+    const next = clamp(zoom * (event.deltaY < 0 ? 1.12 : 1 / 1.12), ZOOM_MIN, ZOOM_MAX)
+    if (Math.abs(next - zoom) < 0.0001) {
+      return
+    }
+    const ratio = zoom / next
+    setPan({
+      x: anchor.x - (anchor.x - pan.x) * ratio,
+      y: anchor.y - (anchor.y - pan.y) * ratio,
+    })
+    setZoom(Number(next.toFixed(3)))
+  }
+
+  /** 中键或 Shift+左键拖动平移视口；普通左键仍用于选择图形。 */
+  const handleCanvasPanStart = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (event.button !== 1 && !(event.button === 0 && event.shiftKey)) {
+      return
+    }
+    event.preventDefault()
+    setPanDrag({ startX: event.clientX, startY: event.clientY, panX: pan.x, panY: pan.y })
+  }
+
   const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (panDrag) {
+      // 屏幕像素换算成模型单位：视口宽度 = canvas.width / zoom，铺满 svg 的实际像素宽度。
+      const rect = svgRef.current?.getBoundingClientRect()
+      const perPixel = rect && rect.width > 0 ? (canvas.width / zoom) / rect.width : 1 / zoom
+      setPan({
+        x: panDrag.panX - (event.clientX - panDrag.startX) * perPixel,
+        y: panDrag.panY - (event.clientY - panDrag.startY) * perPixel,
+      })
+      return
+    }
     if (!drag) {
       return
     }
@@ -1746,6 +2020,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }
 
   const handlePointerUp = () => {
+    if (panDrag) {
+      setPanDrag(null)
+      return
+    }
     if (!drag) {
       return
     }
@@ -2317,16 +2595,266 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     )
   }
 
+  // ── 顶部菜单栏：把原先散落在顶栏与画布工具条里的命令收进 8 个菜单 ──
+  const renameSelection = () => {
+    if (selected) {
+      setPropsTab('attrs')
+      window.setTimeout(() => renameRef.current?.focus(), 30)
+      return
+    }
+    if (selectedDiagram) {
+      openDiagramDialog(selectedDiagram.ownerId, selectedDiagram)
+    }
+  }
+
+  const deleteSelection = () => {
+    if (selected) {
+      if (isProjectRoot(selected)) {
+        say('项目根节点模型不可删除')
+        return
+      }
+      if (extensionRootIds.has(selected.id)) {
+        say('通用扩展包随项目提供，不可删除；包内的元类与构造型可以删除')
+        return
+      }
+      setDeleteDialog({ elementId: selected.id, name: selected.name, count: descendants(selected.id).length })
+      return
+    }
+    if (selectedDiagram) {
+      void submitDeleteDiagram(selectedDiagram.id)
+      return
+    }
+    if (selectedRelation) {
+      const id = selectedRelation.id
+      setSelectedRelationId(null)
+      void runCommand('DELETE_RELATIONSHIP', { id })
+    }
+  }
+
+  const menus: MenuDef[] = [
+    {
+      label: '文件',
+      entries: [
+        { label: '新建项目…', run: () => setNewProjectDialog(true) },
+        { label: '工作空间面板', run: () => setSpaceDrawerOpen(true) },
+        'separator',
+        { label: '新建元素…', run: () => openCreate(null) },
+        { label: '新建图…', run: () => openDiagramDialog(null) },
+        { label: '新建关系…', run: openRelationDialog, disabled: !activeDiagramObj },
+        'separator',
+        { label: '导出当前图为 SVG', run: exportSvg, disabled: !activeDiagramObj },
+        'separator',
+        { label: '退出登录', run: onLogout, danger: true },
+      ],
+    },
+    {
+      label: '编辑',
+      entries: [
+        {
+          label: '撤销',
+          hint: 'Ctrl/⌘ + Z',
+          run: () => void handleUndo(),
+          disabled: busy || (health?.undoDepth ?? 0) === 0,
+        },
+        {
+          label: '重做',
+          hint: 'Ctrl + Y',
+          run: () => void handleRedo(),
+          disabled: busy || (health?.redoDepth ?? 0) === 0,
+        },
+        'separator',
+        { label: '重命名选中对象', hint: 'F2', run: renameSelection, disabled: !selected && !selectedDiagram },
+        {
+          label: '删除选中对象',
+          hint: 'Del',
+          run: deleteSelection,
+          disabled: !selected && !selectedDiagram && !selectedRelation,
+          danger: true,
+        },
+      ],
+    },
+    {
+      label: '视图',
+      entries: [
+        { label: '左栏 · 项目', run: () => setLeftTab('project'), checked: leftTab === 'project' },
+        { label: '左栏 · 图表', run: () => setLeftTab('charts'), checked: leftTab === 'charts' },
+        { label: '左栏 · 模型库', run: () => setLeftTab('library'), checked: leftTab === 'library' },
+        'separator',
+        { label: '属性档位 · 标准', run: () => setPropView('STANDARD'), checked: propView === 'STANDARD' },
+        { label: '属性档位 · 专家', run: () => setPropView('EXPERT'), checked: propView === 'EXPERT' },
+        { label: '属性档位 · 全部', run: () => setPropView('ALL'), checked: propView === 'ALL' },
+        'separator',
+        {
+          label: toolboxCollapsed ? '展开组件工具箱' : '收起组件工具箱',
+          run: () => setToolboxCollapsed((previous) => !previous),
+        },
+        { label: '适应窗口', run: fitCanvas },
+        { label: '缩放重置 100%', run: () => applyZoom(1), disabled: zoom === 1 && pan.x === 0 && pan.y === 0 },
+      ],
+    },
+    {
+      label: '模型',
+      entries: [
+        { label: '在项目根下新建元素…', run: () => openCreate(projectRootId) },
+        { label: '新建关系…', run: openRelationDialog, disabled: !activeDiagramObj },
+        'separator',
+        {
+          label: '把选中元素加入当前图',
+          run: () => selectedId && void addToCurrentDiagram(selectedId),
+          disabled: !selectedId || !activeDiagramId,
+        },
+        {
+          label: '在图中定位选中元素',
+          run: () => selectedId && locateInDiagram(selectedId),
+          disabled: !selectedId,
+        },
+        'separator',
+        { label: '重新拉取模型快照', run: () => void refresh() },
+      ],
+    },
+    {
+      label: '分析',
+      entries: [
+        {
+          label: '模型统计',
+          run: () => say('{elements} 元素 · {relations} 关系 · {diagrams} 图 · rev {revision}', {
+            elements: model.elements.length,
+            relations: model.relationships.length,
+            diagrams: model.diagrams.length,
+            revision: health?.revision ?? model.revision,
+          }),
+        },
+        {
+          label: '规范属性目录',
+          run: () => say('元类 {types} · 元属性 {props} · 关系类型 {relations}', {
+            types: propCatalog?.metaclasses.length ?? 0,
+            props: Object.values(propCatalog?.types ?? {}).reduce((sum, entry) => sum + entry.properties.length, 0),
+            relations: Object.keys(propCatalog?.relationships ?? {}).length,
+          }),
+        },
+        'separator',
+        { label: '重新校验并刷新', run: () => void refresh() },
+      ],
+    },
+    {
+      label: '工具',
+      entries: [
+        { label: '界面语言 · 中文', run: () => setLocale('zh'), checked: locale === 'zh' },
+        { label: '界面语言 · English', run: () => setLocale('en'), checked: locale === 'en' },
+        'separator',
+        { label: '导出当前图为 SVG', run: exportSvg, disabled: !activeDiagramObj },
+        { label: '适应窗口', run: fitCanvas },
+      ],
+    },
+    {
+      label: '窗口',
+      entries: [
+        ...tabs.slice(0, 12).map<MenuEntry>((tab) => ({
+          label: tab.kind === 'diagram'
+            ? `图 · ${model.diagrams.find((item) => item.id === tab.id)?.name ?? tab.id}`
+            : `对象 · ${elementById.get(tab.id)?.name ?? tab.id}`,
+          run: () => activateTab(tab),
+          checked: activeTabKey === `${tab.kind}:${tab.id}`,
+        })),
+        ...(tabs.length > 0 ? ['separator' as const] : []),
+        {
+          label: '关闭其他标签',
+          run: () => {
+            const keep = tabs.find((tab) => `${tab.kind}:${tab.id}` === activeTabKey)
+            if (keep) {
+              closeOtherTabs(keep)
+            }
+          },
+          disabled: tabs.length < 2,
+        },
+        { label: '关闭全部标签', run: () => setTabs([]), disabled: tabs.length === 0 },
+      ],
+    },
+    {
+      label: '帮助',
+      entries: [
+        {
+          label: '快捷键',
+          run: () => say('Ctrl/⌘+Z 撤销 · Ctrl+Y 重做 · 滚轮缩放 · Shift+拖动平移画布 · Esc 退出连线'),
+        },
+        {
+          label: '关于 Scofen Modeler Studio',
+          run: () => say('Scofen Modeler Studio · SysML 1.6 / UML 2.5.1 轻量建模器 · 每个项目独立命令通道与撤销栈'),
+        },
+      ],
+    },
+  ]
+
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
-          <span className="mark" aria-hidden="true" />
-          <div>
-            <h1>Scofen Modeler Studio</h1>
-            <p>One model. Nine views.</p>
+        <nav className="menubar" ref={menubarRef}>
+          <span className="mb-brand">
+            <span className="mark" aria-hidden="true" />
+            <strong>Scofen Modeler Studio</strong>
+          </span>
+          {menus.map((menu) => (
+            <div className="mb-item" key={menu.label}>
+              <button
+                type="button"
+                className={`mb-btn ${menubarOpen === menu.label ? 'open' : ''}`}
+                onClick={() => setMenubarOpen((previous) => (previous === menu.label ? null : menu.label))}
+                onPointerEnter={() => { if (menubarOpen) { setMenubarOpen(menu.label) } }}
+              >
+                {t(menu.label)}
+              </button>
+              {menubarOpen === menu.label && (
+                <div className="mb-drop" role="menu">
+                  {menu.entries.map((entry, index) => (
+                    entry === 'separator'
+                      ? <div className="mb-sep" key={`sep-${index}`} role="separator" />
+                      : (
+                        <button
+                          type="button"
+                          role="menuitem"
+                          key={`${entry.label}-${index}`}
+                          className={`mb-entry${entry.checked ? ' checked' : ''}${entry.danger ? ' danger' : ''}`}
+                          disabled={entry.disabled}
+                          title={entry.hint}
+                          onClick={() => {
+                            setMenubarOpen(null)
+                            entry.run?.()
+                          }}
+                        >
+                          <span className="mb-check">{entry.checked ? '✓' : ''}</span>
+                          <span className="mb-entry-label">{t(entry.label)}</span>
+                          {entry.hint && <span className="mb-hint">{entry.hint}</span>}
+                        </button>
+                      )
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+          <span className="mb-fill" />
+          <LocaleSwitch compact />
+          <div className="user-chip">
+            <span className="user-avatar" aria-hidden="true">{session.user.username.slice(0, 1).toUpperCase()}</span>
+            <span className="user-name">{session.user.displayName}</span>
+            <button type="button" onClick={onLogout} title={t('退出登录')}>{t('登出')}</button>
           </div>
-        </div>
+        </nav>
+
+        <div className="toolbar">
+          <div className="tb-icons">
+            <button type="button" className="tbi" title={t('新建元素…')} onClick={() => openCreate(null)}>＋</button>
+            <button type="button" className="tbi" title={t('新建图…')} onClick={() => openDiagramDialog(null)}>▧</button>
+            <button type="button" className="tbi" title={t('新建关系…')} disabled={!activeDiagramObj} onClick={openRelationDialog}>↔</button>
+            <span className="tbi-sep" />
+            <button type="button" className="tbi" title={t('撤销 · Ctrl/⌘ + Z')} disabled={busy || (health?.undoDepth ?? 0) === 0} onClick={() => void handleUndo()}>↶</button>
+            <button type="button" className="tbi" title={t('重做 · Ctrl + Y')} disabled={busy || (health?.redoDepth ?? 0) === 0} onClick={() => void handleRedo()}>↷</button>
+            <span className="tbi-sep" />
+            <button type="button" className="tbi" title={t('放大')} onClick={() => applyZoom(zoom * 1.25)}>＋</button>
+            <button type="button" className="tbi" title={t('缩小')} onClick={() => applyZoom(zoom / 1.25)}>−</button>
+            <button type="button" className="tbi wide" title={t('适应窗口')} onClick={fitCanvas}>{t('适应')}</button>
+            <span className="tbi-sep" />
+            <button type="button" className="tbi" title={t('导出当前图为 SVG')} disabled={!activeDiagramObj} onClick={exportSvg}>⇩</button>
+          </div>
 
         {/* 空间 / 项目选择器：替代原来的常驻最左列与顶部九图切换条 */}
         <div className="project-picker" onPointerDown={(event) => event.stopPropagation()}>
@@ -2406,16 +2934,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
         <div className="top-actions">
           <span className="pill">{t('SysML 1.6 · 九图')}</span>
-          <button type="button" title={t('撤销 · Ctrl/⌘ + Z')} onClick={() => void handleUndo()} disabled={busy || (health?.undoDepth ?? 0) === 0}>{t('撤销')}</button>
-          <button type="button" title={t('重做 · Ctrl/⌘ + Shift + Z 或 Ctrl + Y')} onClick={() => void handleRedo()} disabled={busy || (health?.redoDepth ?? 0) === 0}>{t('重做')}</button>
-          <LocaleSwitch compact />
-          <div className="user-chip">
-            <span className="user-avatar" aria-hidden="true">
-              {session.user.username.slice(0, 1).toUpperCase()}
-            </span>
-            <span className="user-name">{session.user.displayName} · {session.user.username}</span>
-            <button type="button" onClick={onLogout} title={t('退出登录')}>{t('登出')}</button>
-          </div>
+          <span className="pill rev">{t('rev {revision}', { revision: health?.revision ?? model.revision })}</span>
+        </div>
         </div>
       </header>
 

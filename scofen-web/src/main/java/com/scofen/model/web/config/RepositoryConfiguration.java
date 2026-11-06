@@ -13,6 +13,8 @@ import com.scofen.model.metamodel.ElementType;
 import com.scofen.model.metamodel.ExtensionLibrary;
 import com.scofen.model.metamodel.PropertyCatalog;
 import com.scofen.model.web.auth.AuthService;
+import com.scofen.model.web.persistence.PersistenceServiceFactory;
+import com.scofen.model.web.workspace.WorkspaceDirectory;
 import com.scofen.model.web.ws.PatchBroker;
 import com.scofen.model.web.ws.PatchWebSocketHandler;
 import com.scofen.model.xmi.XmiExchangeService;
@@ -44,8 +46,10 @@ public class RepositoryConfiguration {
 
     @Bean
     public CommandExecutor commandExecutor(InMemoryModelRepository repository, PatchBroker broker,
-                                          PersistenceService persistence) {
-        return new CommandExecutor(repository, new ValidationEngine(), broker, new UndoStack(), persistence);
+                                          PersistenceServiceFactory factory) {
+        // 主项目也按项目隔离绑定持久化实例：多个项目各写各的快照，不会互相覆盖。
+        return new CommandExecutor(repository, new ValidationEngine(), broker, new UndoStack(),
+                factory.forProject(WorkspaceDirectory.CURRENT_PROJECT_ID));
     }
 
     @Bean
@@ -59,8 +63,9 @@ public class RepositoryConfiguration {
      * 所有写入仍走 CommandExecutor，保证种子数据与用户编辑同一条协议。
      */
     @Bean
-    public ApplicationRunner sampleModel(CommandExecutor executor, PersistenceService persistence) {
+    public ApplicationRunner sampleModel(CommandExecutor executor, PersistenceServiceFactory factory) {
         return args -> {
+            PersistenceService persistence = factory.forProject(WorkspaceDirectory.CURRENT_PROJECT_ID);
             // 持久化模式：若已有快照则直接回载，跳过种子（做到重启不丢）
             if (persistence.isEnabled()) {
                 persistence.loadLatest().ifPresent(snapshot -> {
@@ -70,6 +75,8 @@ public class RepositoryConfiguration {
                 if (executor.repository().revision() > 0) {
                     return;
                 }
+                // 播种期间先摘掉持久化，避免每条种子命令都写一份整包快照。
+                executor.setPersistence(new NoopPersistenceService(WorkspaceDirectory.CURRENT_PROJECT_ID));
             }
             // 项目根：SysML 的 Model 是模型树的唯一顶层节点，所有包/图都归其所有（直接或间接）。
             element(executor, "model-root", "Model", "车载动力系统工程模型", "", false);
@@ -145,8 +152,11 @@ public class RepositoryConfiguration {
             }
 
             // 种子完成后立即落库，保证持久化模式首启即有基线
-            persistence.save(executor.snapshot());
-            System.out.println("[scofen] 种子模型已生成并持久化，revision=" + executor.revision());
+            executor.setPersistence(persistence);
+            if (persistence.isEnabled()) {
+                persistence.save(executor.snapshot());
+            }
+            System.out.println("[scofen] 种子模型已生成，revision=" + executor.revision());
         };
     }
 

@@ -3,7 +3,6 @@ package com.scofen.model.web.api;
 import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.core.Patch;
-import com.scofen.model.core.PersistenceService;
 import com.scofen.model.core.ValidationEngine;
 import com.scofen.model.metamodel.ContainmentRules;
 import com.scofen.model.metamodel.DiagramKind;
@@ -13,6 +12,7 @@ import com.scofen.model.metamodel.MetamodelRegistry;
 import com.scofen.model.metamodel.ModelSnapshot;
 import com.scofen.model.metamodel.PropertyCatalog;
 import com.scofen.model.metamodel.RelationshipType;
+import com.scofen.model.web.persistence.PersistenceServiceFactory;
 import com.scofen.model.web.project.ProjectRegistry;
 import com.scofen.model.web.ws.PatchBroker;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,14 +37,15 @@ public class ModelController {
 
     private final CommandExecutor executor;
     private final PatchBroker broker;
-    private final PersistenceService persistence;
+    private final PersistenceServiceFactory persistenceFactory;
     /** 单元测试可直接构造本类；Spring 运行时注入多项目路由。 */
     private ProjectRegistry projects;
 
-    public ModelController(CommandExecutor executor, PatchBroker broker, PersistenceService persistence) {
+    public ModelController(CommandExecutor executor, PatchBroker broker,
+                           PersistenceServiceFactory persistenceFactory) {
         this.executor = executor;
         this.broker = broker;
-        this.persistence = persistence;
+        this.persistenceFactory = persistenceFactory;
     }
 
     @Autowired
@@ -72,7 +73,8 @@ public class ModelController {
                 "revision", current.revision(),
                 "diagramKinds", MetamodelRegistry.diagramCount(),
                 "onlineSessions", broker.sessionCount(),
-                "persistence", persistence.describe(),
+                "persistence", persistenceFactory.enabled()
+                        ? "MySQL 8.x (write-through)" : "in-memory (M0)",
                 "undoDepth", current.undoDepth(sessionId),
                 "redoDepth", current.redoDepth(sessionId));
     }
