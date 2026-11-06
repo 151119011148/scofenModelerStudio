@@ -5,7 +5,7 @@
 轻量化 SysML 1.6 / UML 2.5.1 建模工具，对标 M-Design 与 MagicDraw / Cameo。
 模型优先、服务端权威：元素与关系是唯一事实源，图只是视图。
 
-**当前状态：M0 骨架已实现、54 项自动化测试全绿（无 Docker 时跳过 2 个 Testcontainers 用例），并已上线 <http://47.117.110.143/scofen/modelerStudio/>；尚未进入 M1～M4 的完整产品实现。**
+**当前状态：M0 骨架 + 三件套已落地——MySQL 持久化、XMI 语义往返、RBAC 权限闭环，共 120 项用例（112 项运行通过，8 项 Testcontainers 因无 Docker 跳过），已上线 <http://47.117.110.143/scofen/modelerStudio/>；尚未进入 M1～M4 的完整产品实现。**
 方案全文见仓库上级目录的《产品方案与技术选型 v0.6》；首发完整范围约 21～25 周。
 
 ## 已实现（M0）
@@ -19,21 +19,24 @@
 | Patch 广播 | `affectedIds` / `changes` / `inverse` / `validationDelta`，经 WebSocket 推给所有只读会话 |
 | 撤销 | 服务端按 session 保存逆命令栈 |
 | 规则引擎 | 命名唯一性（大小写不敏感，对应 MySQL `utf8mb4_0900_ai_ci`）、端点存在、循环继承、图元素类型约束、删除元素后清理图引用 |
-| 交换契约 | 语义层 / 图层分离；标准 XMI 缺侧车即拒绝；`.scofen.json` 无损；`.di.json` 保持中性 |
+| 交换契约 | 语义层 / 图层分离；`.xmi` 标准 UML 2.5.1 + `.di.json` 布局侧车 + `.scofen.json` 无损自有格式，导出导入双向可用 |
 | B/S 界面 | Vite + React + TS strict 三列工作区（模型树+属性 / 组件工具箱 / 画布），顶栏项目选择器、登录页、改名、新建、撤销、WS 实时同步 |
 | 层级模型树 | 按 `ownerId` 递归的三层父子结构，展开/折叠、选中同步到属性面板与画布；九图示例数据覆盖各图合法类型 |
 | 规范约束的增删改 | 服务端 `ContainmentRules` 表驱动所有权规则（如 Port 只能属于 Block / PartProperty）、根类型限制、命名格式与同命名空间唯一性、图类型约束；前端右键菜单只列出规范允许的子类型 |
 | 右键菜单 | 新建子元素 / 重命名 / 加入当前图 / 在图中定位 / 删除；删除父节点级联整棵子树、关系与记法，单条原子命令且可撤销恢复 |
 | 图形拖拽 | 画布 shape 支持指针拖拽，坐标经 `MOVE_NOTATION` 写入服务端 `Notation` 对象并广播，越界或不在图内的元素被服务端拒绝 |
-| 建表脚本 | `V1__init.sql`，按 MySQL 8.4 六条约束编写（默认关闭 Flyway，待持久化适配器接入） |
+| 建表脚本 | `MysqlSchema.ensure()` 幂等建六张表（项目、快照、用户、角色、用户角色、角色权限），MySQL 8.4 / InnoDB / utf8mb4 |
 | 登录与会话 | JWT(HS256) + PBKDF2 口令哈希，两个超管账号（`scofen` / `gaofeng`）共用口令；`/api/**` 与 WebSocket 握手都校验登录态，401 自动回登录页 |
 | 打开项目 | 顶栏项目选择器点击即打开、新建后自动打开；每个项目分配独立内存态模型运行时（唯一根 Model + 九图），统计 / revision / 撤销栈互不串写 |
 | 规范属性窗口 | 按 UML 2.5.1 元类继承链 + SysML 1.6 构造型展开每种元素类型的元属性（标准 / 专家 / 全部三档）；文本、布尔、枚举、数值、列表均可编辑，走通用 `UPDATE_PROPERTY` 命令（校验 + 乐观锁 + 撤销）；计算属性与派生属性（`id` / `qualifiedName` / 各类统计量）只读并由前端实时求值 |
 | 拖放加入图 | 模型树中把元素拖到「图」节点即把该元素加入该图并生成记法（自动排布落点、单条 `ADD_TO_DIAGRAM`、可撤销）；图只是视图，不复制、不拥有模型元素 |
+| MySQL 持久化 | 切 `scofen.persistence.mode=mysql` 后按项目隔离落库：项目目录、整包 JSON 快照（按 revision 留存最近 100 版）、用户与角色表；内存态仍是默认值，重启即复位 |
+| RBAC 权限闭环 | 9 个权限码两端共用一套：服务端 `@RequiresPermission` + 拦截器门控，前端读令牌里的 `perms` 收敛按钮显隐；内置 admin / editor / viewer 三角色 + 用户管理界面，权限码与界面显隐不会「藏了但还能调」 |
+| XMI 导入导出 | 「文件」菜单导出 `.xmi` / `.di.json` / `.scofen.json` 三种格式，导入 `.xmi`（可配 `.di.json`）；导入为**整包替换**当前项目，一次 Command、一次 revision、一个 Patch，天然幂等且可撤销；无侧车时由服务端按元素主图归属重排九图 |
 
 ## 尚未实现（后续里程碑）
 
-九图完整记法渲染、ELK Java / SequenceLayout 自动布局、EMF UML2 + SysML 1.6 Profile 的 XMI 往返、20 条黄金用例、MySQL 持久化适配器、RBAC / 审计 / 项目级编辑锁、SVG / PNG / Excel 导出、模型对比与批量导入。
+九图完整记法渲染、ELK Java / SequenceLayout 自动布局、EMF UML2 + SysML 1.6 Profile 的标准 XMI 互操作、20 条黄金用例、项目级编辑锁与审计日志、SVG / PNG / Excel 导出、模型对比与批量导入。
 
 ## 环境要求
 
@@ -65,6 +68,56 @@
 WebSocket 握手通过 `?token=<JWT>` 校验。所有 `/api/**` 请求带 `X-Scofen-Project: <projectId>`
 指定当前打开的项目，带 `X-Scofen-Session` 指定撤销栈。
 
+## MySQL 落库
+
+默认仍是**内存态**（`scofen.persistence.mode=memory`，重启即复位，零数据库依赖）。
+切到落库模式只要改环境变量，代码零改动：
+
+```bash
+# /etc/scofen/modeler.env（systemd EnvironmentFile 注入，chmod 600）
+SCOFEN_PERSISTENCE_MODE=mysql
+SPRING_DATASOURCE_URL=jdbc:mysql://127.0.0.1:3306/scofen_modeler?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai&characterEncoding=utf8&useUnicode=true
+SPRING_DATASOURCE_USERNAME=root
+SPRING_DATASOURCE_PASSWORD=<口令>
+```
+
+建表由应用首次访问时幂等执行（`MysqlSchema.ensure()`），共六张表：
+
+| 表 | 用途 |
+|---|---|
+| `scofen_project` | 项目目录：名称、空间、状态与最新 revision 指针 |
+| `scofen_model_snapshot` | 模型整包 JSON 快照，主键 `(project_id, revision)`，按项目隔离 |
+| `scofen_user` / `scofen_role` / `scofen_user_role` / `scofen_role_permission` | RBAC 用户与角色，口令只存 PBKDF2 哈希 |
+
+快照默认保留最近 100 个 revision（`scofen.persistence.snapshot-retention`），留窗口是为了能回退到前一版，不是做历史归档。
+
+## XMI 语义往返
+
+导出三选一，界面在「文件」菜单：
+
+| 格式 | 内容 | 用途 |
+|---|---|---|
+| `.xmi` | 标准 UML 2.5.1 `xmi:XMI`；SysML 非标准元类的原类型记在 `scofen:type` 扩展命名空间 | 与外部工具交换语义 |
+| `.di.json` | 布局侧车：九图的类型与名称、全部记号坐标 | 与 `.xmi` 配对，标准 XMI 装不下这些 |
+| `.scofen.json` | 自有无损格式，四对象原样 | 备份与跨机迁移 |
+
+导入 `.xmi`（可配 `.di.json`）的语义是**整包替换当前项目**：
+
+- 一次 Command、一次 revision、一个 Patch，天然幂等——导入自己导出的文件，结果与导出前完全一致；
+- 通用扩展包（SysML/UML 元类清单）是每个项目自带的公共内容，导入时**保留不替换**；
+- 无 `.di.json` 时服务端按元素的主图归属重排九图，不会让九图塌成一个点；
+- 校验在「替换后的世界」里做（旧的即将被清空，不能拿它比唯一性），且分两遍扫描，消除父子元素在文件中的顺序依赖；
+- `IMPORT_MODEL` ↔ `RESTORE_IMPORTED` 对称可撤销，撤销一次回到导入前，重做重新导入。
+
+## RBAC 权限闭环
+
+权限码两端共用一套（`Permission` 枚举，9 个）：服务端 `@RequiresPermission` + 拦截器门控，
+前端读 JWT 里的 `perms` 收敛按钮显隐，不会出现「界面藏了但接口还能调」。
+
+内置三个角色：`admin`（全部权限）、`editor`（建模 + 导入导出）、`viewer`（只读）。
+超管清单（`scofen` / `gaofeng`）是兜底——即便误删了库里的超管，也还有一条进得去的路。
+用户在「管理」面板维护，角色与权限映射存在库里。
+
 ## 构建与运行
 
 ```bash
@@ -84,7 +137,7 @@ SCOFEN_BASE=/scofen/modelerStudio/ ./build.sh
 只跑测试：
 
 ```bash
-./mvnw -B -ntp test          # 70 个测试：metamodel 12 / core 28 / xmi 5 / web 25（含 2 个 Testcontainers 跳过）
+./mvnw -B -ntp test          # 120 个用例：metamodel 13 / core 46 / xmi 12 / web 49（其中 8 项 Testcontainers 因无 Docker 跳过）
 ```
 
 ## 主要 API
@@ -99,9 +152,17 @@ SCOFEN_BASE=/scofen/modelerStudio/ ./build.sh
 | GET | `/api/metamodel/diagrams` | 九图规格与该图允许的元素类型 (`allowedTypes`) |
 | GET | `/api/metamodel/containment` | 元素类型中文标签/构造型、父子包含规则、根类型、画布边界 |
 | GET | `/api/metamodel/properties` | UML 2.5.1 + SysML 1.6 元属性全集：元类继承链、每种元素类型的属性表、标准/专家/全部三档计数 |
+| GET | `/api/metamodel/extension` | 通用扩展包目录（SysML/UML 元类清单，供构造型与引用型属性指向） |
+| GET | `/api/workspaces` | 空间与项目目录 |
 | POST | `/api/commands` | 唯一写入口；请求头 `X-Scofen-Session` 指定撤销栈 |
 | POST | `/api/commands/undo` | 按 session 撤销上一步 |
-| GET | `/api/export/scofen.json` | 自有无损格式导出 |
+| POST | `/api/commands/redo` | 按 session 重做 |
+| GET | `/api/exchange/xmi` | 导出标准 UML 2.5.1 XMI（需 `model.export`） |
+| GET | `/api/exchange/xmi.di.json` | 导出布局侧车（图类型、图名、记号坐标） |
+| GET | `/api/exchange/scofen.json` | 导出自有无损格式 |
+| GET | `/api/exchange/sidecar/preview` | 侧车概览：图数、记号数、九图规格 |
+| POST | `/api/exchange/xmi` | 导入 XMI，整包替换当前项目（需 `model.import`） |
+| GET | `/api/admin/users` `/api/admin/roles` `/api/admin/permissions` | 用户、角色与权限码目录（需 `user.manage` / `role.manage`） |
 | WS | `/ws/patches?token=<JWT>` | 权威 Patch 广播（单写者 + 只读跟随），握手校验登录态 |
 | GET | `/actuator/health` | 运维健康检查 |
 
@@ -143,6 +204,7 @@ curl -X POST http://localhost:8080/api/commands \
 | Nginx 片段 | `/etc/nginx/conf.d/scofen.locations`，由 `emotion-web.conf` 的 server 内 include |
 | WebSocket | `/scofen/modelerStudio/ws/patches`（独立 location，带 Upgrade 头与 3600s 超时） |
 | 登录密钥 | `/etc/scofen/modeler.env`（首次部署自动生成，`chmod 600`），由 systemd `EnvironmentFile` 注入 |
+| 数据库 | MySQL 8.4 `scofen_modeler` 库（`scofen.persistence.mode=mysql`）；表由应用幂等建 |
 | 日志 | `journalctl -u scofen.service -f` |
 
 一键发版（要求远端已配置 SSH 免密，本机已按子路径构建）：
@@ -167,11 +229,12 @@ docker compose --profile persistence up -d      # 附带 MySQL 8.4
 ## 目录
 
 ```
-scofen-metamodel/   四对象与九图注册表
+scofen-metamodel/   四对象与九图注册表 + 元模型与属性目录
 scofen-core/        Repository / Command / revision CAS / 校验 / 撤销
-scofen-xmi/         交换格式契约（EMF 适配器在 M3 接入）
-scofen-web/         Spring Boot 4.1 REST + WebSocket + Flyway 脚本 + 静态前端
+scofen-xmi/         XMI 语义往返（UmlXmiAdapter）+ 布局侧车 + 服务端重排
+scofen-web/         Spring Boot 4.1 REST + WebSocket + MySQL 落库 + RBAC + 静态前端
 frontend/           Vite + React + TypeScript strict
 deploy/             systemd unit / Nginx locations / 远端安装脚本
+tools/verify/       浏览器级实测脚本（headless Chrome + CDP，无 puppeteer 依赖）
 deploy-remote.sh    一键发版入口
 ```
