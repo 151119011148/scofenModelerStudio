@@ -175,7 +175,13 @@ public enum UmlMetaclass {
     SYSML_PROBLEM("Problem", "问题", "SysML 1.6 §16.3.2", COMMENT),
 
     /** 本产品实现的系统级元属性：标识、文档、构造型与派生统计量（对应 UML Comment / Element 的工程展开）。 */
-    SCOFEN_CORE("Scofen Core Properties", "系统属性", "Scofen 实现层 / UML 2.5.1 §7.2", ELEMENT);
+    SCOFEN_CORE("Scofen Core Properties", "系统属性", "Scofen 实现层 / UML 2.5.1 §7.2", ELEMENT),
+
+    /**
+     * 关系的系统级元属性。关系与元素同为模型对象，但没有包含层级，
+     * 端点用 sourceId / targetId 只读引用，故单独一层而不复用 SCOFEN_CORE。
+     */
+    SCOFEN_RELATION("Scofen Relationship Properties", "关系系统属性", "Scofen 实现层 / UML 2.5.1 §7.3");
 
     private final String umlName;
     private final String label;

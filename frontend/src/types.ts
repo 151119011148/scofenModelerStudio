@@ -68,6 +68,8 @@ export interface PropertyCatalogInfo {
   levels: PropertyViewLevel[]
   metaclasses: PropertyMetaclass[]
   types: Record<string, PropertyCatalogType>
+  /** 关系类型（按 code 索引）的属性表：关系与元素共用同一套属性窗口。 */
+  relationships?: Record<string, PropertyCatalogType>
   totalDefinitions: number
   specification: string
 }
@@ -81,13 +83,19 @@ export interface Diagram {
   relationshipIds: string[]
 }
 
+/** 关系也是模型对象：与元素同构地带名称、文档、构造型与规范元属性。 */
 export interface Relationship {
   id: string
   type: string
   sourceId: string
   targetId: string
+  name: string
+  documentation: string
+  stereotypes: string[]
   ownerId: string | null
   taggedValues: Record<string, string>
+  /** 规范元属性：键为 UML/SysML 原名，值为已编辑过的属性。 */
+  properties?: Record<string, unknown>
 }
 
 export interface Notation {

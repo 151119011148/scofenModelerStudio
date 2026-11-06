@@ -85,6 +85,13 @@ public final class InMemoryModelRepository {
         }
     }
 
+    /** 关系与元素共用同一命名空间外的 id 空间，属性写入需要按 id 先查元素再查关系。 */
+    public Optional<Relationship> findRelationship(String id) {
+        synchronized (lock) {
+            return Optional.ofNullable(relationships.get(id));
+        }
+    }
+
     public List<ModelElement> elements() {
         return snapshot().elements();
     }
@@ -168,30 +175,54 @@ public final class InMemoryModelRepository {
                 case "UPDATE_PROPERTY" -> {
                     String id = cmd.str("id");
                     String key = cmd.str("key");
-                    ModelElement before = requireElement(id);
-                    Object oldValue = before.property(key);
                     boolean remove = Boolean.TRUE.equals(cmd.payload().get("remove"));
-                    ModelElement after = before.withProperty(key, remove ? null : cmd.payload().get("value"));
-                    elements.put(id, after);
-                    changes.add(new Change("update", "element", id, before, after));
-                    affected.add(id);
-                    if ("name".equals(key)) {
-                        for (Diagram diagram : diagrams.values()) {
-                            if (diagram.elementIds().contains(id)) {
-                                affected.add(diagram.id());
+                    Object value = remove ? null : cmd.payload().get("value");
+
+                    // 关系与元素同为模型对象：先按元素 id 找，找不到再按关系 id 找。
+                    Relationship relationBefore = relationships.get(id);
+                    if (relationBefore != null) {
+                        Object oldValue = relationBefore.property(key);
+                        Relationship relationAfter = relationBefore.withProperty(key, value);
+                        relationships.put(id, relationAfter);
+                        changes.add(new Change("update", "relationship", id, relationBefore, relationAfter));
+                        affected.add(id);
+                        affected.add(relationBefore.sourceId());
+                        affected.add(relationBefore.targetId());
+                        Map<String, Object> inversePayload = new LinkedHashMap<>();
+                        inversePayload.put("id", id);
+                        inversePayload.put("key", key);
+                        if (oldValue == null) {
+                            inversePayload.put("remove", Boolean.TRUE);
+                        } else {
+                            inversePayload.put("value", oldValue);
+                        }
+                        inverse = Command.of("UPDATE_PROPERTY", revision, id + ":" + key + ":inverse",
+                                inversePayload);
+                    } else {
+                        ModelElement before = requireElement(id);
+                        Object oldValue = before.property(key);
+                        ModelElement after = before.withProperty(key, value);
+                        elements.put(id, after);
+                        changes.add(new Change("update", "element", id, before, after));
+                        affected.add(id);
+                        if ("name".equals(key)) {
+                            for (Diagram diagram : diagrams.values()) {
+                                if (diagram.elementIds().contains(id)) {
+                                    affected.add(diagram.id());
+                                }
                             }
                         }
+                        Map<String, Object> inversePayload = new LinkedHashMap<>();
+                        inversePayload.put("id", id);
+                        inversePayload.put("key", key);
+                        if (oldValue == null) {
+                            inversePayload.put("remove", Boolean.TRUE);
+                        } else {
+                            inversePayload.put("value", oldValue);
+                        }
+                        inverse = Command.of("UPDATE_PROPERTY", revision, id + ":" + key + ":inverse",
+                                inversePayload);
                     }
-                    Map<String, Object> inversePayload = new LinkedHashMap<>();
-                    inversePayload.put("id", id);
-                    inversePayload.put("key", key);
-                    if (oldValue == null) {
-                        inversePayload.put("remove", Boolean.TRUE);
-                    } else {
-                        inversePayload.put("value", oldValue);
-                    }
-                    inverse = Command.of("UPDATE_PROPERTY", revision, id + ":" + key + ":inverse",
-                            inversePayload);
                 }
                 case "DELETE_ELEMENT" -> {
                     String rootId = cmd.str("id");
@@ -268,7 +299,9 @@ public final class InMemoryModelRepository {
                     for (Map<String, Object> row : cmd.mapList("relationships")) {
                         Relationship relation = new Relationship(str(row, "id"), str(row, "type"),
                                 str(row, "sourceId"), str(row, "targetId"),
-                                blankToNull(str(row, "ownerId")), strMap(row, "taggedValues"));
+                                orEmpty(str(row, "name")), orEmpty(str(row, "documentation")),
+                                strList(row, "stereotypes"), blankToNull(str(row, "ownerId")),
+                                strMap(row, "taggedValues"), objectMap(row, "properties"));
                         relationships.put(relation.id(), relation);
                         changes.add(new Change("add", "relationship", relation.id(), null, relation));
                         affected.add(relation.id());
@@ -333,7 +366,12 @@ public final class InMemoryModelRepository {
                 }
                 case "CREATE_RELATIONSHIP" -> {
                     String id = cmd.str("id");
-                    Relationship relationship = Relationship.of(id, cmd.str("type"), cmd.str("sourceId"), cmd.str("targetId"));
+                    Relationship relationship = new Relationship(id, cmd.str("type"),
+                            cmd.str("sourceId"), cmd.str("targetId"),
+                            orEmpty(cmd.str("name")), orEmpty(cmd.str("documentation")),
+                            cmd.strList("stereotypes"), null,
+                            strMap(cmd.payload(), "taggedValues"),
+                            objectMap(cmd.payload(), "properties"));
                     relationships.put(id, relationship);
                     changes.add(new Change("add", "relationship", id, null, relationship));
                     affected.add(id);
@@ -349,8 +387,18 @@ public final class InMemoryModelRepository {
                     }
                     changes.add(new Change("remove", "relationship", id, before, null));
                     affected.add(id);
-                    inverse = Command.of("CREATE_RELATIONSHIP", revision, id + ":inverse",
-                            Map.of("id", id, "type", before.type(), "sourceId", before.sourceId(), "targetId", before.targetId()));
+                    // 逆命令必须带回关系的完整模型内容（名称/文档/构造型/属性包），否则撤销会丢属性。
+                    Map<String, Object> inversePayload = new LinkedHashMap<>();
+                    inversePayload.put("id", id);
+                    inversePayload.put("type", before.type());
+                    inversePayload.put("sourceId", before.sourceId());
+                    inversePayload.put("targetId", before.targetId());
+                    inversePayload.put("name", orEmpty(before.name()));
+                    inversePayload.put("documentation", orEmpty(before.documentation()));
+                    inversePayload.put("stereotypes", before.stereotypes());
+                    inversePayload.put("taggedValues", before.taggedValues());
+                    inversePayload.put("properties", before.properties());
+                    inverse = Command.of("CREATE_RELATIONSHIP", revision, id + ":inverse", inversePayload);
                 }
                 case "CREATE_DIAGRAM" -> {
                     String id = cmd.str("id");
@@ -560,8 +608,12 @@ public final class InMemoryModelRepository {
         row.put("type", relation.type());
         row.put("sourceId", relation.sourceId());
         row.put("targetId", relation.targetId());
+        row.put("name", orEmpty(relation.name()));
+        row.put("documentation", orEmpty(relation.documentation()));
+        row.put("stereotypes", relation.stereotypes());
         row.put("ownerId", orEmpty(relation.ownerId()));
         row.put("taggedValues", relation.taggedValues());
+        row.put("properties", relation.properties());
         return row;
     }
 

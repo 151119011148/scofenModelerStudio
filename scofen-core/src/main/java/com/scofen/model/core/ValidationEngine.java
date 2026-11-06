@@ -73,24 +73,47 @@ public final class ValidationEngine {
             case "UPDATE_PROPERTY" -> {
                 require(cmd.str("id"), "id");
                 require(cmd.str("key"), "key");
-                ModelElement element = repository.findElement(cmd.str("id"))
-                        .orElseThrow(() -> new ValidationException("Unknown element: " + cmd.str("id")));
-                ElementType type = ElementType.fromAny(element.type())
-                        .orElseThrow(() -> new ValidationException("Unknown element type: " + element.type()));
+                String targetId = cmd.str("id");
                 String key = cmd.str("key");
-                PropertyCatalog.PropertySpec spec = PropertyCatalog.find(type, key);
-                if (spec == null) {
-                    throw new ValidationException("属性不在 " + type.umlName() + " 的 UML/SysML 规范清单中: " + key);
-                }
-                if (!spec.editable()) {
-                    throw new ValidationException("计算属性 / 派生属性不可修改（UML 规范只读）: " + key);
-                }
                 boolean remove = Boolean.TRUE.equals(cmd.payload().get("remove"));
                 Object value = cmd.payload().get("value");
-                assertPropertyValue(spec, value, remove);
+
+                ModelElement element = repository.findElement(targetId).orElse(null);
+                if (element != null) {
+                    ElementType type = ElementType.fromAny(element.type())
+                            .orElseThrow(() -> new ValidationException("Unknown element type: " + element.type()));
+                    PropertyCatalog.PropertySpec spec = PropertyCatalog.find(type, key);
+                    if (spec == null) {
+                        throw new ValidationException("属性不在 " + type.umlName() + " 的 UML/SysML 规范清单中: " + key);
+                    }
+                    if (!spec.editable()) {
+                        throw new ValidationException("计算属性 / 派生属性不可修改（UML 规范只读）: " + key);
+                    }
+                    assertPropertyValue(spec, value, remove);
+                    if ("name".equals(key) && !remove) {
+                        assertNameFormat(String.valueOf(value));
+                        assertNameIsUnique(repository, element.ownerId(), String.valueOf(value), element.id());
+                    }
+                    return;
+                }
+
+                // 关系同样是模型对象：属性窗口按关系类型的元类链校验，端点与标识只读。
+                Relationship relationship = repository.findRelationship(targetId)
+                        .orElseThrow(() -> new ValidationException("Unknown model object: " + targetId));
+                RelationshipType relType = RelationshipType.fromAny(relationship.type())
+                        .orElseThrow(() -> new ValidationException(
+                                "Unknown relationship type: " + relationship.type()));
+                PropertyCatalog.PropertySpec relSpec = PropertyCatalog.find(relType, key);
+                if (relSpec == null) {
+                    throw new ValidationException("属性不在关系 «" + relType.code()
+                            + "» 的 UML/SysML 规范清单中: " + key);
+                }
+                if (!relSpec.editable()) {
+                    throw new ValidationException("计算属性 / 派生属性不可修改（UML 规范只读）: " + key);
+                }
+                assertPropertyValue(relSpec, value, remove);
                 if ("name".equals(key) && !remove) {
                     assertNameFormat(String.valueOf(value));
-                    assertNameIsUnique(repository, element.ownerId(), String.valueOf(value), element.id());
                 }
             }
             case "DELETE_ELEMENT" -> {

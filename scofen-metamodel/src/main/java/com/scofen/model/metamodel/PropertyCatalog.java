@@ -87,6 +87,13 @@ public final class PropertyCatalog {
 
     private static final Map<UmlMetaclass, List<PropertySpec>> BY_METACLASS = new EnumMap<>(UmlMetaclass.class);
     private static final Map<ElementType, List<UmlMetaclass>> ROOTS = new EnumMap<>(ElementType.class);
+    /**
+     * 关系类型的元类链（显式声明，具体元类在前）。
+     * 关系的父类链常带出与关系语义无关的属性（如 Association → Classifier 的抽象性），
+     * 因此这里只取对关系有意义的元类，再由 {@link UmlMetaclass#SCOFEN_RELATION} 补齐系统属性。
+     */
+    private static final Map<RelationshipType, List<UmlMetaclass>> RELATION_CHAINS =
+            new EnumMap<>(RelationshipType.class);
 
     static {
         /* ── UML 2.5.1 基础层 ── */
@@ -697,6 +704,20 @@ public final class PropertyCatalog {
                 d("relationshipCount", "关联关系数（系统计算）", INT),
                 d("isProjectRoot", "是否项目根（系统计算）", BOOL));
 
+        /* ── 关系系统属性：端点只读、标识只读，文档/构造型/标记值可编辑 ── */
+        mc(UmlMetaclass.SCOFEN_RELATION,
+                s("documentation", "文档", TXT, STD),
+                s("stereotypes", "构造型", STRS, STD),
+                s("taggedValues", "标记值（JSON 对象）", TXT, EXP),
+                d("id", "关系 ID（系统）", STR),
+                d("xmiId", "XMI ID（系统）", STR),
+                d("sourceId", "源元素（系统）", REF),
+                d("targetId", "目标元素（系统）", REF),
+                d("ownerId", "所有者 ID（系统）", REF),
+                d("relationshipType", "关系类型（系统）", STR),
+                d("revision", "模型 revision（系统）", INT));
+
+
         /* ── ElementType → 直接元类（继承链自动展开） ── */
         roots(ElementType.PACKAGE, UmlMetaclass.PACKAGE);
         roots(ElementType.MODEL, UmlMetaclass.MODEL);
@@ -730,6 +751,41 @@ public final class PropertyCatalog {
         roots(ElementType.USE_CASE, UmlMetaclass.USE_CASE);
         roots(ElementType.ACTOR, UmlMetaclass.ACTOR);
         roots(ElementType.COMMENT, UmlMetaclass.COMMENT);
+
+        /* ── RelationshipType → 元类链：关系与元素一样按规范铺开属性 ── */
+        relationChain(RelationshipType.CONTAINMENT, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.IMPORT, UmlMetaclass.PACKAGE_IMPORT, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.ACCESS, UmlMetaclass.PACKAGE_IMPORT, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.GENERALIZATION, UmlMetaclass.GENERALIZATION, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.ASSOCIATION, UmlMetaclass.ASSOCIATION, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.DEPENDENCY, UmlMetaclass.DEPENDENCY, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.SATISFY, UmlMetaclass.DEPENDENCY, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.VERIFY, UmlMetaclass.DEPENDENCY, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.REFINE, UmlMetaclass.DEPENDENCY, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.DERIVE_REQT, UmlMetaclass.DEPENDENCY, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.COPY, UmlMetaclass.DEPENDENCY, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.TRACE, UmlMetaclass.DEPENDENCY, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.ALLOCATE, UmlMetaclass.SYSML_ALLOCATE,
+                UmlMetaclass.ABSTRACTION, UmlMetaclass.DEPENDENCY, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.CONNECTOR, UmlMetaclass.CONNECTOR, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.ITEM_FLOW, UmlMetaclass.SYSML_ITEM_FLOW, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.BINDING, UmlMetaclass.CONNECTOR, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.DELEGATION, UmlMetaclass.CONNECTOR, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.CONSTRAINT_PARAMETER,
+                UmlMetaclass.SYSML_CONSTRAINT_PARAMETER, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.CONTROL_FLOW,
+                UmlMetaclass.CONTROL_FLOW, UmlMetaclass.ACTIVITY_EDGE, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.OBJECT_FLOW,
+                UmlMetaclass.OBJECT_FLOW, UmlMetaclass.ACTIVITY_EDGE, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.PARTITION, UmlMetaclass.ACTIVITY_PARTITION, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.MESSAGE, UmlMetaclass.MESSAGE, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.ORDERED_FRAGMENT,
+                UmlMetaclass.COMBINED_FRAGMENT, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.GUARD, UmlMetaclass.CONSTRAINT, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.TRANSITION, UmlMetaclass.TRANSITION, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.REGION, UmlMetaclass.REGION, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.INCLUDE, UmlMetaclass.INCLUDE, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.EXTEND, UmlMetaclass.EXTEND, UmlMetaclass.NAMED_ELEMENT);
     }
 
     private PropertyCatalog() {
@@ -763,6 +819,10 @@ public final class PropertyCatalog {
 
     private static void roots(ElementType type, UmlMetaclass... metaclasses) {
         ROOTS.put(type, List.of(metaclasses));
+    }
+
+    private static void relationChain(RelationshipType type, UmlMetaclass... metaclasses) {
+        RELATION_CHAINS.put(type, List.of(metaclasses));
     }
 
     private static void collect(UmlMetaclass metaclass, LinkedHashSet<UmlMetaclass> chain) {
@@ -821,6 +881,67 @@ public final class PropertyCatalog {
         return spec != null && spec.editable();
     }
 
+    /* ── 关系：关系也是一种模型对象，属性窗口与元素同构 ── */
+
+    /** 该关系类型的元类链（具体元类在前，末尾追加关系系统属性）。 */
+    public static List<UmlMetaclass> metaclassesOf(RelationshipType type) {
+        LinkedHashSet<UmlMetaclass> chain = new LinkedHashSet<>(
+                RELATION_CHAINS.getOrDefault(type, List.of(UmlMetaclass.NAMED_ELEMENT)));
+        // 每条关系在图上都有方向：链里没有有向关系时补上，端点由界面只读展示。
+        if (!chain.contains(UmlMetaclass.DIRECTED_RELATIONSHIP) && !chain.contains(UmlMetaclass.RELATIONSHIP)) {
+            chain.add(UmlMetaclass.DIRECTED_RELATIONSHIP);
+        }
+        chain.add(UmlMetaclass.SCOFEN_RELATION);
+        return List.copyOf(chain);
+    }
+
+    /** 关系完整属性清单；端点属性转只读，避免绕过图形直接改连接。 */
+    public static List<PropertySpec> forRelationship(RelationshipType type) {
+        Map<String, PropertySpec> byKey = new LinkedHashMap<>();
+        for (UmlMetaclass metaclass : metaclassesOf(type)) {
+            for (PropertySpec spec : BY_METACLASS.getOrDefault(metaclass, List.of())) {
+                PropertySpec value = isEndpointKey(spec.key()) ? asDerived(spec) : spec;
+                byKey.putIfAbsent(spec.key(), value);
+            }
+        }
+        return List.copyOf(byKey.values());
+    }
+
+    private static boolean isEndpointKey(String key) {
+        return "source".equals(key) || "target".equals(key);
+    }
+
+    private static PropertySpec asDerived(PropertySpec spec) {
+        return new PropertySpec(spec.key(), spec.umlName(), spec.label(),
+                spec.metaclass(), spec.metaclassName(), spec.metaclassLabel(), spec.spec(),
+                ValueKind.REFERENCE, Level.DERIVED, true, spec.options(), spec.defaultValue());
+    }
+
+    public static List<PropertySpec> filter(RelationshipType type, View view) {
+        List<PropertySpec> all = forRelationship(type);
+        if (view == View.ALL) {
+            return all;
+        }
+        return all.stream()
+                .filter(spec -> view == View.EXPERT
+                        ? spec.level() != Level.DERIVED
+                        : spec.level() == Level.STANDARD)
+                .toList();
+    }
+
+    public static PropertySpec find(RelationshipType type, String key) {
+        return forRelationship(type).stream()
+                .filter(spec -> spec.key().equals(key))
+                .findFirst()
+                .orElse(null);
+    }
+
+    /** 服务端写入校验用：关系属性同样必须在清单内且非只读。 */
+    public static boolean isEditable(RelationshipType type, String key) {
+        PropertySpec spec = find(type, key);
+        return spec != null && spec.editable();
+    }
+
     public static int totalPropertyCount() {
         return BY_METACLASS.values().stream().mapToInt(List::size).sum();
     }
@@ -854,10 +975,23 @@ public final class PropertyCatalog {
                     "ALL", all.size()));
             types.put(type.name(), row);
         }
+        Map<String, Object> relationships = new LinkedHashMap<>();
+        for (RelationshipType type : RelationshipType.values()) {
+            List<PropertySpec> all = forRelationship(type);
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("metaclasses", metaclassesOf(type).stream().map(UmlMetaclass::name).toList());
+            row.put("properties", all.stream().map(PropertySpec::toMap).toList());
+            row.put("counts", Map.of(
+                    "STANDARD", filter(type, View.STANDARD).size(),
+                    "EXPERT", filter(type, View.EXPERT).size(),
+                    "ALL", all.size()));
+            relationships.put(type.code(), row);
+        }
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("levels", levels);
         result.put("metaclasses", metaclasses);
         result.put("types", types);
+        result.put("relationships", relationships);
         result.put("totalDefinitions", totalPropertyCount());
         result.put("specification", "UML 2.5.1 + SysML 1.6");
         return result;

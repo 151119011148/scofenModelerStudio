@@ -31,6 +31,7 @@ import type {
   PropertyCatalogInfo,
   PropertySpec,
   PropertyView,
+  Relationship,
   RelationshipTypeInfo,
   Session,
   WorkspaceDirectoryInfo,
@@ -169,6 +170,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [activeDiagramId, setActiveDiagramId] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedDiagramId, setSelectedDiagramId] = useState<string | null>(null)
+  // 关系是独立模型对象：选中连线后在属性窗口按关系类型的元类链编辑属性。
+  const [selectedRelationId, setSelectedRelationId] = useState<string | null>(null)
   const [message, setMessage] = useState('正在连接服务端…')
   const [busy, setBusy] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -335,6 +338,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }, [activeDiagramId, model.diagrams])
 
+  // 元素 / 图与关系是互斥选择：选中元素或图时自动放开关系，避免属性窗口停留在已取消的对象上。
+  useEffect(() => {
+    if (selectedId || selectedDiagramId) {
+      setSelectedRelationId(null)
+    }
+  }, [selectedId, selectedDiagramId])
+
   const setActiveByKind = useCallback(
     (kind: string) => {
       const found = model.diagrams.find((item) => item.kind === kind)
@@ -447,12 +457,24 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     [model.diagrams, selectedDiagramId],
   )
 
+  /** 关系同样可选择：属性窗口按关系类型（如 satisfy）取服务端下发的属性表。 */
+  const selectedRelation = useMemo(
+    () => model.relationships.find((relation) => relation.id === selectedRelationId) ?? null,
+    [model.relationships, selectedRelationId],
+  )
+
   /**
-   * 属性窗口按当前元素的完整元类继承链分组：清单来自服务端 /api/metamodel/properties，
-   * 前端只按 STANDARD / EXPERT / ALL 三档过滤，不硬编码任何属性名。
+   * 属性窗口按当前对象（元素或关系）的完整元类继承链分组：清单来自服务端
+   * /api/metamodel/properties，前端只按 STANDARD / EXPERT / ALL 三档过滤，不硬编码任何属性名。
    */
   const selectedTypeCode = selected ? codeOf(selected.type) : null
-  const propEntry = selectedTypeCode ? propCatalog?.types[selectedTypeCode] ?? null : null
+  const propEntry = selectedRelation
+    ? propCatalog?.relationships?.[selectedRelation.type] ?? null
+    : selectedTypeCode
+      ? propCatalog?.types[selectedTypeCode] ?? null
+      : null
+  /** 属性提交的目标 id：元素与关系共用同一个 UPDATE_PROPERTY 通道。 */
+  const propTargetId = selectedRelation?.id ?? selected?.id ?? ''
   const propGroups = useMemo(() => {
     if (!propEntry) {
       return [] as { code: string; label: string; specs: PropertySpec[] }[]
@@ -480,20 +502,21 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }, [propEntry, propCatalog, propView])
   const propViewCount = (view: PropertyView): number => propEntry?.counts?.[view] ?? 0
 
-  /** 属性当前值的文本形式：核心字段走快照顶层，其余读 properties 包。 */
+  /** 属性当前值的文本形式：元素与关系共用，核心字段走各自成员，其余读 properties 包。 */
   const propertyText = (spec: PropertySpec): string => {
-    if (!selected) {
+    const target: ModelElement | Relationship | null = selectedRelation ?? selected
+    if (!target) {
       return ''
     }
     switch (spec.key) {
-      case 'name': return selected.name
-      case 'documentation': return selected.documentation
-      case 'stereotypes': return selected.stereotypes.join(', ')
-      case 'xmiId': return selected.xmiId ?? ''
-      case 'taggedValues': return JSON.stringify(selected.taggedValues)
+      case 'name': return target.name ?? ''
+      case 'documentation': return target.documentation ?? ''
+      case 'stereotypes': return (target.stereotypes ?? []).join(', ')
+      case 'xmiId': return selected?.xmiId ?? ''
+      case 'taggedValues': return JSON.stringify(target.taggedValues ?? {})
       default: break
     }
-    const raw = selected.properties?.[spec.key]
+    const raw = target.properties?.[spec.key]
     if (raw === undefined || raw === null) {
       return ''
     }
@@ -519,6 +542,31 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
   /** 计算 / 派生属性在客户端按当前快照实时求值，不落库、不可写。 */
   const derivedText = (key: string): string => {
+    if (selectedRelation) {
+      const source = model.elements.find((element) => element.id === selectedRelation.sourceId)
+      const target = model.elements.find((element) => element.id === selectedRelation.targetId)
+      const endpoint = (element: ModelElement | undefined, id: string) =>
+        element ? `${element.name}（${id}）` : id
+      switch (key) {
+        case 'id': return selectedRelation.id
+        case 'relationshipType': return selectedRelation.type
+        case 'source':
+        case 'sourceId':
+          return endpoint(source, selectedRelation.sourceId)
+        case 'target':
+        case 'targetId':
+          return endpoint(target, selectedRelation.targetId)
+        case 'ownerId':
+          return selectedRelation.ownerId ?? projectRoot?.name ?? '模型根'
+        case 'qualifiedName':
+          return `${source?.name ?? '?'} ⇒ ${target?.name ?? '?'}`
+        case 'relatedElement':
+          return [source?.name, target?.name].filter(Boolean).join(', ') || '—'
+        case 'xmiId': return '—'
+        case 'revision': return String(health?.revision ?? model.revision)
+        default: return '—'
+      }
+    }
     if (!selected) {
       return '—'
     }
@@ -568,7 +616,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
    * 由服务端做规范校验、乐观锁与撤销栈；派生 / 计算属性不会走到这里。
    */
   const commitProperty = (spec: PropertySpec, rawInput: string) => {
-    if (!selected || !spec.editable) {
+    if (!propTargetId || !spec.editable) {
       return
     }
     const raw = rawInput.trim()
@@ -576,7 +624,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       return
     }
     if (raw === '') {
-      void runCommand('UPDATE_PROPERTY', { id: selected.id, key: spec.key, remove: true })
+      void runCommand('UPDATE_PROPERTY', { id: propTargetId, key: spec.key, remove: true })
       return
     }
     // 标记值是 JSON 对象，单独解析，避免把字符串当成对象提交。
@@ -586,7 +634,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
           throw new Error('not an object')
         }
-        void runCommand('UPDATE_PROPERTY', { id: selected.id, key: spec.key, value: parsed })
+        void runCommand('UPDATE_PROPERTY', { id: propTargetId, key: spec.key, value: parsed })
       } catch {
         setMessage('「标记值」需要 JSON 对象，例如 {"owner":"张三"}')
       }
@@ -633,11 +681,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       default:
         break
     }
-    void runCommand('UPDATE_PROPERTY', { id: selected.id, key: spec.key, value })
+    void runCommand('UPDATE_PROPERTY', { id: propTargetId, key: spec.key, value })
   }
 
   const renderPropertyRow = (spec: PropertySpec): ReactNode => {
-    if (!selected) {
+    if (!propTargetId) {
       return null
     }
     const readOnly = !spec.editable
@@ -670,7 +718,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       control = (
         <textarea
           rows={2}
-          key={`${selected.id}:${spec.key}:${value}`}
+          key={`${propTargetId}:${spec.key}:${value}`}
           defaultValue={value}
           onBlur={(event) => commitProperty(spec, event.target.value)}
         />
@@ -679,7 +727,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       control = (
         <input
           ref={spec.key === 'name' ? renameRef : undefined}
-          key={`${selected.id}:${spec.key}:${value}`}
+          key={`${propTargetId}:${spec.key}:${value}`}
           defaultValue={value}
           placeholder={spec.kind === 'STRING_LIST' || spec.kind === 'REFERENCE_LIST' ? '逗号分隔' : '—'}
           onBlur={(event) => commitProperty(spec, event.target.value)}
@@ -1936,13 +1984,37 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             {rootNodes.map((node) => renderTreeNode(node, 0))}
             {rootNodes.length === 0 && <p className="hint">暂无元素，右键空白处新建元素</p>}
             <div className="panel-title">关系</div>
-            {model.relationships.map((relation) => (
-              <div className="tree-row muted" key={relation.id}>
-                «{relation.type}» {model.elements.find((e) => e.id === relation.sourceId)?.name ?? relation.sourceId}
-                {' → '}
-                {model.elements.find((e) => e.id === relation.targetId)?.name ?? relation.targetId}
-              </div>
-            ))}
+            {model.relationships.map((relation) => {
+              const source = model.elements.find((item) => item.id === relation.sourceId)
+              const target = model.elements.find((item) => item.id === relation.targetId)
+              const active = selectedRelationId === relation.id
+              return (
+                <div
+                  className={`tree-row relation${active ? ' selected' : ''}`}
+                  key={relation.id}
+                  role="button"
+                  tabIndex={0}
+                  title={`${relationLabel(relation.type)}：${source?.name ?? relation.sourceId} → ${target?.name ?? relation.targetId}｜点击查看 / 编辑关系属性`}
+                  onClick={() => {
+                    setSelectedRelationId(relation.id)
+                    setSelectedId(null)
+                    setSelectedDiagramId(null)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setSelectedRelationId(relation.id)
+                      setSelectedId(null)
+                      setSelectedDiagramId(null)
+                    }
+                  }}
+                >
+                  <RelationIcon code={relation.type} size={15} />
+                  <span className="tree-label">{relation.name?.trim() || `«${relation.type}»`}</span>
+                  <span className="tree-type">{relationLabel(relation.type)}</span>
+                </div>
+              )
+            })}
             {model.relationships.length === 0 && <p className="hint">暂无关系</p>}
           </div>
 
@@ -1966,20 +2038,28 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           <div className="props-object">
             {selectedDiagram ? (
               <DiagramIcon code={selectedDiagram.kind} size={20} />
+            ) : selectedRelation ? (
+              <RelationIcon code={selectedRelation.type} size={20} />
             ) : selected ? (
               <TypeIcon code={codeOf(selected.type)} size={20} />
             ) : (
               <span className="props-placeholder" aria-hidden="true">—</span>
             )}
             <span className="props-object-name">
-              {selectedDiagram?.name ?? selected?.name ?? '未选择对象'}
+              {selectedDiagram?.name
+                ?? selected?.name
+                ?? (selectedRelation
+                  ? (selectedRelation.name?.trim() || `«${selectedRelation.type}» ${relationLabel(selectedRelation.type)}`)
+                  : '未选择对象')}
             </span>
             <span className="props-object-kind">
               {selectedDiagram
                 ? specs.find((s) => s.code === selectedDiagram.kind)?.label ?? '图'
-                : selected
-                  ? typeInfo.get(codeOf(selected.type))?.label ?? selected.type
-                  : ''}
+                : selectedRelation
+                  ? `关系 · ${relationLabel(selectedRelation.type)}`
+                  : selected
+                    ? typeInfo.get(codeOf(selected.type))?.label ?? selected.type
+                    : ''}
             </span>
           </div>
           {propsTab === 'attrs' ? (
@@ -1998,7 +2078,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 <div className="kv"><span>元素数</span><code>{selectedDiagram.elementIds.length} 个</code></div>
                 <div className="kv"><span>ID</span><code>{selectedDiagram.id}</code></div>
               </>
-            ) : selected ? (
+            ) : (selected || selectedRelation) ? (
               <>
                 <div className="prop-view-switch" role="tablist" aria-label="属性档位">
                   {(propCatalog?.levels ?? [
@@ -2022,8 +2102,43 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 </div>
                 <div className="prop-meta">
                   {propCatalog?.specification ?? 'UML 2.5.1 + SysML 1.6'}
-                  {propEntry && <span> · {propEntry.metaclasses.length} 个元类</span>}
+                  {selectedRelation
+                    ? <span> · 关系 «{selectedRelation.type}» · {propEntry?.metaclasses.length ?? 0} 个元类</span>
+                    : propEntry && <span> · {propEntry.metaclasses.length} 个元类</span>}
                 </div>
+                {selectedRelation && (
+                  <div className="rel-endpoints">
+                    <button
+                      type="button"
+                      className="rel-endpoint"
+                      title="选中源元素"
+                      onClick={() => {
+                        setSelectedId(selectedRelation.sourceId)
+                        setSelectedRelationId(null)
+                        setSelectedDiagramId(null)
+                      }}
+                    >
+                      <span className="rel-endpoint-tag">源</span>
+                      {model.elements.find((element) => element.id === selectedRelation.sourceId)?.name
+                        ?? selectedRelation.sourceId}
+                    </button>
+                    <span className="rel-arrow" aria-hidden="true">→</span>
+                    <button
+                      type="button"
+                      className="rel-endpoint"
+                      title="选中目标元素"
+                      onClick={() => {
+                        setSelectedId(selectedRelation.targetId)
+                        setSelectedRelationId(null)
+                        setSelectedDiagramId(null)
+                      }}
+                    >
+                      <span className="rel-endpoint-tag">目标</span>
+                      {model.elements.find((element) => element.id === selectedRelation.targetId)?.name
+                        ?? selectedRelation.targetId}
+                    </button>
+                  </div>
+                )}
                 <div className="prop-list">
                   {propGroups.length === 0 && (
                     <p className="hint">该类型暂无属性定义（属性目录加载中或服务端未登记）</p>
@@ -2054,25 +2169,56 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                     )
                   })}
                 </div>
+                {selectedRelation && (
+                  <div className="prop-actions">
+                    <button
+                      type="button"
+                      className="danger"
+                      disabled={busy}
+                      title="删除该关系（可通过撤销恢复）"
+                      onClick={() => {
+                        const id = selectedRelation.id
+                        setSelectedRelationId(null)
+                        void runCommand('DELETE_RELATIONSHIP', { id })
+                      }}
+                    >删除关系</button>
+                  </div>
+                )}
               </>
             ) : (
-              <p className="hint">在左侧模型树或画布中选择一个元素或图</p>
+              <p className="hint">在左侧模型树或画布中选择一个元素、关系或图</p>
             )
           ) : (
             <div className="tags-panel">
-              {selected ? (
+              {(selected || selectedRelation) ? (
                 <>
-                  <div className="kv"><span>构造型</span><code>{selected.stereotypes.map((s) => `«${s}»`).join(' ') || '—'}</code></div>
-                  <div className="kv"><span>语义族</span><code>{FAMILIES.find((f) => f.key === familyOfType(codeOf(selected.type)))?.label ?? '—'}</code></div>
-                  <div className="kv"><span>文档</span><code>{selected.documentation || '—'}</code></div>
-                  <div className="kv"><span>XMI ID</span><code>{selected.xmiId || '—'}</code></div>
-                  {Object.entries(selected.taggedValues).map(([key, value]) => (
+                  <div className="kv">
+                    <span>构造型</span>
+                    <code>{(selectedRelation ?? selected)!.stereotypes.map((s) => `«${s}»`).join(' ') || '—'}</code>
+                  </div>
+                  <div className="kv">
+                    <span>语义族</span>
+                    <code>
+                      {selectedRelation
+                        ? RELATION_FAMILY_LABELS[relationInfo.get(selectedRelation.type)?.family ?? ''] ?? '—'
+                        : FAMILIES.find((f) => f.key === familyOfType(codeOf(selected!.type)))?.label ?? '—'}
+                    </code>
+                  </div>
+                  {selectedRelation && (
+                    <div className="kv">
+                      <span>关系</span>
+                      <code>{relationLabel(selectedRelation.type)}（«{selectedRelation.type}»）</code>
+                    </div>
+                  )}
+                  <div className="kv"><span>文档</span><code>{(selectedRelation ?? selected)!.documentation || '—'}</code></div>
+                  <div className="kv"><span>XMI ID</span><code>{selected?.xmiId || '—'}</code></div>
+                  {Object.entries((selectedRelation ?? selected)!.taggedValues ?? {}).map(([key, value]) => (
                     <div className="kv" key={key}><span>{key}</span><code>{value}</code></div>
                   ))}
-                  {Object.keys(selected.taggedValues).length === 0 && <p className="hint">暂无标签值</p>}
+                  {Object.keys((selectedRelation ?? selected)!.taggedValues ?? {}).length === 0 && <p className="hint">暂无标签值</p>}
                 </>
               ) : (
-                <p className="hint">选择一个模型元素以查看其构造型、文档与标签值</p>
+                <p className="hint">选择一个模型元素或关系以查看其构造型、文档与标签值</p>
               )}
             </div>
           )}
@@ -2314,9 +2460,14 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             role="img"
             aria-label="模型画布，图形可拖拽；连线模式下依次点击起点与终点"
             onPointerDown={(event) => {
-              // 连线模式下点击画布空白取消已选起点，点击节点由 handlePointerDown 处理。
-              if (relationTool && event.target === event.currentTarget) {
+              if (event.target !== event.currentTarget) {
+                return
+              }
+              // 连线模式下点击画布空白取消已选起点；普通模式点击空白取消关系选择。
+              if (relationTool) {
                 setRelationSource(null)
+              } else {
+                setSelectedRelationId(null)
               }
             }}
             onPointerMove={handlePointerMove}
@@ -2370,16 +2521,35 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               const arrow = arrowGeometry(sEdge.x, sEdge.y, tEdge.x, tEdge.y)
               const midX = (sEdge.x + tEdge.x) / 2
               const midY = (sEdge.y + tEdge.y) / 2
+              const isSelected = selectedRelationId === relation.id
+              const sourceName = from.element.name
+              const targetName = to.element.name
               return (
-                /* 连线画在节点之上保证标签可读，但整体不接收指针事件，避免挡住连线模式下的节点点选。 */
+                /*
+                 * 连线画在节点之上保证标签可读。容器整体不接收指针事件，只有末尾一条
+                 * 透明加粗线接收命中（pointerEvents="stroke"），这样关系可以点选，
+                 * 又不会在连线模式下挡住节点点选。
+                 */
                 <g key={relation.id} pointerEvents="none">
+                  {isSelected && (
+                    <line
+                      x1={sEdge.x}
+                      y1={sEdge.y}
+                      x2={tEdge.x}
+                      y2={tEdge.y}
+                      stroke="#2b5cb8"
+                      strokeWidth={(style.width ?? 1.4) + 7}
+                      strokeOpacity={0.18}
+                      strokeLinecap="round"
+                    />
+                  )}
                   <line
                     x1={sEdge.x}
                     y1={sEdge.y}
                     x2={tEdge.x}
                     y2={tEdge.y}
                     stroke={style.color}
-                    strokeWidth={style.width}
+                    strokeWidth={isSelected ? (style.width ?? 1.4) + 0.8 : style.width}
                     strokeDasharray={style.dashed ? '5 4' : undefined}
                   />
                   {style.arrow === 'filled' && (
@@ -2407,6 +2577,32 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       </text>
                     </g>
                   )}
+                  <line
+                    x1={sEdge.x}
+                    y1={sEdge.y}
+                    x2={tEdge.x}
+                    y2={tEdge.y}
+                    stroke="#000000"
+                    strokeOpacity={0}
+                    strokeWidth={12}
+                    strokeLinecap="round"
+                    pointerEvents={relationTool ? 'none' : 'stroke'}
+                    style={{ cursor: relationTool ? 'crosshair' : 'pointer' }}
+                    onPointerDown={(event) => {
+                      event.stopPropagation()
+                      if (relationTool) {
+                        return
+                      }
+                      setSelectedRelationId(relation.id)
+                      setSelectedId(null)
+                      setSelectedDiagramId(null)
+                    }}
+                  >
+                    <title>
+                      {relation.name?.trim() || `«${relation.type}» ${relationLabel(relation.type)}`}
+                      {'：'}{sourceName} → {targetName}｜点击查看 / 编辑关系属性
+                    </title>
+                  </line>
                 </g>
               )
             })}
