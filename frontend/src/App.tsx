@@ -580,6 +580,14 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
   /** 字符串列表属性的值：元素名等纯文本数组。 */
   const stringList = (spec: PropertySpec): string[] => {
+    const target: ModelElement | Relationship | null = selectedRelation ?? selected
+    if (!target) {
+      return []
+    }
+    // stereotypes 是核心成员字段，不在 properties 包里，要单独取。
+    if (spec.key === 'stereotypes') {
+      return (target.stereotypes ?? []).map((item) => String(item)).filter((item) => item.trim() !== '')
+    }
     const raw = propertyRaw(spec)
     if (Array.isArray(raw)) {
       return raw.map((item) => String(item)).filter((item) => item.trim() !== '')
@@ -886,7 +894,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
    * 每次增删都提交完整的数组值，走同一条 UPDATE_PROPERTY 通道。</p>
    */
   const renderListEditor = (spec: PropertySpec): ReactNode => {
-    const isReference = spec.kind === 'REFERENCE_LIST'
+    const isReference = spec.kind === 'REFERENCE_LIST' && spec.referencesElement !== false
     const values = isReference ? referenceIds(spec) : stringList(spec)
     const draftKey = `${propTargetId}:${spec.key}`
     const draft = listDraft[draftKey] ?? ''
@@ -1005,8 +1013,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         />
       )
     } else if (spec.kind === 'REFERENCE_LIST' || spec.kind === 'STRING_LIST') {
-      // 指向元模型 / 表达式的「伪列表」按普通文本编辑，不做 chip 化。
-      control = spec.referencesElement === false
+      // 只有「引用型列表指向元模型 / 表达式」才按普通文本编辑（metaclassReference、
+      // metamodelReference、icon 等），其余列表一律 chip 化——STRING_LIST 的
+      // referencesElement 恒为 false，不能拿它当「是否 chip 化」的开关。
+      control = spec.kind === 'REFERENCE_LIST' && spec.referencesElement === false
         ? (
           <input
             key={`${propTargetId}:${spec.key}:${value}`}
