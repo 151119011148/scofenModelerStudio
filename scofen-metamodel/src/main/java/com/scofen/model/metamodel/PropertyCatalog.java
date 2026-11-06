@@ -6,6 +6,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * UML 2.5.1 / SysML 1.6 元属性全集（表驱动）。
@@ -50,16 +51,33 @@ public final class PropertyCatalog {
             return !computed && level != Level.DERIVED;
         }
 
+        /**
+         * 英文显示名。规范原名本身即英文，按驼峰还原为可读形式，
+         * 避免维护一份与规范脱节的平行英文词表。
+         */
+        public String labelEn() {
+            return LabelUtil.humanize(umlName);
+        }
+
+        /** 元类分组标题的英文名。 */
+        public String metaclassLabelEn() {
+            return LabelUtil.humanize(metaclassName);
+        }
+
         public Map<String, Object> toMap() {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("key", key);
             row.put("umlName", umlName);
             row.put("label", label);
+            row.put("labelEn", labelEn());
             row.put("metaclass", metaclass);
             row.put("metaclassName", metaclassName);
             row.put("metaclassLabel", metaclassLabel);
+            row.put("metaclassLabelEn", metaclassLabelEn());
             row.put("spec", spec);
             row.put("kind", kind.name());
+            // 引用型属性是否指向模型元素：界面据此决定渲染「缩略图 + 名称」还是普通文本框。
+            row.put("referencesElement", referencesElement(this));
             row.put("level", level.name());
             row.put("computed", computed);
             row.put("editable", editable());
@@ -71,6 +89,22 @@ public final class PropertyCatalog {
 
     private record Spec(String key, String umlName, String label, ValueKind kind, Level level,
                         boolean computed, List<String> options, String defaultValue) {
+    }
+
+    /**
+     * 不指向模型元素的引用型属性。
+     *
+     * <p>规范里少数 REFERENCE 属性指向的并不是模型里的实例：{@code nameExpression} 是
+     * OCL 表达式文本，{@code metaclassReference} / {@code metamodelReference} 指向元模型
+     * 本身，{@code icon} 指向图形。这些属性的值是自由文本，不做「元素必须存在」的校验。</p>
+     */
+    private static final Set<String> NON_ELEMENT_REFERENCES = Set.of(
+            "nameExpression", "metaclassReference", "metamodelReference", "icon");
+
+    /** 该引用型属性是否指向模型里的元素（决定服务端是否校验目标存在）。 */
+    public static boolean referencesElement(PropertySpec spec) {
+        return (spec.kind() == ValueKind.REFERENCE || spec.kind() == ValueKind.REFERENCE_LIST)
+                && !NON_ELEMENT_REFERENCES.contains(spec.key());
     }
 
     private static final ValueKind STR = ValueKind.STRING;
@@ -949,15 +983,22 @@ public final class PropertyCatalog {
     /** 下发给前端的完整目录：档位定义 + 元类继承链 + 每种元素类型的属性表。 */
     public static Map<String, Object> describe() {
         List<Map<String, Object>> levels = List.of(
-                Map.of("code", "STANDARD", "label", "标准", "description", "建模时最常用的规范属性"),
-                Map.of("code", "EXPERT", "label", "专家", "description", "标准属性 + 规范扩展属性"),
-                Map.of("code", "ALL", "label", "全部", "description", "专家属性 + 计算属性 / 派生属性（只读）"));
+                Map.of("code", "STANDARD", "label", "标准", "labelEn", "Standard",
+                        "description", "建模时最常用的规范属性",
+                        "descriptionEn", "Most frequently used specification properties"),
+                Map.of("code", "EXPERT", "label", "专家", "labelEn", "Expert",
+                        "description", "标准属性 + 规范扩展属性",
+                        "descriptionEn", "Standard properties plus specification extensions"),
+                Map.of("code", "ALL", "label", "全部", "labelEn", "All",
+                        "description", "专家属性 + 计算属性 / 派生属性（只读）",
+                        "descriptionEn", "Expert properties plus computed / derived (read-only)"));
         List<Map<String, Object>> metaclasses = new ArrayList<>();
         for (UmlMetaclass metaclass : UmlMetaclass.values()) {
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("code", metaclass.name());
             row.put("name", metaclass.umlName());
             row.put("label", metaclass.label());
+            row.put("labelEn", metaclass.labelEn());
             row.put("spec", metaclass.spec());
             row.put("parents", metaclass.parents().stream().map(UmlMetaclass::name).toList());
             row.put("propertyCount", BY_METACLASS.getOrDefault(metaclass, List.of()).size());

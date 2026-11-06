@@ -197,6 +197,8 @@ public enum UmlMetaclass {
 
     public String umlName() { return umlName; }
     public String label() { return label; }
+    /** 英文显示名：由 UML 规范名还原为可读形式，供中英文切换使用。 */
+    public String labelEn() { return LabelUtil.humanize(umlName); }
     public String spec() { return spec; }
     public List<UmlMetaclass> parents() { return parents; }
 }

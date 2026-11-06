@@ -54,6 +54,11 @@ public enum ElementType {
         return label;
     }
 
+    /** 英文显示名：UML 规范名本身即英文，按驼峰还原为可读形式。 */
+    public String labelEn() {
+        return LabelUtil.humanize(umlName);
+    }
+
     /** SysML 1.6 默认构造型，新建元素时自动带上。 */
     public String stereotype() {
         return stereotype;

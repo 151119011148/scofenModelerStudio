@@ -17,50 +17,52 @@ import java.util.Optional;
 public enum RelationshipType {
 
     // 命名空间 / 结构
-    CONTAINMENT("containment", "包含", "namespace"),
-    IMPORT("import", "包导入", "namespace"),
-    ACCESS("access", "包访问", "namespace"),
-    GENERALIZATION("generalization", "泛化", "structure"),
-    ASSOCIATION("association", "关联", "structure"),
-    DEPENDENCY("dependency", "依赖", "structure"),
+    CONTAINMENT("containment", "包含", "Containment", "namespace"),
+    IMPORT("import", "包导入", "Package Import", "namespace"),
+    ACCESS("access", "包访问", "Package Access", "namespace"),
+    GENERALIZATION("generalization", "泛化", "Generalization", "structure"),
+    ASSOCIATION("association", "关联", "Association", "structure"),
+    DEPENDENCY("dependency", "依赖", "Dependency", "structure"),
 
     // 需求追溯
-    SATISFY("satisfy", "满足", "requirement"),
-    VERIFY("verify", "验证", "requirement"),
-    REFINE("refine", "精化", "requirement"),
-    DERIVE_REQT("deriveReqt", "派生需求", "requirement"),
-    COPY("copy", "复制", "requirement"),
-    TRACE("trace", "追溯", "requirement"),
-    ALLOCATE("allocate", "分配", "requirement"),
+    SATISFY("satisfy", "满足", "Satisfy", "requirement"),
+    VERIFY("verify", "验证", "Verify", "requirement"),
+    REFINE("refine", "精化", "Refine", "requirement"),
+    DERIVE_REQT("deriveReqt", "派生需求", "Derive Requirement", "requirement"),
+    COPY("copy", "复制", "Copy", "requirement"),
+    TRACE("trace", "追溯", "Trace", "requirement"),
+    ALLOCATE("allocate", "分配", "Allocate", "requirement"),
 
     // 内部块 / 参数
-    CONNECTOR("connector", "连接器", "structure"),
-    ITEM_FLOW("itemFlow", "项目流", "structure"),
-    BINDING("binding", "绑定", "constraint"),
-    DELEGATION("delegation", "委托", "structure"),
-    CONSTRAINT_PARAMETER("constraintParameter", "约束参数", "constraint"),
+    CONNECTOR("connector", "连接器", "Connector", "structure"),
+    ITEM_FLOW("itemFlow", "项目流", "Item Flow", "structure"),
+    BINDING("binding", "绑定", "Binding", "constraint"),
+    DELEGATION("delegation", "委托", "Delegation", "structure"),
+    CONSTRAINT_PARAMETER("constraintParameter", "约束参数", "Constraint Parameter", "constraint"),
 
     // 活动 / 交互 / 状态机
-    CONTROL_FLOW("controlFlow", "控制流", "activity"),
-    OBJECT_FLOW("objectFlow", "对象流", "activity"),
-    PARTITION("partition", "活动分区", "activity"),
-    MESSAGE("message", "消息", "interaction"),
-    ORDERED_FRAGMENT("orderedFragment", "顺序片段", "interaction"),
-    GUARD("guard", "守卫", "interaction"),
-    TRANSITION("transition", "状态迁移", "state"),
-    REGION("region", "状态区域", "state"),
+    CONTROL_FLOW("controlFlow", "控制流", "Control Flow", "activity"),
+    OBJECT_FLOW("objectFlow", "对象流", "Object Flow", "activity"),
+    PARTITION("partition", "活动分区", "Activity Partition", "activity"),
+    MESSAGE("message", "消息", "Message", "interaction"),
+    ORDERED_FRAGMENT("orderedFragment", "顺序片段", "Ordered Fragment", "interaction"),
+    GUARD("guard", "守卫", "Guard", "interaction"),
+    TRANSITION("transition", "状态迁移", "Transition", "state"),
+    REGION("region", "状态区域", "Region", "state"),
 
     // 用例
-    INCLUDE("include", "包含用例", "usecase"),
-    EXTEND("extend", "扩展用例", "usecase");
+    INCLUDE("include", "包含用例", "Include", "usecase"),
+    EXTEND("extend", "扩展用例", "Extend", "usecase");
 
     private final String code;
     private final String label;
+    private final String labelEn;
     private final String family;
 
-    RelationshipType(String code, String label, String family) {
+    RelationshipType(String code, String label, String labelEn, String family) {
         this.code = code;
         this.label = label;
+        this.labelEn = labelEn;
         this.family = family;
     }
 
@@ -70,6 +72,11 @@ public enum RelationshipType {
 
     public String label() {
         return label;
+    }
+
+    /** 英文显示名，供中英文切换使用。 */
+    public String labelEn() {
+        return labelEn;
     }
 
     /** 构造型名与 code 一致，前端显示为 «code»。 */

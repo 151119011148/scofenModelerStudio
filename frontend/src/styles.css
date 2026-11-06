@@ -93,6 +93,35 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   padding: 3px 9px;
 }
 
+/* 中英文切换：分段控件，当前语言高亮。 */
+.locale-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+  flex: none;
+}
+.locale-switch button {
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  padding: 3px 9px;
+  font-size: 11.5px;
+  color: var(--text-3);
+  line-height: 1.4;
+}
+.locale-switch button:hover:not(:disabled) { background: transparent; color: var(--accent); }
+.locale-switch button.active {
+  background: var(--surface);
+  color: var(--accent);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .08);
+}
+.locale-switch.compact button { padding: 3px 7px; font-family: var(--mono); font-size: 10.5px; }
+
 /* 顶栏项目选择器：空间 / 项目下拉，替代常驻的最左侧空间列与顶部九图切换条。 */
 .project-picker { position: relative; flex: 1 1 auto; min-width: 0; display: flex; justify-content: center; }
 .project-switch {
@@ -619,6 +648,132 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   text-overflow: ellipsis;
   white-space: nowrap;
   width: 100%;
+}
+
+/* ── 引用型属性：缩略图 + 名称卡片 ── */
+.prop-ref-editor { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.prop-ref-card {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-2);
+  font-size: 11.5px;
+  color: var(--text-2);
+  cursor: context-menu;
+}
+.prop-ref-card:hover { border-color: var(--accent); }
+.prop-ref-card.missing { border-style: dashed; color: var(--text-3); }
+.prop-ref-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 140px;
+}
+.prop-ref-id {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 96px;
+}
+.prop-ref-missing { font-size: 11.5px; color: var(--text-3); font-style: italic; }
+.prop-ref-picker-wrap { display: flex; flex-direction: column; gap: 4px; }
+.prop-ref-manual { display: flex; align-items: center; gap: 6px; }
+.prop-ref-manual input { flex: 1; min-width: 0; font-size: 11px; padding: 2px 6px; }
+.prop-ref-picker {
+  max-height: 180px;
+  overflow-y: auto;
+  border: 1px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--surface);
+  padding: 3px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.prop-ref-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  padding: 3px 5px;
+  font-size: 11.5px;
+  color: var(--text-2);
+  text-align: left;
+}
+.prop-ref-option:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); border: none; }
+.prop-ref-type {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--text-3);
+  margin-left: auto;
+  flex: none;
+}
+.prop-link {
+  align-self: flex-start;
+  border: none;
+  background: transparent;
+  padding: 1px 0;
+  font-size: 11px;
+  color: var(--accent);
+  text-decoration: underline;
+}
+.prop-link:hover:not(:disabled) { background: transparent; }
+
+/* ── 数组型属性：chip 标签 + 内联增删 ── */
+.prop-list-editor { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.prop-chips { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.prop-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-2);
+  padding: 1px 2px 1px 6px;
+}
+.prop-chip .prop-ref-card {
+  border: none;
+  background: transparent;
+  padding: 1px 0;
+  cursor: context-menu;
+}
+.prop-chip-text {
+  font-size: 11.5px;
+  color: var(--text-2);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prop-chip-x {
+  border: none;
+  background: transparent;
+  padding: 0 4px;
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--text-3);
+  border-radius: 999px;
+}
+.prop-chip-x:hover:not(:disabled) { background: transparent; color: var(--danger); }
+.prop-chips-empty { font-size: 11px; color: var(--text-3); font-style: italic; }
+.prop-inline-add { display: flex; align-items: center; gap: 6px; }
+.prop-inline-add input { flex: 1; min-width: 0; font-size: 11.5px; padding: 3px 6px; }
+
+/* 「树上高亮」：模型树里被定位到的行短暂高亮。 */
+.tree-row.located {
+  background: #fdf0cd;
+  color: #8a5a00;
+  outline: 1px solid #e0b64a;
 }
 .canvas { background: var(--surface); padding: 0; overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
 /* 只作用于画布本身；工具箱里的 16px 图标 SVG 是后代，不能被这条规则撑成宽 100% 的大块。 */

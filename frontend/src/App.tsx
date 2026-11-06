@@ -39,6 +39,8 @@ import type {
 } from './types'
 import { arrowGeometry, edgePoint, relationshipStyle, shapeOf } from './notation'
 import { DiagramIcon, FAMILIES, RelationIcon, TypeIcon, familyOfType } from './icons'
+import { pick, t, useLocale } from './i18n'
+import LocaleSwitch from './LocaleSwitch'
 import LoginView from './LoginView'
 
 const EMPTY_MODEL: ModelSnapshot = {
@@ -57,6 +59,8 @@ type MenuTarget =
   | { kind: 'element'; id: string }
   | { kind: 'diagram'; id: string }
   | { kind: 'root'; id: null }
+  /** 引用型属性的目标元素：菜单提供「树上高亮」与「移除」。 */
+  | { kind: 'reference'; id: string; propKey: string; index: number }
 
 interface ContextMenuState {
   x: number
@@ -100,6 +104,12 @@ interface DragState {
   moved: boolean
 }
 
+/** 状态栏消息：存词条与变量，渲染时翻译，切换语言后历史消息同步重译。 */
+interface MessageState {
+  key: string
+  vars?: Record<string, unknown>
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
@@ -116,7 +126,10 @@ type TreeNode =
   | { type: 'element'; ref: ModelElement }
   | { type: 'diagram'; ref: Diagram }
 
-/** 关系族中文名：组件工具箱「关系」分组内的小节标题。 */
+/**
+ * 关系族名：组件工具箱「关系」分组内的小节标题。
+ * 存中文原文，渲染时经 t() 翻译，因此可以跟随语言切换。
+ */
 const RELATION_FAMILY_LABELS: Record<string, string> = {
   requirement: '需求追溯',
   namespace: '命名空间',
@@ -130,9 +143,9 @@ const RELATION_FAMILY_LABELS: Record<string, string> = {
 
 /** 元模型目录接口不可用时的最小兜底，正常路径全部由服务端下发。 */
 const FALLBACK_RELATIONS: RelationshipTypeInfo[] = [
-  { code: 'trace', label: '追溯', stereotype: 'trace', family: 'requirement' },
-  { code: 'satisfy', label: '满足', stereotype: 'satisfy', family: 'requirement' },
-  { code: 'generalization', label: '泛化', stereotype: 'generalization', family: 'structure' },
+  { code: 'trace', label: '追溯', labelEn: 'Trace', stereotype: 'trace', family: 'requirement' },
+  { code: 'satisfy', label: '满足', labelEn: 'Satisfy', stereotype: 'satisfy', family: 'requirement' },
+  { code: 'generalization', label: '泛化', labelEn: 'Generalization', stereotype: 'generalization', family: 'structure' },
 ]
 
 /** 会话门卫：未登录只渲染登录页；任何接口返回 401 都会统一回到这里。 */
@@ -163,6 +176,9 @@ export default function App() {
 }
 
 function StudioApp({ session, onLogout }: { session: Session; onLogout: () => void }) {
+  // 订阅语言变化：切换后整棵组件树重渲染，所有 t()/pick() 立刻使用新语言。
+  // locale 同时进入依赖了翻译结果的 useMemo，保证缓存也跟着刷新。
+  const locale = useLocale()
   const [health, setHealth] = useState<Health | null>(null)
   const [model, setModel] = useState<ModelSnapshot>(EMPTY_MODEL)
   const [specs, setSpecs] = useState<DiagramSpec[]>([])
@@ -172,7 +188,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [selectedDiagramId, setSelectedDiagramId] = useState<string | null>(null)
   // 关系是独立模型对象：选中连线后在属性窗口按关系类型的元类链编辑属性。
   const [selectedRelationId, setSelectedRelationId] = useState<string | null>(null)
-  const [message, setMessage] = useState('正在连接服务端…')
+  // 状态栏消息只存「词条 + 变量」，渲染时才翻译：切换语言后历史消息会跟着重译。
+  const [message, setMessage] = useState<MessageState>({ key: '正在连接服务端…' })
+  const say = useCallback((key: string, vars?: Record<string, unknown>) => {
+    setMessage({ key, vars })
+  }, [])
   const [busy, setBusy] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   // 模型树拖放：元素拖到图节点上时高亮可接收的图。
@@ -201,6 +221,14 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [propCatalog, setPropCatalog] = useState<PropertyCatalogInfo | null>(null)
   const [propView, setPropView] = useState<PropertyView>('STANDARD')
   const [collapsedPropGroups, setCollapsedPropGroups] = useState<Set<string>>(() => new Set())
+  // 引用型属性：正在编辑的引用项（属性 key + 目标元素 id），用于展开内联选择器。
+  const [refEditing, setRefEditing] = useState<{ key: string; index: number } | null>(null)
+  // 「树上高亮」：模型树中需要展开祖先并高亮定位的元素 id。
+  const [treeLocateId, setTreeLocateId] = useState<string | null>(null)
+  // 引用选择器：当前打开的属性（key）与其在数组中的位置（-1 表示单值引用）。
+  const [refPicker, setRefPicker] = useState<{ key: string; index: number } | null>(null)
+  // 列表型属性的待提交草稿：键为「属性 key」。
+  const [listDraft, setListDraft] = useState<Record<string, string>>({})
   // 空间 / 项目导航：列表收进顶栏项目选择器，完整面板按需展开为左侧抽屉。
   const [workspace, setWorkspace] = useState<WorkspaceDirectoryInfo | null>(null)
   const [openSpaces, setOpenSpaces] = useState<Set<string>>(() => new Set(['personal', 'team']))
@@ -235,9 +263,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       if (nextWorkspace) {
         setWorkspace(nextWorkspace)
       }
-      setMessage((current) => (current === '正在连接服务端…' ? '已同步至服务端' : current))
+      setMessage((current) => (current.key === '正在连接服务端…' ? { key: '已同步至服务端' } : current))
     } catch (error) {
-      setMessage(`连接失败：${errorMessage(error)}`)
+      say('连接失败：{error}', { error: errorMessage(error) })
     }
   }, [])
 
@@ -245,16 +273,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   useEffect(() => {
     getDiagrams()
       .then(setSpecs)
-      .catch((error: unknown) => setMessage(`图规格加载失败：${errorMessage(error)}`))
+      .catch((error: unknown) => say('图规格加载失败：{error}', { error: errorMessage(error) }))
     getRelationships()
       .then(setRelationCatalog)
-      .catch((error: unknown) => setMessage(`关系目录加载失败：${errorMessage(error)}`))
+      .catch((error: unknown) => say('关系目录加载失败：{error}', { error: errorMessage(error) }))
     getContainment()
       .then(setContainment)
-      .catch((error: unknown) => setMessage(`元模型规则加载失败：${errorMessage(error)}`))
+      .catch((error: unknown) => say('元模型规则加载失败：{error}', { error: errorMessage(error) }))
     getProperties()
       .then(setPropCatalog)
-      .catch((error: unknown) => setMessage(`属性目录加载失败：${errorMessage(error)}`))
+      .catch((error: unknown) => say('属性目录加载失败：{error}', { error: errorMessage(error) }))
   }, [])
 
   // 首次进入与每次「打开项目」都重新拉取该项目的权威快照。
@@ -365,6 +393,24 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     [containment],
   )
 
+  /** 元模型目录的双语显示名：服务端同时下发 label（中文）与 labelEn（英文），按当前语言取。 */
+  const typeLabel = useCallback(
+    (type: string) => {
+      const info = typeInfo.get(codeOf(type))
+      return info ? pick(info.label, info.labelEn) : type
+    },
+    [typeInfo, codeOf],
+  )
+
+  /** 图类型的双语显示名。 */
+  const diagramLabel = useCallback(
+    (kind: string) => {
+      const spec = specs.find((item) => item.code === kind)
+      return spec ? pick(spec.label, spec.labelEn) : kind
+    },
+    [specs],
+  )
+
   const childrenByOwner = useMemo(() => {
     const map = new Map<string, ModelElement[]>()
     for (const element of model.elements) {
@@ -452,6 +498,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     [model.elements, selectedId],
   )
 
+  /** 元素 id → 元素：引用型属性据此把 id 还原成「缩略图 + 名称」。 */
+  const elementById = useMemo(
+    () => new Map(model.elements.map((element) => [element.id, element])),
+    [model.elements],
+  )
+
   const selectedDiagram = useMemo(
     () => model.diagrams.find((diagram) => diagram.id === selectedDiagramId) ?? null,
     [model.diagrams, selectedDiagramId],
@@ -496,11 +548,47 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
     return [...groups.entries()].map(([code, specs]) => ({
       code,
-      label: propCatalog?.metaclasses.find((item) => item.code === code)?.label ?? code,
+      label: (() => {
+        const meta = propCatalog?.metaclasses.find((item) => item.code === code)
+        return meta ? pick(meta.label, meta.labelEn) : code
+      })(),
       specs,
     }))
-  }, [propEntry, propCatalog, propView])
+  }, [propEntry, propCatalog, propView, locale])
   const propViewCount = (view: PropertyView): number => propEntry?.counts?.[view] ?? 0
+
+  /** 属性原始值（未经文本化）：引用型属性在这里拿到的是元素 id 或 id 数组。 */
+  const propertyRaw = (spec: PropertySpec): unknown => {
+    const target: ModelElement | Relationship | null = selectedRelation ?? selected
+    if (!target) {
+      return undefined
+    }
+    return target.properties?.[spec.key]
+  }
+
+  /** 引用型属性的 id 列表：单值引用取首个，列表型取全部。 */
+  const referenceIds = (spec: PropertySpec): string[] => {
+    const raw = propertyRaw(spec)
+    if (Array.isArray(raw)) {
+      return raw.map((item) => String(item)).filter((item) => item.trim() !== '')
+    }
+    if (typeof raw === 'string' && raw.trim() !== '') {
+      return [raw.trim()]
+    }
+    return []
+  }
+
+  /** 字符串列表属性的值：元素名等纯文本数组。 */
+  const stringList = (spec: PropertySpec): string[] => {
+    const raw = propertyRaw(spec)
+    if (Array.isArray(raw)) {
+      return raw.map((item) => String(item)).filter((item) => item.trim() !== '')
+    }
+    if (typeof raw === 'string' && raw.trim() !== '') {
+      return [raw.trim()]
+    }
+    return []
+  }
 
   /** 属性当前值的文本形式：元素与关系共用，核心字段走各自成员，其余读 properties 包。 */
   const propertyText = (spec: PropertySpec): string => {
@@ -557,7 +645,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         case 'targetId':
           return endpoint(target, selectedRelation.targetId)
         case 'ownerId':
-          return selectedRelation.ownerId ?? projectRoot?.name ?? '模型根'
+          return selectedRelation.ownerId ?? projectRoot?.name ?? t('模型根')
         case 'qualifiedName':
           return `${source?.name ?? '?'} ⇒ ${target?.name ?? '?'}`
         case 'relatedElement':
@@ -606,7 +694,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         return String(model.relationships.filter(
           (relation) => relation.sourceId === selected.id || relation.targetId === selected.id,
         ).length)
-      case 'isProjectRoot': return isProjectRoot(selected) ? '是' : '否'
+      case 'isProjectRoot': return isProjectRoot(selected) ? t('是') : t('否')
       default: return '—'
     }
   }
@@ -636,7 +724,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         }
         void runCommand('UPDATE_PROPERTY', { id: propTargetId, key: spec.key, value: parsed })
       } catch {
-        setMessage('「标记值」需要 JSON 对象，例如 {"owner":"张三"}')
+        say('「标记值」需要 JSON 对象，例如 {"owner":"张三"}')
       }
       return
     }
@@ -649,7 +737,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       case 'REAL': {
         const parsed = spec.kind === 'INTEGER' ? Number.parseInt(raw, 10) : Number.parseFloat(raw)
         if (Number.isNaN(parsed)) {
-          setMessage(`「${spec.label}」需要数字，已忽略本次输入`)
+          say('「{label}」需要数字，已忽略本次输入', { label: pick(spec.label, spec.labelEn) })
           return
         }
         value = parsed
@@ -662,19 +750,15 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         }
         const parsed = Number.parseInt(raw, 10)
         if (Number.isNaN(parsed)) {
-          setMessage(`「${spec.label}」需要自然数或 *，已忽略本次输入`)
+          say('「{label}」需要自然数或 *，已忽略本次输入', { label: pick(spec.label, spec.labelEn) })
           return
         }
         value = parsed
         break
       }
-      case 'STRING_LIST':
-      case 'REFERENCE_LIST':
-        value = raw.split(/\s*,\s*/).filter(Boolean)
-        break
       case 'ENUM':
         if (!spec.options.includes(raw)) {
-          setMessage(`「${spec.label}」只能取：${spec.options.join(' / ')}`)
+          say('「{label}」只能取：{options}', { label: pick(spec.label, spec.labelEn), options: spec.options.join(' / ') })
           return
         }
         break
@@ -684,12 +768,209 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     void runCommand('UPDATE_PROPERTY', { id: propTargetId, key: spec.key, value })
   }
 
+  /**
+   * 引用型属性的目标元素卡片：缩略图（类型图标）+ 名称，右键可「树上高亮」。
+   *
+   * <p>规范里的引用型属性存的是元素 id；界面上只显示名称，id 放在次要位置与
+   * tooltip 里，便于核对与排查。</p>
+   */
+  const renderReferenceCard = (
+    spec: PropertySpec,
+    elementId: string,
+    index: number,
+  ): ReactNode => {
+    const target = elementById.get(elementId)
+    if (!target) {
+      return (
+        <span className="prop-ref-card missing" key={`${spec.key}:${index}`}>
+          <span className="prop-ref-missing">{t('未引用的元素')}</span>
+          <code className="prop-ref-id">{elementId}</code>
+        </span>
+      )
+    }
+    const typeText = typeLabel(target.type)
+    return (
+      <span
+        className="prop-ref-card"
+        key={`${spec.key}:${index}`}
+        title={`${target.name}（${target.id}）· ${typeText}｜${t('右键可树上高亮')}`}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          setMenu({
+            x: event.clientX,
+            y: event.clientY,
+            target: { kind: 'reference', id: target.id, propKey: spec.key, index },
+          })
+        }}
+      >
+        <TypeIcon code={codeOf(target.type)} size={14} />
+        <span className="prop-ref-name">{target.name}</span>
+        <code className="prop-ref-id">{target.id}</code>
+      </span>
+    )
+  }
+
+  /**
+   * 引用选择器：列出可被引用的模型元素（缩略图 + 名称 + 类型），点击即选中。
+   *
+   * <p>可选元素按全模型列出（与当前图无关），排除自己避免自引用；
+   * 顶部保留「直接输入 id」入口——部分规范属性引用的是模型中尚未建模的实例。</p>
+   */
+  const renderReferencePicker = (
+    spec: PropertySpec,
+    onPick: (elementId: string) => void,
+  ): ReactNode => {
+    const candidates = model.elements
+      .filter((element) => element.id !== propTargetId)
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+    const manualKey = `${propTargetId}:${spec.key}:manual`
+    const manual = listDraft[manualKey] ?? ''
+    return (
+      <div className="prop-ref-picker-wrap">
+        <div className="prop-ref-manual">
+          <input
+            value={manual}
+            placeholder={t('或直接输入元素 id')}
+            onChange={(event) => setListDraft((previous) => ({ ...previous, [manualKey]: event.target.value }))}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault()
+                const text = manual.trim()
+                if (text) {
+                  onPick(text)
+                  setListDraft((previous) => ({ ...previous, [manualKey]: '' }))
+                }
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="prop-link"
+            disabled={!manual.trim()}
+            onClick={() => {
+              const text = manual.trim()
+              if (text) {
+                onPick(text)
+                setListDraft((previous) => ({ ...previous, [manualKey]: '' }))
+              }
+            }}
+          >{t('添加')}</button>
+        </div>
+        <div className="prop-ref-picker">
+          {candidates.length === 0
+            ? <p className="hint">{t('没有可引用的元素')}</p>
+            : candidates.map((element) => (
+              <button
+                key={element.id}
+                type="button"
+                className="prop-ref-option"
+                onClick={() => onPick(element.id)}
+              >
+                <TypeIcon code={codeOf(element.type)} size={14} />
+                <span className="prop-ref-name">{element.name}</span>
+                <span className="prop-ref-type">{typeLabel(element.type)}</span>
+              </button>
+            ))}
+        </div>
+        <button type="button" className="prop-link" onClick={() => setRefPicker(null)}>{t('取消')}</button>
+      </div>
+    )
+  }
+
+  /**
+   * 数组型属性的编辑：chip 标签 + 内联增删。
+   *
+   * <p>REFERENCE_LIST 的 chip 显示「缩略图 + 名称」；STRING_LIST 的 chip 显示文本。
+   * 每次增删都提交完整的数组值，走同一条 UPDATE_PROPERTY 通道。</p>
+   */
+  const renderListEditor = (spec: PropertySpec): ReactNode => {
+    const isReference = spec.kind === 'REFERENCE_LIST'
+    const values = isReference ? referenceIds(spec) : stringList(spec)
+    const draftKey = `${propTargetId}:${spec.key}`
+    const draft = listDraft[draftKey] ?? ''
+    const commitList = (next: string[]) => {
+      if (next.length === 0) {
+        void runCommand('UPDATE_PROPERTY', { id: propTargetId, key: spec.key, remove: true })
+      } else {
+        void runCommand('UPDATE_PROPERTY', { id: propTargetId, key: spec.key, value: next })
+      }
+    }
+    return (
+      <div className="prop-list-editor">
+        <div className="prop-chips">
+          {values.map((value, index) => (
+            <span className="prop-chip" key={`${value}:${index}`}>
+              {isReference
+                ? renderReferenceCard(spec, value, index)
+                : <span className="prop-chip-text">{value}</span>}
+              <button
+                type="button"
+                className="prop-chip-x"
+                title={t('移除')}
+                onClick={() => commitList(values.filter((_, position) => position !== index))}
+              >×</button>
+            </span>
+          ))}
+          {values.length === 0 && <span className="prop-chips-empty">{t('空列表')}</span>}
+        </div>
+          {isReference ? (
+            refPicker?.key === spec.key ? (
+              renderReferencePicker(spec, (elementId) => {
+                commitList([...values, elementId])
+                setRefPicker(null)
+              })
+            ) : (
+              <button
+                type="button"
+                className="prop-link"
+                onClick={() => setRefPicker({ key: spec.key, index: -1 })}
+              >{t('添加引用')}</button>
+            )
+          ) : (
+          <div className="prop-inline-add">
+            <input
+              value={draft}
+              placeholder={t('输入后回车添加')}
+              onChange={(event) => setListDraft((previous) => ({ ...previous, [draftKey]: event.target.value }))}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  const text = draft.trim()
+                  if (!text) {
+                    return
+                  }
+                  commitList([...values, text])
+                  setListDraft((previous) => ({ ...previous, [draftKey]: '' }))
+                }
+              }}
+            />
+            <button
+              type="button"
+              className="prop-link"
+              disabled={!draft.trim()}
+              onClick={() => {
+                const text = draft.trim()
+                if (!text) {
+                  return
+                }
+                commitList([...values, text])
+                setListDraft((previous) => ({ ...previous, [draftKey]: '' }))
+              }}
+            >{t('添加')}</button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   const renderPropertyRow = (spec: PropertySpec): ReactNode => {
     if (!propTargetId) {
       return null
     }
     const readOnly = !spec.editable
-    const title = `${spec.metaclassLabel} · ${spec.umlName} · ${spec.spec}${readOnly ? ' · 只读' : ''}`
+    const title = t('{metaclass} · {umlName} · {spec}{readOnly}', { metaclass: pick(spec.metaclassLabel, spec.metaclassLabelEn), umlName: spec.umlName, spec: spec.spec, readOnly: readOnly ? t(' · 只读') : '' })
     const value = propertyText(spec)
     let control: ReactNode
     if (readOnly) {
@@ -700,7 +981,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           value={value === '' ? '' : value === 'true' ? 'true' : 'false'}
           onChange={(event) => commitProperty(spec, event.target.value)}
         >
-          <option value="">未设置</option>
+          <option value="">{t('未设置')}</option>
           <option value="true">true</option>
           <option value="false">false</option>
         </select>
@@ -708,7 +989,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     } else if (spec.kind === 'ENUM') {
       control = (
         <select value={value} onChange={(event) => commitProperty(spec, event.target.value)}>
-          <option value="">未设置</option>
+          <option value="">{t('未设置')}</option>
           {spec.options.map((option) => (
             <option key={option} value={option}>{option}</option>
           ))}
@@ -723,13 +1004,56 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           onBlur={(event) => commitProperty(spec, event.target.value)}
         />
       )
+    } else if (spec.kind === 'REFERENCE_LIST' || spec.kind === 'STRING_LIST') {
+      // 指向元模型 / 表达式的「伪列表」按普通文本编辑，不做 chip 化。
+      control = spec.referencesElement === false
+        ? (
+          <input
+            key={`${propTargetId}:${spec.key}:${value}`}
+            defaultValue={value}
+            onBlur={(event) => commitProperty(spec, event.target.value)}
+          />
+        )
+        : renderListEditor(spec)
+    } else if (spec.kind === 'REFERENCE') {
+      if (spec.referencesElement === false) {
+        control = (
+          <input
+            key={`${propTargetId}:${spec.key}:${value}`}
+            defaultValue={value}
+            onBlur={(event) => commitProperty(spec, event.target.value)}
+          />
+        )
+      } else {
+        const ids = referenceIds(spec)
+        const current = ids[0] ?? ''
+        control = (
+          <div className="prop-ref-editor">
+            {current
+              ? renderReferenceCard(spec, current, 0)
+              : <span className="prop-ref-missing">{t('未设置')}</span>}
+            {refPicker?.key === spec.key ? (
+              renderReferencePicker(spec, (elementId) => {
+                void runCommand('UPDATE_PROPERTY', { id: propTargetId, key: spec.key, value: elementId })
+                setRefPicker(null)
+              })
+            ) : (
+              <button
+                type="button"
+                className="prop-link"
+                onClick={() => setRefPicker({ key: spec.key, index: 0 })}
+              >{current ? t('更换') : t('选择引用')}</button>
+            )}
+          </div>
+        )
+      }
     } else {
       control = (
         <input
           ref={spec.key === 'name' ? renameRef : undefined}
           key={`${propTargetId}:${spec.key}:${value}`}
           defaultValue={value}
-          placeholder={spec.kind === 'STRING_LIST' || spec.kind === 'REFERENCE_LIST' ? '逗号分隔' : '—'}
+          placeholder="—"
           onBlur={(event) => commitProperty(spec, event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
@@ -743,8 +1067,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return (
       <div className={`prop-row${readOnly ? ' readonly' : ''}`} key={spec.key} title={title}>
         <span className="prop-label">
-          {spec.label}
-          {readOnly && <em>只读</em>}
+          {pick(spec.label, spec.labelEn)}
+          {readOnly && <em>{t('只读')}</em>}
         </span>
         <div className="prop-value">{control}</div>
       </div>
@@ -836,7 +1160,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
     const first = createOptions[0]
     setCreateType(first.code)
-    setCreateName(`新建${first.label} ${model.elements.length + 1}`)
+    setCreateName(t('新建{label} {count}', { label: pick(first.label, first.labelEn), count: model.elements.length + 1 }))
     setCreateStereotype(first.stereotype)
   }, [createDialog, createOptions, createType, model.elements.length])
 
@@ -850,13 +1174,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         clientCmdId: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       })
       revisionRef.current = patch.revision
-      setMessage(
-        `已应用 rev ${patch.revision} · ${patch.affectedIds.length} 个对象受影响 · 校验：${patch.validationDelta}`,
-      )
+      say('已应用 rev {revision} · {count} 个对象受影响 · 校验：{delta}', { revision: patch.revision, count: patch.affectedIds.length, delta: patch.validationDelta })
       await refresh()
       return true
     } catch (error) {
-      setMessage(`操作失败：${errorMessage(error)}`)
+      say('操作失败：{error}', { error: errorMessage(error) })
       await refresh()
       return false
     } finally {
@@ -879,7 +1201,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const effective = ownerId ?? projectRootId
     const owner = effective
       ? model.elements.find((element) => element.id === effective)?.name ?? effective
-      : '模型根'
+      : t('模型根')
     setCreateDialog({ ownerId: effective, ownerName: owner })
     setCreateType('')
     setCreateName('')
@@ -892,12 +1214,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const effective = ownerId ?? projectRootId
     const owner = effective
       ? model.elements.find((element) => element.id === effective)?.name ?? effective
-      : '模型根'
+      : t('模型根')
     setDiagramDialog({
       ownerId: effective,
       ownerName: owner,
       kind: edit?.kind ?? specs[0]?.code ?? 'bdd',
-      name: edit?.name ?? `新建图 ${model.diagrams.length + 1}`,
+      name: edit?.name ?? t('新建图 {count}', { count: model.diagrams.length + 1 }),
       editId: edit?.id ?? null,
     })
     setMenu(null)
@@ -905,7 +1227,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
   const submitCreate = async () => {
     if (!createDialog || !createType || !createName.trim()) {
-      setMessage('请填写元素名称并选择类型')
+      say('请填写元素名称并选择类型')
       return
     }
     const info = typeInfo.get(createType)
@@ -929,7 +1251,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
   const submitDiagram = async () => {
     if (!diagramDialog || !diagramDialog.kind || !diagramDialog.name.trim()) {
-      setMessage('请填写图名称并选择类型')
+      say('请填写图名称并选择类型')
       return
     }
     if (diagramDialog.editId) {
@@ -959,7 +1281,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
   const submitRelation = async () => {
     if (!relationDialog || !relationDialog.sourceId || !relationDialog.targetId) {
-      setMessage('请选择关系的两端元素')
+      say('请选择关系的两端元素')
       return
     }
     const id = `rel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
@@ -1006,10 +1328,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     try {
       const patch = await undo()
       revisionRef.current = patch.revision
-      setMessage(`已撤销至 rev ${patch.revision}`)
+      say('已撤销至 rev {revision}', { revision: patch.revision })
       await refresh()
     } catch (error) {
-      setMessage(`撤销失败：${errorMessage(error)}`)
+      say('撤销失败：{error}', { error: errorMessage(error) })
     } finally {
       setBusy(false)
     }
@@ -1020,10 +1342,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     try {
       const patch = await redo()
       revisionRef.current = patch.revision
-      setMessage(`已重做至 rev ${patch.revision}`)
+      say('已重做至 rev {revision}', { revision: patch.revision })
       await refresh()
     } catch (error) {
-      setMessage(`重做失败：${errorMessage(error)}`)
+      say('重做失败：{error}', { error: errorMessage(error) })
     } finally {
       setBusy(false)
     }
@@ -1047,7 +1369,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       if (event.key === 'Escape' && relationTool) {
         setRelationTool(null)
         setRelationSource(null)
-        setMessage('已退出连线模式')
+        say('已退出连线模式')
         return
       }
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.repeat || isTextEntry(event.target)) {
@@ -1065,12 +1387,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       }
       if (wantsUndo) {
         if ((health?.undoDepth ?? 0) === 0) {
-          setMessage('没有可撤销的操作 · Ctrl/⌘ + Z')
+          say('没有可撤销的操作 · Ctrl/⌘ + Z')
         } else {
           void handleUndo()
         }
       } else if ((health?.redoDepth ?? 0) === 0) {
-        setMessage('没有可重做的操作 · Ctrl/⌘ + Shift + Z 或 Ctrl + Y')
+        say('没有可重做的操作 · Ctrl/⌘ + Shift + Z 或 Ctrl + Y')
       } else {
         void handleRedo()
       }
@@ -1079,12 +1401,61 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [handleUndo, handleRedo, relationTool, busy, health])
 
+  // 「树上高亮」的标记在 2.4 秒后自动消隐：用户看一眼就知道定位到了哪儿，
+  // 又不会被一直高亮干扰后续操作。
+  useEffect(() => {
+    if (!treeLocateId) {
+      return
+    }
+    const timer = window.setTimeout(() => setTreeLocateId(null), 2400)
+    return () => window.clearTimeout(timer)
+  }, [treeLocateId])
+
   const addToCurrentDiagram = async (elementId: string) => {
     if (!activeDiagramId) {
       return
     }
     await runCommand('ADD_TO_DIAGRAM', { diagramId: activeDiagramId, elementId })
     setMenu(null)
+  }
+
+  /**
+   * 「树上高亮」：把模型树定位到指定元素——展开它的祖先链、选中它，并滚动到可视区。
+   *
+   * <p>祖先链按 ownerId 逐级上溯（含图节点：元素也可能只出现在某张图的节点列表里，
+   * 此时把那张图也展开），保证目标行确实渲染在树上。</p>
+   */
+  const locateInTree = (elementId: string) => {
+    const chain: string[] = []
+    let cursor = elementById.get(elementId)
+    while (cursor?.ownerId) {
+      chain.push(cursor.ownerId)
+      cursor = elementById.get(cursor.ownerId)
+    }
+    // 元素可能只挂在图节点下：展开所有引用了它的图。
+    for (const diagram of model.diagrams) {
+      if (diagram.elementIds.includes(elementId)) {
+        chain.push(diagram.id)
+      }
+    }
+    setExpanded((previous) => {
+      const next = new Set(previous)
+      for (const id of chain) {
+        next.add(id)
+      }
+      return next
+    })
+    setSelectedId(elementId)
+    setSelectedDiagramId(null)
+    setTreeLocateId(elementId)
+    const target = elementById.get(elementId)
+    say('已在模型树中定位「{name}」', { name: target?.name ?? elementId })
+    // 展开是异步渲染，等一帧再滚动，避免目标行尚未挂载。
+    window.setTimeout(() => {
+      document
+        .querySelector(`[data-tree-id="${CSS.escape(elementId)}"]`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    }, 60)
   }
 
   /**
@@ -1100,7 +1471,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     if (diagram.elementIds.includes(elementId)) {
       setActiveDiagramId(diagramId)
       setSelectedId(elementId)
-      setMessage(`「${element.name}」已在「${diagram.name}」中，已切换到该图`)
+      say('「{element}」已在「{diagram}」中，已切换到该图', { element: element.name, diagram: diagram.name })
       return
     }
     const placed = model.notations.filter((notation) => notation.diagramId === diagramId).length
@@ -1112,7 +1483,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       setSelectedId(elementId)
       setSelectedDiagramId(null)
       setExpanded((previous) => new Set(previous).add(diagramId))
-      setMessage(`已把「${element.name}」加入「${diagram.name}」并落在 (${x}, ${y})`)
+      say('已把「{element}」加入「{diagram}」并落在 ({x}, {y})', { element: element.name, diagram: diagram.name, x, y })
     }
   }
 
@@ -1120,9 +1491,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     if (diagram) {
       setActiveDiagramId(diagram.id)
       setSelectedId(elementId)
-      setMessage(`已定位到「${diagram.name}」`)
+      say('已定位到「{diagram}」', { diagram: diagram.name })
     } else {
-      setMessage('该元素尚未加入任何图，可用右键「加入当前图」')
+      say('该元素尚未加入任何图，可用右键「加入当前图」')
     }
     setMenu(null)
   }
@@ -1242,11 +1613,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     for (const family of FAMILIES) {
       const items = paletteEntries.filter((item) => familyOfType(item.code) === family.key)
       if (items.length > 0) {
-        groups.push({ key: family.key, label: family.label, items })
+        groups.push({ key: family.key, label: pick(family.label, family.labelEn), items })
       }
     }
     return groups
-  }, [paletteEntries])
+  }, [paletteEntries, locale])
 
   const allRelations = useMemo(
     () => (relationCatalog.length > 0 ? relationCatalog : FALLBACK_RELATIONS),
@@ -1269,17 +1640,21 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     for (const key of order) {
       const items = relationEntries.filter((item) => item.family === key)
       if (items.length > 0) {
-        groups.push({ key, label: RELATION_FAMILY_LABELS[key] ?? key, items })
+        groups.push({ key, label: t(RELATION_FAMILY_LABELS[key] ?? key), items })
       }
     }
     const grouped = new Set(groups.map((group) => group.key))
     const rest = relationEntries.filter((item) => !grouped.has(item.family))
     if (rest.length > 0) {
-      groups.push({ key: 'other', label: '其他', items: rest })
+      groups.push({ key: 'other', label: t('其他'), items: rest })
     }
     return groups
-  }, [relationEntries])
-  const relationLabel = (code: string) => relationInfo.get(code)?.label ?? code
+  }, [relationEntries, locale])
+  /** 关系类型显示名：服务端同时下发中英文，按当前语言取。 */
+  const relationLabel = (code: string) => {
+    const info = relationInfo.get(code)
+    return info ? pick(info.label, info.labelEn) : code
+  }
 
   const toggleToolGroup = (key: string) => {
     setOpenToolGroups((previous) => {
@@ -1297,7 +1672,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const activateRelationTool = (code: string) => {
     setRelationTool(code)
     setRelationSource(null)
-    setMessage(`已选择「${relationLabel(code)}」：在画布上依次点击起点与终点（Esc 退出）`)
+    say('已选择「{relation}」：在画布上依次点击起点与终点（Esc 退出）', { relation: relationLabel(code) })
   }
 
   const openRelationDialog = () => {
@@ -1314,12 +1689,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
     if (!relationSource) {
       setRelationSource(elementId)
-      setMessage(`起点：${model.elements.find((e) => e.id === elementId)?.name ?? elementId}；请点击终点元素`)
+      say('起点：{name}；请点击终点元素', { name: model.elements.find((e) => e.id === elementId)?.name ?? elementId })
       return
     }
     if (relationSource === elementId) {
       setRelationSource(null)
-      setMessage('已取消起点，请重新选择起点元素')
+      say('已取消起点，请重新选择起点元素')
       return
     }
     const id = `rel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
@@ -1332,7 +1707,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     })
     if (ok) {
       setRelationSource(null)
-      setMessage(`已创建 «${relationTool}» 关系，可继续连线或按 Esc 退出`)
+      say('已创建 «{relation}» 关系，可继续连线或按 Esc 退出', { relation: relationTool })
     }
   }
 
@@ -1350,7 +1725,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const payload: Record<string, unknown> = {
       id,
       type: info?.uml ?? typeCode,
-      name: `新建${info?.label ?? typeCode} ${model.elements.length + 1}`,
+      name: t('新建{label} {count}', { label: pick(info?.label, info?.labelEn) ?? typeCode, count: model.elements.length + 1 }),
       ownerId: activeDiagramObj.ownerId ?? '',
       stereotypes: info?.stereotype ? [info.stereotype] : [],
       diagramId: activeDiagramId,
@@ -1360,7 +1735,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const ok = await runCommand('CREATE_ELEMENT', payload)
     if (ok) {
       setSelectedId(id)
-      setMessage(`已在 (${payload.x}, ${payload.y}) 放置「${payload.name}」`)
+      say('已在 ({x}, {y}) 放置「{name}」', { x: payload.x, y: payload.y, name: payload.name })
     }
   }
 
@@ -1387,7 +1762,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         y,
       })
       setSelectedId(elementId)
-      setMessage(`已把「${model.elements.find((e) => e.id === elementId)?.name ?? elementId}」放置在 (${x}, ${y})`)
+      say('已把「{name}」放置在 ({x}, {y})', { name: model.elements.find((e) => e.id === elementId)?.name ?? elementId, x, y })
       return
     }
 
@@ -1410,8 +1785,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   )
   const currentSpaceLabel = useMemo(
     () => workspace?.spaces.find((space) => space.projects.some((project) => project.id === activeProjectId))?.label
-      ?? '个人空间',
-    [workspace, activeProjectId],
+      ?? t('个人空间'),
+    [workspace, activeProjectId, locale],
   )
 
   const toggleSpace = (code: string) => {
@@ -1431,7 +1806,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     setProjectPickerOpen(false)
     setSpaceDrawerOpen(false)
     if (project.id === activeProjectId) {
-      setMessage(`当前编辑项目：${project.name}`)
+      say('当前编辑项目：{name}', { name: project.name })
       return
     }
     setProjectId(project.id)
@@ -1443,7 +1818,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     setRelationSource(null)
     setExpanded(new Set())
     const spaceLabel = workspace?.spaces.find((space) => space.code === project.spaceCode)?.label ?? ''
-    setMessage(`已打开项目「${project.name}」· ${spaceLabel}`)
+    say('已打开项目「{name}」· {space}', { name: project.name, space: spaceLabel })
   }
 
   const openNewProject = (spaceCode: string) => {
@@ -1470,9 +1845,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       setActiveProjectId(created.id)
       setProjectPickerOpen(false)
       setSpaceDrawerOpen(false)
-      setMessage(`已创建并打开项目「${created.name}」`)
+      say('已创建并打开项目「{name}」', { name: created.name })
     } catch (error) {
-      setMessage(`新建项目失败：${errorMessage(error)}`)
+      say('新建项目失败：{error}', { error: errorMessage(error) })
     } finally {
       setBusy(false)
     }
@@ -1506,10 +1881,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const info = isElement ? typeInfo.get(codeOf(element!.type)) : null
     const isRoot = isProjectRoot(element)
     const isSelected = isElement ? selectedId === element!.id : selectedDiagramId === diagram!.id
+    // 「树上高亮」的目标行：短暂高亮，便于用户在树上一眼看到定位结果。
+    const isLocated = treeLocateId === node.ref.id
     return (
       <div key={`${node.type}:${node.ref.id}`}>
         <div
-          className={`tree-row ${node.type}${isSelected ? ' selected' : ''}${isRoot ? ' root-node' : ''}${!isElement && treeDropTarget === diagram!.id ? ' drop-target' : ''}`}
+          className={`tree-row ${node.type}${isSelected ? ' selected' : ''}${isRoot ? ' root-node' : ''}${!isElement && treeDropTarget === diagram!.id ? ' drop-target' : ''}${isLocated ? ' located' : ''}`}
+          data-tree-id={node.ref.id}
           style={{ paddingLeft: 6 + depth * 15 }}
           draggable={isElement && !isRoot}
           onDragStart={(event) => {
@@ -1547,7 +1925,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               void addElementToDiagram(diagram!.id, droppedId)
             }
           }}
-          title={isElement ? `${info?.label ?? element!.type} · 可拖入画布或图节点` : '图 · 点击切换 · 可接收拖入的元素'}
+          title={isElement ? t('{label} · 可拖入画布或图节点', { label: pick(info?.label, info?.labelEn) ?? element!.type }) : t('图 · 点击切换 · 可接收拖入的元素')}
           onClick={() => {
             if (isElement) {
               setSelectedId(element!.id)
@@ -1583,23 +1961,23 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 toggleExpanded(node.ref.id)
               }
             }}
-            aria-label={isOpen ? '折叠' : '展开'}
+            aria-label={isOpen ? t('折叠') : t('展开')}
           >
             {children.length > 0 ? (isOpen ? '▾' : '▸') : '·'}
           </button>
           {isElement ? (
             <>
-              <TypeIcon code={codeOf(element!.type)} size={16} title={info?.label ?? element!.type} />
+              <TypeIcon code={codeOf(element!.type)} size={16} title={typeLabel(element!.type)} />
               <span className="tree-label">{element!.name}</span>
               {isRoot ? (
-                <span className="root-tag" title="项目根节点模型，不可删除">项目根</span>
+                <span className="root-tag" title={t('项目根节点模型，不可删除')}>{t('项目根')}</span>
               ) : (
-                <span className="tree-type">{info?.label ?? element!.type}</span>
+                <span className="tree-type">{typeLabel(element!.type)}</span>
               )}
             </>
           ) : (
             <>
-              <DiagramIcon code={diagram!.kind} size={16} title={specs.find((s) => s.code === diagram!.kind)?.label ?? '图'} />
+              <DiagramIcon code={diagram!.kind} size={16} title={diagramLabel(diagram!.kind)} />
               <span className="tree-label">{diagram!.name}</span>
               <span className="child-count">{diagram!.elementIds.length}</span>
             </>
@@ -1786,23 +2164,23 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             type="button"
             className={`project-switch ${projectPickerOpen ? 'open' : ''}`}
             onClick={() => setProjectPickerOpen((open) => !open)}
-            title="切换空间与项目"
+            title={t('切换空间与项目')}
           >
             <span className="pp-space">{currentSpaceLabel}</span>
             <span className="crumb-sep">/</span>
             <TypeIcon code="MODEL" size={14} />
-            <strong>{workspace?.currentProjectName ?? projectRoot?.name ?? '未命名项目'}</strong>
-            <span className="crumb-tag">当前项目</span>
+            <strong>{workspace?.currentProjectName ?? projectRoot?.name ?? t('未命名项目')}</strong>
+            <span className="crumb-tag">{t('当前项目')}</span>
             <span className="pp-caret">▾</span>
           </button>
           {projectPickerOpen && (
             <div className="project-popover">
               <div className="pp-head">
-                <span>工作空间与项目</span>
+                <span>{t('工作空间与项目')}</span>
                 <button
                   type="button"
                   onClick={() => { setSpaceDrawerOpen(true); setProjectPickerOpen(false) }}
-                >完整面板</button>
+                >{t('完整面板')}</button>
               </div>
               <div className="pp-scroll">
                 {(workspace?.spaces ?? []).map((space) => (
@@ -1815,7 +2193,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       <span className="space-count">{space.projectCount}</span>
                       <button
                         type="button"
-                        title={`在${space.label}新建项目`}
+                        title={t('在{space}新建项目', { space: space.label })}
                         onClick={() => openNewProject(space.code)}
                       >＋</button>
                     </div>
@@ -1832,40 +2210,41 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                           <span className="pp-project-name">{project.name}</span>
                           <span className="pp-project-meta">
                             {project.opened
-                              ? `${project.diagramCount} 图 · ${project.elementCount} 元素 · rev ${project.revision}`
-                              : '尚未打开 · 点击打开'}
+                              ? t('{diagrams} 图 · {elements} 元素 · rev {revision}', { diagrams: project.diagramCount, elements: project.elementCount, revision: project.revision })
+                              : t('尚未打开 · 点击打开')}
                           </span>
                         </span>
                         {project.id === activeProjectId
-                          ? <span className="pp-current">已打开</span>
-                          : <span className="pp-open">打开</span>}
+                          ? <span className="pp-current">{t('已打开')}</span>
+                          : <span className="pp-open">{t('打开')}</span>}
                       </button>
                     ))}
                   </div>
                 ))}
-                {!workspace && <p className="hint">正在加载空间目录…</p>}
+                {!workspace && <p className="hint">{t('正在加载空间目录…')}</p>}
               </div>
               <div className="pp-foot">
-                <span>点击项目即可打开 · 新建后自动打开</span>
+                <span>{t('点击项目即可打开 · 新建后自动打开')}</span>
                 <button
                   type="button"
                   onClick={() => { setSpaceDrawerOpen(true); setProjectPickerOpen(false) }}
-                >空间详情</button>
+                >{t('空间详情')}</button>
               </div>
             </div>
           )}
         </div>
 
         <div className="top-actions">
-          <span className="pill">SysML 1.6 · 九图</span>
-          <button type="button" title="撤销 · Ctrl/⌘ + Z" onClick={() => void handleUndo()} disabled={busy || (health?.undoDepth ?? 0) === 0}>撤销</button>
-          <button type="button" title="重做 · Ctrl/⌘ + Shift + Z 或 Ctrl + Y" onClick={() => void handleRedo()} disabled={busy || (health?.redoDepth ?? 0) === 0}>重做</button>
+          <span className="pill">{t('SysML 1.6 · 九图')}</span>
+          <button type="button" title={t('撤销 · Ctrl/⌘ + Z')} onClick={() => void handleUndo()} disabled={busy || (health?.undoDepth ?? 0) === 0}>{t('撤销')}</button>
+          <button type="button" title={t('重做 · Ctrl/⌘ + Shift + Z 或 Ctrl + Y')} onClick={() => void handleRedo()} disabled={busy || (health?.redoDepth ?? 0) === 0}>{t('重做')}</button>
+          <LocaleSwitch compact />
           <div className="user-chip">
             <span className="user-avatar" aria-hidden="true">
               {session.user.username.slice(0, 1).toUpperCase()}
             </span>
             <span className="user-name">{session.user.displayName} · {session.user.username}</span>
-            <button type="button" onClick={onLogout} title="退出登录">登出</button>
+            <button type="button" onClick={onLogout} title={t('退出登录')}>{t('登出')}</button>
           </div>
         </div>
       </header>
@@ -1875,19 +2254,19 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         {spaceDrawerOpen && (
           <>
             <div className="drawer-scrim" onPointerDown={() => setSpaceDrawerOpen(false)} />
-            <aside className="space-drawer" aria-label="空间与项目导航">
+            <aside className="space-drawer" aria-label={t('空间与项目导航')}>
           <div className="space-head">
-            <span className="space-title">工作空间</span>
+            <span className="space-title">{t('工作空间')}</span>
             <button
               type="button"
               className="drawer-close"
-              title="收起空间面板"
+              title={t('收起空间面板')}
               onClick={() => setSpaceDrawerOpen(false)}
             >×</button>
             <button
               type="button"
               className="space-add"
-              title="新建项目"
+              title={t('新建项目')}
               onClick={() => openNewProject('personal')}
             >＋</button>
           </div>
@@ -1909,11 +2288,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 {openSpaces.has(space.code) && (
                   <div className="space-projects">
                     <div className="space-owner">
-                      {space.owner} · {space.memberCount} 成员
+                      {space.owner} · {t('{count} 成员', { count: space.memberCount })}
                       <button
                         type="button"
                         className="space-owner-add"
-                        title={`在${space.label}新建项目`}
+                        title={t('在{space}新建项目', { space: space.label })}
                         onClick={() => openNewProject(space.code)}
                       >＋</button>
                     </div>
@@ -1930,18 +2309,18 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                           <span className="space-project-name">{project.name}</span>
                           <span className="space-project-meta">
                             {project.opened
-                              ? `${project.diagramCount} 图 · ${project.elementCount} 元素 · rev ${project.revision}`
-                              : `尚未打开 · ${project.owner}`}
+                              ? t('{diagrams} 图 · {elements} 元素 · rev {revision}', { diagrams: project.diagramCount, elements: project.elementCount, revision: project.revision })
+                              : t('尚未打开 · {owner}', { owner: project.owner })}
                           </span>
                         </span>
-                        {project.current && <span className="space-current-dot" title="当前编辑项目" />}
+                        {project.current && <span className="space-current-dot" title={t('当前编辑项目')} />}
                       </button>
                     ))}
                   </div>
                 )}
               </div>
             ))}
-            {!workspace && <p className="hint">正在加载空间目录…</p>}
+            {!workspace && <p className="hint">{t('正在加载空间目录…')}</p>}
 
             {/* 项目详情与目录说明跟随列表一起滚动，不占用项目列表的可视高度 */}
             {selectedProject && (
@@ -1950,21 +2329,21 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   <TypeIcon code={selectedProject.current ? 'MODEL' : 'PACKAGE'} size={16} />
                   <strong>{selectedProject.name}</strong>
                 </div>
-                <p className="space-detail-desc">{selectedProject.description || '暂无描述'}</p>
-                <div className="kv"><span>所属空间</span><code>{workspace?.spaces.find((s) => s.code === selectedProject.spaceCode)?.label ?? '—'}</code></div>
-                <div className="kv"><span>负责人</span><code>{selectedProject.owner}</code></div>
-                <div className="kv"><span>状态</span><code>{selectedProject.status}</code></div>
+                <p className="space-detail-desc">{selectedProject.description || t('暂无描述')}</p>
+                <div className="kv"><span>{t('所属空间')}</span><code>{workspace?.spaces.find((s) => s.code === selectedProject.spaceCode)?.label ?? '—'}</code></div>
+                <div className="kv"><span>{t('负责人')}</span><code>{selectedProject.owner}</code></div>
+                <div className="kv"><span>{t('状态')}</span><code>{selectedProject.status}</code></div>
                 {selectedProject.current ? (
                   <>
-                    <div className="kv"><span>图 / 元素</span><code>{selectedProject.diagramCount} / {selectedProject.elementCount}</code></div>
-                    <div className="kv"><span>关系 / 修订</span><code>{selectedProject.relationshipCount} / rev {selectedProject.revision}</code></div>
+                    <div className="kv"><span>{t('图 / 元素')}</span><code>{selectedProject.diagramCount} / {selectedProject.elementCount}</code></div>
+                    <div className="kv"><span>{t('关系 / 修订')}</span><code>{selectedProject.relationshipCount} / rev {selectedProject.revision}</code></div>
                   </>
                 ) : (
-                  <p className="space-detail-note">点击项目即可打开并编辑；M0 内存态模型在服务重启后回到初始基线。</p>
+                  <p className="space-detail-note">{t('点击项目即可打开并编辑；M0 内存态模型在服务重启后回到初始基线。')}</p>
                 )}
               </div>
             )}
-            <div className="space-foot">{workspace?.note ?? '空间目录加载中…'}</div>
+            <div className="space-foot">{workspace?.note ?? t('空间目录加载中…')}</div>
           </div>
         </aside>
           </>
@@ -1973,17 +2352,17 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         <div className="left-dock">
         <aside className="tree">
           <div className="tree-head">
-            <span className="tree-head-tab active">项目</span>
-            <span className="tree-head-tab">图表</span>
-            <span className="tree-head-tab">模型库</span>
+            <span className="tree-head-tab active">{t('项目')}</span>
+            <span className="tree-head-tab">{t('图表')}</span>
+            <span className="tree-head-tab">{t('模型库')}</span>
           </div>
           <div className="panel-title">
-            {projectRoot ? `模型浏览器 · ${projectRoot.name}` : '模型浏览器 · 右键操作'}
+            {projectRoot ? t('模型浏览器 · {name}', { name: projectRoot.name }) : t('模型浏览器 · 右键操作')}
           </div>
           <div className="browser" onContextMenu={(event) => openMenu(event, { kind: 'root', id: null })}>
             {rootNodes.map((node) => renderTreeNode(node, 0))}
-            {rootNodes.length === 0 && <p className="hint">暂无元素，右键空白处新建元素</p>}
-            <div className="panel-title">关系</div>
+            {rootNodes.length === 0 && <p className="hint">{t('暂无元素，右键空白处新建元素')}</p>}
+            <div className="panel-title">{t('关系')}</div>
             {model.relationships.map((relation) => {
               const source = model.elements.find((item) => item.id === relation.sourceId)
               const target = model.elements.find((item) => item.id === relation.targetId)
@@ -1994,7 +2373,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   key={relation.id}
                   role="button"
                   tabIndex={0}
-                  title={`${relationLabel(relation.type)}：${source?.name ?? relation.sourceId} → ${target?.name ?? relation.targetId}｜点击查看 / 编辑关系属性`}
+                  title={t('{relation}：{source} → {target}｜点击查看 / 编辑关系属性', { relation: relationLabel(relation.type), source: source?.name ?? relation.sourceId, target: target?.name ?? relation.targetId })}
                   onClick={() => {
                     setSelectedRelationId(relation.id)
                     setSelectedId(null)
@@ -2015,25 +2394,25 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 </div>
               )
             })}
-            {model.relationships.length === 0 && <p className="hint">暂无关系</p>}
+            {model.relationships.length === 0 && <p className="hint">{t('暂无关系')}</p>}
           </div>
 
         </aside>
 
-        <aside className="props-dock" aria-label="属性窗口（常驻左下角）">
+        <aside className="props-dock" aria-label={t('属性窗口（常驻左下角）')}>
           <div className="props-grip" aria-hidden="true" />
           <div className="props-head">
             <button
               type="button"
               className={`props-tab ${propsTab === 'attrs' ? 'active' : ''}`}
               onClick={() => setPropsTab('attrs')}
-            >属性</button>
+            >{t('属性')}</button>
             <button
               type="button"
               className={`props-tab ${propsTab === 'tags' ? 'active' : ''}`}
               onClick={() => setPropsTab('tags')}
-            >标签</button>
-            <span className="props-head-note">常驻 · 左下角</span>
+            >{t('标签')}</button>
+            <span className="props-head-note">{t('常驻 · 左下角')}</span>
           </div>
           <div className="props-object">
             {selectedDiagram ? (
@@ -2050,41 +2429,41 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 ?? selected?.name
                 ?? (selectedRelation
                   ? (selectedRelation.name?.trim() || `«${selectedRelation.type}» ${relationLabel(selectedRelation.type)}`)
-                  : '未选择对象')}
+                  : t('未选择对象'))}
             </span>
             <span className="props-object-kind">
               {selectedDiagram
-                ? specs.find((s) => s.code === selectedDiagram.kind)?.label ?? '图'
+                ? diagramLabel(selectedDiagram.kind)
                 : selectedRelation
-                  ? `关系 · ${relationLabel(selectedRelation.type)}`
+                  ? t('关系 · {relation}', { relation: relationLabel(selectedRelation.type) })
                   : selected
-                    ? typeInfo.get(codeOf(selected.type))?.label ?? selected.type
+                    ? typeLabel(selected.type)
                     : ''}
             </span>
           </div>
           {propsTab === 'attrs' ? (
             selectedDiagram ? (
               <>
-                <div className="kv"><span>类型</span><code>图 · {specs.find((s) => s.code === selectedDiagram.kind)?.label ?? selectedDiagram.kind}</code></div>
+                <div className="kv"><span>{t('类型')}</span><code>{t('图 · {label}', { label: pick(specs.find((s) => s.code === selectedDiagram.kind)?.label, specs.find((s) => s.code === selectedDiagram.kind)?.labelEn) ?? selectedDiagram.kind })}</code></div>
                 <label className="field">
-                  <span>图名称</span>
+                  <span>{t('图名称')}</span>
                   <input
                     defaultValue={selectedDiagram.name}
                     key={selectedDiagram.id}
                     onBlur={(event) => handleRenameDiagram(selectedDiagram.id, event.target.value)}
                   />
                 </label>
-                <div className="kv"><span>所有者</span><code>{selectedDiagram.ownerId || projectRoot?.name || '模型根'}</code></div>
-                <div className="kv"><span>元素数</span><code>{selectedDiagram.elementIds.length} 个</code></div>
+                <div className="kv"><span>{t('所有者')}</span><code>{selectedDiagram.ownerId || projectRoot?.name || t('模型根')}</code></div>
+                <div className="kv"><span>{t('元素数')}</span><code>{t('{count} 个', { count: selectedDiagram.elementIds.length })}</code></div>
                 <div className="kv"><span>ID</span><code>{selectedDiagram.id}</code></div>
               </>
             ) : (selected || selectedRelation) ? (
               <>
-                <div className="prop-view-switch" role="tablist" aria-label="属性档位">
+                <div className="prop-view-switch" role="tablist" aria-label={t('属性档位')}>
                   {(propCatalog?.levels ?? [
-                    { code: 'STANDARD' as PropertyView, label: '标准', description: '最常用属性' },
-                    { code: 'EXPERT' as PropertyView, label: '专家', description: '规范扩展属性' },
-                    { code: 'ALL' as PropertyView, label: '全部', description: '含派生只读属性' },
+                    { code: 'STANDARD' as PropertyView, label: t('标准'), description: t('最常用属性') },
+                    { code: 'EXPERT' as PropertyView, label: t('专家'), description: t('规范扩展属性') },
+                    { code: 'ALL' as PropertyView, label: t('全部'), description: t('含派生只读属性') },
                   ]).map((level) => (
                     <button
                       key={level.code}
@@ -2095,7 +2474,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       title={level.description}
                       onClick={() => setPropView(level.code)}
                     >
-                      {level.label}
+                      {pick(level.label, level.labelEn)}
                       <span>{propViewCount(level.code)}</span>
                     </button>
                   ))}
@@ -2103,22 +2482,22 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 <div className="prop-meta">
                   {propCatalog?.specification ?? 'UML 2.5.1 + SysML 1.6'}
                   {selectedRelation
-                    ? <span> · 关系 «{selectedRelation.type}» · {propEntry?.metaclasses.length ?? 0} 个元类</span>
-                    : propEntry && <span> · {propEntry.metaclasses.length} 个元类</span>}
+                    ? <span>{t(' · 关系 «{type}» · {count} 个元类', { type: selectedRelation.type, count: propEntry?.metaclasses.length ?? 0 })}</span>
+                    : propEntry && <span>{t(' · {count} 个元类', { count: propEntry.metaclasses.length })}</span>}
                 </div>
                 {selectedRelation && (
                   <div className="rel-endpoints">
                     <button
                       type="button"
                       className="rel-endpoint"
-                      title="选中源元素"
+                      title={t('选中源元素')}
                       onClick={() => {
                         setSelectedId(selectedRelation.sourceId)
                         setSelectedRelationId(null)
                         setSelectedDiagramId(null)
                       }}
                     >
-                      <span className="rel-endpoint-tag">源</span>
+                      <span className="rel-endpoint-tag">{t('源')}</span>
                       {model.elements.find((element) => element.id === selectedRelation.sourceId)?.name
                         ?? selectedRelation.sourceId}
                     </button>
@@ -2126,14 +2505,14 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                     <button
                       type="button"
                       className="rel-endpoint"
-                      title="选中目标元素"
+                      title={t('选中目标元素')}
                       onClick={() => {
                         setSelectedId(selectedRelation.targetId)
                         setSelectedRelationId(null)
                         setSelectedDiagramId(null)
                       }}
                     >
-                      <span className="rel-endpoint-tag">目标</span>
+                      <span className="rel-endpoint-tag">{t('目标')}</span>
                       {model.elements.find((element) => element.id === selectedRelation.targetId)?.name
                         ?? selectedRelation.targetId}
                     </button>
@@ -2141,7 +2520,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 )}
                 <div className="prop-list">
                   {propGroups.length === 0 && (
-                    <p className="hint">该类型暂无属性定义（属性目录加载中或服务端未登记）</p>
+                    <p className="hint">{t('该类型暂无属性定义（属性目录加载中或服务端未登记）')}</p>
                   )}
                   {propGroups.map((group) => {
                     const collapsed = collapsedPropGroups.has(group.code)
@@ -2175,89 +2554,89 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       type="button"
                       className="danger"
                       disabled={busy}
-                      title="删除该关系（可通过撤销恢复）"
+                      title={t('删除该关系（可通过撤销恢复）')}
                       onClick={() => {
                         const id = selectedRelation.id
                         setSelectedRelationId(null)
                         void runCommand('DELETE_RELATIONSHIP', { id })
                       }}
-                    >删除关系</button>
+                    >{t('删除关系')}</button>
                   </div>
                 )}
               </>
             ) : (
-              <p className="hint">在左侧模型树或画布中选择一个元素、关系或图</p>
+              <p className="hint">{t('在左侧模型树或画布中选择一个元素、关系或图')}</p>
             )
           ) : (
             <div className="tags-panel">
               {(selected || selectedRelation) ? (
                 <>
                   <div className="kv">
-                    <span>构造型</span>
+                    <span>{t('构造型')}</span>
                     <code>{(selectedRelation ?? selected)!.stereotypes.map((s) => `«${s}»`).join(' ') || '—'}</code>
                   </div>
                   <div className="kv">
-                    <span>语义族</span>
+                    <span>{t('语义族')}</span>
                     <code>
                       {selectedRelation
-                        ? RELATION_FAMILY_LABELS[relationInfo.get(selectedRelation.type)?.family ?? ''] ?? '—'
-                        : FAMILIES.find((f) => f.key === familyOfType(codeOf(selected!.type)))?.label ?? '—'}
+                        ? t(RELATION_FAMILY_LABELS[relationInfo.get(selectedRelation.type)?.family ?? ''] ?? '—')
+                        : pick(FAMILIES.find((f) => f.key === familyOfType(codeOf(selected!.type)))?.label, FAMILIES.find((f) => f.key === familyOfType(codeOf(selected!.type)))?.labelEn) ?? '—'}
                     </code>
                   </div>
                   {selectedRelation && (
                     <div className="kv">
-                      <span>关系</span>
-                      <code>{relationLabel(selectedRelation.type)}（«{selectedRelation.type}»）</code>
+                      <span>{t('关系')}</span>
+                      <code>{t('{relation}（«{code}»）', { relation: relationLabel(selectedRelation.type), code: selectedRelation.type })}</code>
                     </div>
                   )}
-                  <div className="kv"><span>文档</span><code>{(selectedRelation ?? selected)!.documentation || '—'}</code></div>
+                  <div className="kv"><span>{t('文档')}</span><code>{(selectedRelation ?? selected)!.documentation || '—'}</code></div>
                   <div className="kv"><span>XMI ID</span><code>{selected?.xmiId || '—'}</code></div>
                   {Object.entries((selectedRelation ?? selected)!.taggedValues ?? {}).map(([key, value]) => (
                     <div className="kv" key={key}><span>{key}</span><code>{value}</code></div>
                   ))}
-                  {Object.keys((selectedRelation ?? selected)!.taggedValues ?? {}).length === 0 && <p className="hint">暂无标签值</p>}
+                  {Object.keys((selectedRelation ?? selected)!.taggedValues ?? {}).length === 0 && <p className="hint">{t('暂无标签值')}</p>}
                 </>
               ) : (
-                <p className="hint">选择一个模型元素或关系以查看其构造型、文档与标签值</p>
+                <p className="hint">{t('选择一个模型元素或关系以查看其构造型、文档与标签值')}</p>
               )}
             </div>
           )}
-          <div className="panel-title">模型概要</div>
-          <div className="kv"><span>版本 rev</span><code>{health?.revision ?? model.revision}</code></div>
-          <div className="kv"><span>持久化</span><code>{health?.persistence ?? '—'}</code></div>
-          <div className="kv"><span>元素 / 关系 / 图</span><code>{model.elements.length} / {model.relationships.length} / {model.diagrams.length}</code></div>
-          <div className="validation">{message}</div>
+          <div className="panel-title">{t('模型概要')}</div>
+          <div className="kv"><span>{t('版本 rev')}</span><code>{health?.revision ?? model.revision}</code></div>
+          <div className="kv"><span>{t('持久化')}</span><code>{health?.persistence ?? '—'}</code></div>
+          <div className="kv"><span>{t('元素 / 关系 / 图')}</span><code>{model.elements.length} / {model.relationships.length} / {model.diagrams.length}</code></div>
+          <div className="validation">{t(message.key, message.vars)}</div>
         </aside>
         </div>
 
         {/* 模型树右侧的垂直组件工具箱：只展示当前图相关元素 + 关系组件（对齐参考截图） */}
-        <aside className="toolbox" aria-label="组件工具箱（模型树右侧）">
+        <aside className="toolbox" aria-label={t('组件工具箱（模型树右侧）')}>
           <div className="tb-tabs">
             <button
               type="button"
               className={toolboxTab === 'components' ? 'active' : ''}
               onClick={() => setToolboxTab('components')}
-            >组件</button>
+            >{t('组件')}</button>
             <button
               type="button"
               className={toolboxTab === 'styles' ? 'active' : ''}
               onClick={() => setToolboxTab('styles')}
-            >样式</button>
+            >{t('样式')}</button>
             <span className="tb-more" aria-hidden="true">⋮</span>
           </div>
           {toolboxTab === 'components' ? (
             <>
               <div className="tb-current">
                 {activeDiagramKind && <DiagramIcon code={activeDiagramKind} size={15} />}
-                <span className="tb-current-name">{activeSpec?.label ?? '未选择图'}</span>
+                <span className="tb-current-name">{activeSpec ? pick(activeSpec.label, activeSpec.labelEn) : t('未选择图')}</span>
                 <select
                   className="tb-current-select"
                   value={activeDiagramKind}
                   onChange={(event) => setActiveByKind(event.target.value)}
-                  title="切换当前图；组件内容随之联动"
+                  title={t('切换当前图；组件内容随之联动')}
                 >
                   {specs.map((spec) => (
-                    <option key={spec.code} value={spec.code}>{spec.label}</option>
+                    <option key={spec.code} value={spec.code}>{pick(spec.label, spec.labelEn)}</option>
                   ))}
                 </select>
               </div>
@@ -2266,7 +2645,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 <div className={`tb-group current ${openToolGroups.has('elements') ? 'open' : ''}`}>
                   <button type="button" className="tb-group-head" onClick={() => toggleToolGroup('elements')}>
                     {activeDiagramKind && <DiagramIcon code={activeDiagramKind} size={16} />}
-                    <span className="tb-group-label">元素 · {activeSpec?.label ?? '当前图'}</span>
+                    <span className="tb-group-label">{t('元素 · {label}', { label: activeSpec ? pick(activeSpec.label, activeSpec.labelEn) : t('当前图') })}</span>
                     <span className="tb-count">{paletteEntries.length}</span>
                     <span className="tb-caret">{openToolGroups.has('elements') ? '⌄' : '›'}</span>
                   </button>
@@ -2290,16 +2669,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                                   canvas.height / 2 - nodeSize.height / 2,
                                 )
                               }
-                              title={`«${type.stereotype}» ${type.label} · ${type.uml}｜点击或拖入画布`}
+                              title={t('«{stereotype}» {label} · {uml}｜点击或拖入画布', { stereotype: type.stereotype, label: pick(type.label, type.labelEn), uml: type.uml })}
                             >
                               <TypeIcon code={type.code} size={16} />
-                              <span className="tb-item-label">{type.label}</span>
+                              <span className="tb-item-label">{pick(type.label, type.labelEn)}</span>
                               <span className="tb-item-st">«{type.stereotype}»</span>
                             </button>
                           ))}
                         </div>
                       ))}
-                      <p className="tb-tip">仅显示当前图允许的 {paletteEntries.length} 类元素 · 点击 / 拖入画布</p>
+                      <p className="tb-tip">{t('仅显示当前图允许的 {count} 类元素 · 点击 / 拖入画布', { count: paletteEntries.length })}</p>
                     </div>
                   )}
                 </div>
@@ -2308,7 +2687,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 <div className={`tb-group current ${openToolGroups.has('relations') ? 'open' : ''}`}>
                   <button type="button" className="tb-group-head" onClick={() => toggleToolGroup('relations')}>
                     <RelationIcon code={relationEntries[0]?.code ?? 'trace'} size={16} />
-                    <span className="tb-group-label">关系</span>
+                    <span className="tb-group-label">{t('关系')}</span>
                     <span className="tb-count">{relationEntries.length}</span>
                     <span className="tb-caret">{openToolGroups.has('relations') ? '⌄' : '›'}</span>
                   </button>
@@ -2326,10 +2705,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                               disabled={busy}
                               onDragStart={(event) => event.dataTransfer.setData('text/scofen-relation', rel.code)}
                               onClick={() => activateRelationTool(rel.code)}
-                              title={`«${rel.stereotype}» ${rel.label}｜点选后在画布依次点击起点与终点`}
+                              title={t('«{stereotype}» {label}｜点选后在画布依次点击起点与终点', { stereotype: rel.stereotype, label: pick(rel.label, rel.labelEn) })}
                             >
                               <RelationIcon code={rel.code} size={16} />
-                              <span className="tb-item-label">{rel.label}</span>
+                              <span className="tb-item-label">{pick(rel.label, rel.labelEn)}</span>
                               <span className="tb-item-st">«{rel.stereotype}»</span>
                             </button>
                           ))}
@@ -2337,21 +2716,21 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       ))}
                       {relationTool && (
                         <div className="tb-link-hint">
-                          <span>连线中 · «{relationLabel(relationTool)}»</span>
+                          <span>{t('连线中 · «{relation}»', { relation: relationLabel(relationTool) })}</span>
                           <button
                             type="button"
                             onClick={() => {
                               setRelationTool(null)
                               setRelationSource(null)
                             }}
-                          >退出</button>
+                          >{t('退出')}</button>
                         </div>
                       )}
                       <button type="button" className="tb-item action" onClick={openRelationDialog}>
                         <span className="tb-action-glyph" aria-hidden="true">↔</span>
-                        <span className="tb-item-label">关系向导（选两端）…</span>
+                        <span className="tb-item-label">{t('关系向导（选两端）…')}</span>
                       </button>
-                      <p className="tb-tip">按当前图规范过滤；选中关系后在画布点起点、再点终点即可连线</p>
+                      <p className="tb-tip">{t('按当前图规范过滤；选中关系后在画布点起点、再点终点即可连线')}</p>
                     </div>
                   )}
                 </div>
@@ -2360,7 +2739,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 <div className={`tb-group ${openToolGroups.has('generic') ? 'open' : ''}`}>
                   <button type="button" className="tb-group-head" onClick={() => toggleToolGroup('generic')}>
                     <span className="tb-action-glyph" aria-hidden="true">◇</span>
-                    <span className="tb-group-label">通用</span>
+                    <span className="tb-group-label">{t('通用')}</span>
                     <span className="tb-count">4</span>
                     <span className="tb-caret">{openToolGroups.has('generic') ? '⌄' : '›'}</span>
                   </button>
@@ -2373,7 +2752,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                         onClick={() => openCreate(null)}
                       >
                         <span className="tb-action-glyph" aria-hidden="true">＋</span>
-                        <span className="tb-item-label">新建元素…</span>
+                        <span className="tb-item-label">{t('新建元素…')}</span>
                       </button>
                       <button
                         type="button"
@@ -2382,11 +2761,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                         onClick={() => openDiagramDialog(null)}
                       >
                         <span className="tb-action-glyph" aria-hidden="true">▧</span>
-                        <span className="tb-item-label">新建图…</span>
+                        <span className="tb-item-label">{t('新建图…')}</span>
                       </button>
                       <button type="button" className="tb-item action" onClick={openRelationDialog}>
                         <span className="tb-action-glyph" aria-hidden="true">↔</span>
-                        <span className="tb-item-label">新建关系…</span>
+                        <span className="tb-item-label">{t('新建关系…')}</span>
                       </button>
                       <button
                         type="button"
@@ -2395,9 +2774,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                         onClick={() => selectedId && void addToCurrentDiagram(selectedId)}
                       >
                         <span className="tb-action-glyph" aria-hidden="true">＋</span>
-                        <span className="tb-item-label">把选中元素加入当前图</span>
+                        <span className="tb-item-label">{t('把选中元素加入当前图')}</span>
                       </button>
-                      <p className="tb-tip">新建元素 / 新建图 / 关系向导在此；元素与关系组件随当前图联动。</p>
+                      <p className="tb-tip">{t('新建元素 / 新建图 / 关系向导在此；元素与关系组件随当前图联动。')}</p>
                     </div>
                   )}
                 </div>
@@ -2405,28 +2784,28 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             </>
           ) : (
             <div className="tb-scroll">
-              <div className="panel-title">当前图</div>
+              <div className="panel-title">{t('当前图')}</div>
               <div className="tb-style-head">
                 {activeDiagramKind && <DiagramIcon code={activeDiagramKind} size={18} />}
-                <span>{activeSpec?.label ?? '未选择图'}</span>
+                <span>{activeSpec ? pick(activeSpec.label, activeSpec.labelEn) : t('未选择图')}</span>
               </div>
-              <div className="kv"><span>布局器</span><code>{activeSpec?.layout ?? '—'}</code></div>
-              <div className="kv"><span>校验分组</span><code>{activeSpec?.validationGroup ?? '—'}</code></div>
-              <div className="kv"><span>画布</span><code>{canvas.width}×{canvas.height}</code></div>
-              <div className="kv"><span>节点</span><code>{nodeSize.width}×{nodeSize.height}</code></div>
-              <div className="panel-title">语义族图例</div>
+              <div className="kv"><span>{t('布局器')}</span><code>{activeSpec?.layout ?? '—'}</code></div>
+              <div className="kv"><span>{t('校验分组')}</span><code>{activeSpec?.validationGroup ?? '—'}</code></div>
+              <div className="kv"><span>{t('画布')}</span><code>{canvas.width}×{canvas.height}</code></div>
+              <div className="kv"><span>{t('节点')}</span><code>{nodeSize.width}×{nodeSize.height}</code></div>
+              <div className="panel-title">{t('语义族图例')}</div>
               {FAMILIES.map((family) => (
                 <div className="tb-legend" key={family.key}>
                   <span className="legend-swatch" style={{ background: family.color }} />
-                  <span>{family.label}</span>
+                  <span>{pick(family.label, family.labelEn)}</span>
                 </div>
               ))}
-              <p className="tb-tip">记法样式由服务端 Notation 对象保存；图形坐标经 WS Patch 广播给所有会话。</p>
+              <p className="tb-tip">{t('记法样式由服务端 Notation 对象保存；图形坐标经 WS Patch 广播给所有会话。')}</p>
             </div>
           )}
           <div className="tb-foot">
-            <span>{activeSpec?.label ?? '—'}</span>
-            <span>{paletteEntries.length} 元素 · {relationEntries.length} 关系</span>
+            <span>{activeSpec ? pick(activeSpec.label, activeSpec.labelEn) : '—'}</span>
+            <span>{t('{count} 元素 · {relations} 关系', { count: paletteEntries.length, relations: relationEntries.length })}</span>
           </div>
         </aside>
 
@@ -2435,22 +2814,22 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             <div className="dt-head">
               <span className="dt-kind">
                 {activeDiagramKind && <DiagramIcon code={activeDiagramKind} size={15} />}
-                {activeSpec?.label ?? '未选择图'}
+                {activeSpec ? pick(activeSpec.label, activeSpec.labelEn) : t('未选择图')}
               </span>
               <span className="dt-name">{activeDiagramObj?.name ?? '—'}</span>
               <div className="dt-actions">
                 {activeDiagramObj && (
                   <>
-                    <button type="button" onClick={() => openDiagramDialog(activeDiagramObj.ownerId, activeDiagramObj)} disabled={busy}>重命名图</button>
-                    <button type="button" onClick={openRelationDialog} disabled={busy}>新建关系</button>
-                    <button type="button" onClick={exportSvg} disabled={!activeDiagramObj}>导出 SVG</button>
+                    <button type="button" onClick={() => openDiagramDialog(activeDiagramObj.ownerId, activeDiagramObj)} disabled={busy}>{t('重命名图')}</button>
+                    <button type="button" onClick={openRelationDialog} disabled={busy}>{t('新建关系')}</button>
+                    <button type="button" onClick={exportSvg} disabled={!activeDiagramObj}>{t('导出 SVG')}</button>
                   </>
                 )}
               </div>
             </div>
             <div className="dt-sub">
-              「组件」工具箱已按当前图过滤：<strong>{paletteEntries.length}</strong> 类元素 · <strong>{relationEntries.length}</strong> 类关系
-              {relationTool && <span className="dt-linkflag"> · 连线中 «{relationLabel(relationTool)}»（Esc 退出）</span>}
+              {t('「组件」工具箱已按当前图过滤：')}<strong>{paletteEntries.length}</strong> {t('类元素 ·')} <strong>{relationEntries.length}</strong> {t('类关系')}
+              {relationTool && <span className="dt-linkflag">{t(' · 连线中 «{relation}»（Esc 退出）', { relation: relationLabel(relationTool) })}</span>}
             </div>
           </div>
           <svg
@@ -2458,7 +2837,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             className={relationTool ? 'linking' : undefined}
             viewBox={`0 0 ${canvas.width} ${canvas.height}`}
             role="img"
-            aria-label="模型画布，图形可拖拽；连线模式下依次点击起点与终点"
+            aria-label={t('模型画布，图形可拖拽；连线模式下依次点击起点与终点')}
             onPointerDown={(event) => {
               if (event.target !== event.currentTarget) {
                 return
@@ -2498,7 +2877,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             {positions.map(({ element, x, y, w, h }) => renderNode(element, x, y, w, h))}
             {positions.length === 0 && (
               <text x={canvas.width / 2} y={canvas.height / 2} textAnchor="middle" className="empty">
-                当前图暂无元素
+                {t('当前图暂无元素')}
               </text>
             )}
             {model.relationships.map((relation) => {
@@ -2600,25 +2979,25 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   >
                     <title>
                       {relation.name?.trim() || `«${relation.type}» ${relationLabel(relation.type)}`}
-                      {'：'}{sourceName} → {targetName}｜点击查看 / 编辑关系属性
+                      {'：'}{sourceName} → {targetName}{t('｜点击查看 / 编辑关系属性')}
                     </title>
                   </line>
                 </g>
               )
             })}
           </svg>
-          <p className="canvas-hint">拖拽图形可移动位置 · 关系以连线呈现（含类型箭头与标签）· 端口贴附所属块边框 · 坐标由服务端记法对象保存并广播给所有会话</p>
+          <p className="canvas-hint">{t('拖拽图形可移动位置 · 关系以连线呈现（含类型箭头与标签）· 端口贴附所属块边框 · 坐标由服务端记法对象保存并广播给所有会话')}</p>
         </main>
       </div>
 
       <footer className="statusbar">
-        <span>已同步至服务端 · rev {health?.revision ?? model.revision} · 在线会话 {health?.onlineSessions ?? 0} · Ctrl/⌘+Z 撤销 / Ctrl+Y 重做</span>
+        <span>{t('已同步至服务端 · rev {revision} · 在线会话 {sessions} · Ctrl/⌘+Z 撤销 / Ctrl+Y 重做', { revision: health?.revision ?? model.revision, sessions: health?.onlineSessions ?? 0 })}</span>
         {relationTool && (
           <span className="link-status">
-            连线 «{relationLabel(relationTool)}» · {relationSource ? '点击终点元素' : '点击起点元素'} · Esc 退出
+            {t('连线 «{relation}» · {hint} · Esc 退出', { relation: relationLabel(relationTool), hint: relationSource ? t('点击终点元素') : t('点击起点元素') })}
           </span>
         )}
-        <span>{health?.status === 'UP' ? '● 在线' : '○ 未连接'} · {health?.persistence ?? '—'}</span>
+        <span>{health?.status === 'UP' ? t('● 在线') : t('○ 未连接')} · {health?.persistence ?? '—'}</span>
       </footer>
 
       {menu && (
@@ -2631,12 +3010,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             {menuDiagram && <DiagramIcon code={menuDiagram.kind} size={16} />}
             {menuElement && <TypeIcon code={codeOf(menuElement.type)} size={16} />}
             {menuTarget?.kind === 'root' && projectRoot && <TypeIcon code="MODEL" size={16} />}
-            <span>{menuDiagram ? menuDiagram.name : menuElement ? menuElement.name : '模型根'}</span>
+            <span>{menuDiagram ? menuDiagram.name : menuElement ? menuElement.name : t('模型根')}</span>
           </div>
           {menuTarget?.kind === 'element' && (
             <>
-              <button type="button" onClick={() => openCreate(menuElement!.id)}>新建子元素…</button>
-              <button type="button" onClick={() => openDiagramDialog(menuElement!.id)}>在此新建图…</button>
+              <button type="button" onClick={() => openCreate(menuElement!.id)}>{t('新建子元素…')}</button>
+              <button type="button" onClick={() => openDiagramDialog(menuElement!.id)}>{t('在此新建图…')}</button>
               <button
                 type="button"
                 onClick={() => {
@@ -2644,16 +3023,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   renameRef.current?.focus()
                   setMenu(null)
                 }}
-              >重命名</button>
+              >{t('重命名')}</button>
               {!menuInDiagram && menuTypeAllowed && activeDiagramId && (
-                <button type="button" onClick={() => void addToCurrentDiagram(menuElement!.id)}>加入当前图</button>
+                <button type="button" onClick={() => void addToCurrentDiagram(menuElement!.id)}>{t('加入当前图')}</button>
               )}
               {menuInDiagram && (
-                <button type="button" onClick={() => locateInDiagram(menuElement!.id)}>在图中定位</button>
+                <button type="button" onClick={() => locateInDiagram(menuElement!.id)}>{t('在图中定位')}</button>
               )}
               {isProjectRoot(menuElement) ? (
-                <button type="button" className="disabled-hint" disabled title="项目根节点模型不可删除">
-                  项目根节点 · 不可删除
+                <button type="button" className="disabled-hint" disabled title={t('项目根节点模型不可删除')}>
+                  {t('项目根节点 · 不可删除')}
                 </button>
               ) : (
                 <button
@@ -2667,20 +3046,20 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                     })
                     setMenu(null)
                   }}
-                >删除{menuChildCount > 0 ? `（含 ${menuChildCount} 个后代）` : ''}</button>
+                >{t('删除')}{menuChildCount > 0 ? t('（含 {count} 个后代）', { count: menuChildCount }) : ''}</button>
               )}
             </>
           )}
           {menuTarget?.kind === 'diagram' && (
             <>
-              <button type="button" onClick={() => { setActiveDiagramId(menuDiagram!.id); setSelectedDiagramId(menuDiagram!.id); setMenu(null) }}>在图中定位</button>
+              <button type="button" onClick={() => { setActiveDiagramId(menuDiagram!.id); setSelectedDiagramId(menuDiagram!.id); setMenu(null) }}>{t('在图中定位')}</button>
               <button
                 type="button"
                 onClick={() => {
                   openDiagramDialog(menuDiagram!.ownerId, menuDiagram!)
                   setMenu(null)
                 }}
-              >重命名图</button>
+              >{t('重命名图')}</button>
               <button
                 type="button"
                 className="danger"
@@ -2689,13 +3068,35 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   setMenu(null)
                   void submitDeleteDiagram(id)
                 }}
-              >删除图</button>
+              >{t('删除图')}</button>
+            </>
+          )}
+          {menuTarget?.kind === 'reference' && (
+            <>
+              <button type="button" onClick={() => { locateInTree(menuTarget.id); setMenu(null) }}>
+                {t('树上高亮')}
+              </button>
+              <button
+                type="button"
+                className="danger"
+                onClick={() => {
+                  const spec = propEntry?.properties.find((item) => item.key === menuTarget.propKey)
+                  const ids = spec ? referenceIds(spec) : []
+                  const next = ids.filter((_, index) => index !== menuTarget.index)
+                  void runCommand('UPDATE_PROPERTY', {
+                    id: propTargetId,
+                    key: menuTarget.propKey,
+                    ...(next.length === 0 ? { remove: true } : { value: next }),
+                  })
+                  setMenu(null)
+                }}
+              >{t('移除')}</button>
             </>
           )}
           {menuTarget?.kind === 'root' && (
             <>
-              <button type="button" onClick={() => openCreate(null)}>在项目根下新建元素…</button>
-              <button type="button" onClick={() => openDiagramDialog(null)}>在项目根下新建图…</button>
+              <button type="button" onClick={() => openCreate(null)}>{t('在项目根下新建元素…')}</button>
+              <button type="button" onClick={() => openDiagramDialog(null)}>{t('在项目根下新建图…')}</button>
             </>
           )}
         </div>
@@ -2706,11 +3107,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           <div className="modal" onPointerDown={(event) => event.stopPropagation()}>
             <h2 className="modal-title">
               <TypeIcon code="MODEL" size={18} />
-              新建项目
+              {t('新建项目')}
             </h2>
-            <p className="modal-sub">在指定空间下创建并立即打开项目</p>
+            <p className="modal-sub">{t('在指定空间下创建并立即打开项目')}</p>
             <label className="field">
-              <span>所属空间</span>
+              <span>{t('所属空间')}</span>
               <select value={newProjectSpace} onChange={(event) => setNewProjectSpace(event.target.value)}>
                 {(workspace?.spaces ?? []).map((space) => (
                   <option key={space.code} value={space.code}>{space.label}</option>
@@ -2718,30 +3119,30 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               </select>
             </label>
             <label className="field">
-              <span>项目名称</span>
+              <span>{t('项目名称')}</span>
               <input
                 value={newProjectName}
                 onChange={(event) => setNewProjectName(event.target.value)}
-                placeholder="例如：制动系统模型"
+                placeholder={t('例如：制动系统模型')}
               />
             </label>
             <label className="field">
-              <span>描述（可选）</span>
+              <span>{t('描述（可选）')}</span>
               <input
                 value={newProjectDesc}
                 onChange={(event) => setNewProjectDesc(event.target.value)}
-                placeholder="一句话说明项目范围"
+                placeholder={t('一句话说明项目范围')}
               />
             </label>
-            <p className="hint">创建后会立即打开该项目并分配独立的内存态模型；服务重启后回到初始基线。</p>
+            <p className="hint">{t('创建后会立即打开该项目并分配独立的内存态模型；服务重启后回到初始基线。')}</p>
             <div className="modal-actions">
-              <button type="button" onClick={() => setNewProjectDialog(false)}>取消</button>
+              <button type="button" onClick={() => setNewProjectDialog(false)}>{t('取消')}</button>
               <button
                 type="button"
                 className="primary"
                 disabled={busy || !newProjectName.trim()}
                 onClick={() => void submitNewProject()}
-              >创建</button>
+              >{t('创建')}</button>
             </div>
           </div>
         </div>
@@ -2752,17 +3153,17 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           <div className="modal" onPointerDown={(event) => event.stopPropagation()}>
             <h2 className="modal-title">
               <TypeIcon code={createType || 'PACKAGE'} size={18} />
-              新建元素
+              {t('新建元素')}
             </h2>
-            <p className="modal-sub">父节点：{createDialog.ownerName}</p>
+            <p className="modal-sub">{t('父节点：{name}', { name: createDialog.ownerName })}</p>
             {createOptions.length === 0 ? (
-              <p className="hint">按元模型规则，该父类型不允许再包含子元素。</p>
+              <p className="hint">{t('按元模型规则，该父类型不允许再包含子元素。')}</p>
             ) : (
               <>
                 <label className="field">
                   <span className="field-head">
                     <TypeIcon code={createType || 'PACKAGE'} size={15} />
-                    元素类型（按规范过滤）
+                    {t('元素类型（按规范过滤）')}
                   </span>
                   <select
                     value={createType}
@@ -2771,23 +3172,23 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       setCreateType(event.target.value)
                       if (info) {
                         setCreateStereotype(info.stereotype)
-                        setCreateName(`新建${info.label} ${model.elements.length + 1}`)
+                        setCreateName(t('新建{label} {count}', { label: pick(info.label, info.labelEn), count: model.elements.length + 1 }))
                       }
                     }}
                   >
                     {createOptions.map((option) => (
                       <option key={option.code} value={option.code}>
-                        «{option.stereotype}» {option.label}（{option.uml}）
+                        {t('«{stereotype}» {label}（{uml}）', { stereotype: option.stereotype, label: pick(option.label, option.labelEn), uml: option.uml })}
                       </option>
                     ))}
                   </select>
                 </label>
                 <label className="field">
-                  <span>名称（同命名空间内唯一，不区分大小写）</span>
+                  <span>{t('名称（同命名空间内唯一，不区分大小写）')}</span>
                   <input value={createName} onChange={(event) => setCreateName(event.target.value)} />
                 </label>
                 <label className="field">
-                  <span>构造型</span>
+                  <span>{t('构造型')}</span>
                   <input
                     value={createStereotype}
                     onChange={(event) => setCreateStereotype(event.target.value)}
@@ -2800,24 +3201,24 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                     disabled={!canJoinDiagram}
                     onChange={(event) => setJoinDiagram(event.target.checked)}
                   />
-                  同时加入当前图（{activeSpec?.label ?? '—'}）
+                  {t('同时加入当前图（{label}）', { label: activeSpec ? pick(activeSpec.label, activeSpec.labelEn) : '—' })}
                 </label>
                 {!canJoinDiagram && (
                   <p className="hint">
-                    该元素类型不允许出现在当前图，服务端会拒绝；仅创建到模型树中。
+                    {t('该元素类型不允许出现在当前图，服务端会拒绝；仅创建到模型树中。')}
                   </p>
                 )}
               </>
             )}
             <div className="modal-actions">
-              <button type="button" onClick={() => setCreateDialog(null)}>取消</button>
+              <button type="button" onClick={() => setCreateDialog(null)}>{t('取消')}</button>
               <button
                 type="button"
                 className="primary"
                 disabled={busy || createOptions.length === 0 || !createName.trim()}
                 onClick={() => void submitCreate()}
               >
-                创建
+                {t('创建')}
               </button>
             </div>
           </div>
@@ -2829,36 +3230,36 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           <div className="modal" onPointerDown={(event) => event.stopPropagation()}>
             <h2 className="modal-title">
               <DiagramIcon code={diagramDialog.kind} size={18} />
-              新建图
+              {t('新建图')}
             </h2>
-            <p className="modal-sub">所属：{diagramDialog.ownerName}</p>
+            <p className="modal-sub">{t('所属：{name}', { name: diagramDialog.ownerName })}</p>
             <label className="field">
-              <span>图类型</span>
+              <span>{t('图类型')}</span>
               <select
                 value={diagramDialog.kind}
                 onChange={(event) => setDiagramDialog({ ...diagramDialog, kind: event.target.value })}
               >
                 {specs.map((option) => (
-                  <option key={option.code} value={option.code}>{option.label}</option>
+                  <option key={option.code} value={option.code}>{pick(option.label, option.labelEn)}</option>
                 ))}
               </select>
             </label>
             <label className="field">
-              <span>图名称</span>
+              <span>{t('图名称')}</span>
               <input
                 value={diagramDialog.name}
                 onChange={(event) => setDiagramDialog({ ...diagramDialog, name: event.target.value })}
               />
             </label>
             <div className="modal-actions">
-              <button type="button" onClick={() => setDiagramDialog(null)}>取消</button>
+              <button type="button" onClick={() => setDiagramDialog(null)}>{t('取消')}</button>
               <button
                 type="button"
                 className="primary"
                 disabled={busy || !diagramDialog.name.trim()}
                 onClick={() => void submitDiagram()}
               >
-                创建
+                {t('创建')}
               </button>
             </div>
           </div>
@@ -2868,54 +3269,54 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       {relationDialog && (
         <div className="modal-overlay" onPointerDown={() => setRelationDialog(null)}>
           <div className="modal" onPointerDown={(event) => event.stopPropagation()}>
-            <h2>新建关系</h2>
+            <h2>{t('新建关系')}</h2>
             <p className="modal-sub">
-              在「{activeSpec?.label ?? '当前图'}」中建立语义关系 · 类型按当前图规范过滤
+              {t('在「{label}」中建立语义关系 · 类型按当前图规范过滤', { label: activeSpec ? pick(activeSpec.label, activeSpec.labelEn) : t('当前图') })}
             </p>
             <label className="field">
-              <span>源元素</span>
+              <span>{t('源元素')}</span>
               <select
                 value={relationDialog.sourceId}
                 onChange={(event) => setRelationDialog({ ...relationDialog, sourceId: event.target.value })}
               >
-                <option value="">— 选择源 —</option>
+                <option value="">{t('— 选择源 —')}</option>
                 {model.elements.map((element) => (
-                  <option key={element.id} value={element.id}>{element.name}（{element.type}）</option>
+                  <option key={element.id} value={element.id}>{t('{name}（{type}）', { name: element.name, type: element.type })}</option>
                 ))}
               </select>
             </label>
             <label className="field">
-              <span>目标元素</span>
+              <span>{t('目标元素')}</span>
               <select
                 value={relationDialog.targetId}
                 onChange={(event) => setRelationDialog({ ...relationDialog, targetId: event.target.value })}
               >
-                <option value="">— 选择目标 —</option>
+                <option value="">{t('— 选择目标 —')}</option>
                 {model.elements.map((element) => (
-                  <option key={element.id} value={element.id}>{element.name}（{element.type}）</option>
+                  <option key={element.id} value={element.id}>{t('{name}（{type}）', { name: element.name, type: element.type })}</option>
                 ))}
               </select>
             </label>
             <label className="field">
-              <span>关系类型</span>
+              <span>{t('关系类型')}</span>
               <select
                 value={relationDialog.type}
                 onChange={(event) => setRelationDialog({ ...relationDialog, type: event.target.value })}
               >
                 {(relationEntries.length > 0 ? relationEntries : allRelations).map((rel) => (
-                  <option key={rel.code} value={rel.code}>{rel.label}（«{rel.code}»）</option>
+                  <option key={rel.code} value={rel.code}>{t('{label}（«{code}»）', { label: pick(rel.label, rel.labelEn), code: rel.code })}</option>
                 ))}
               </select>
             </label>
             <div className="modal-actions">
-              <button type="button" onClick={() => setRelationDialog(null)}>取消</button>
+              <button type="button" onClick={() => setRelationDialog(null)}>{t('取消')}</button>
               <button
                 type="button"
                 className="primary"
                 disabled={busy || !relationDialog.sourceId || !relationDialog.targetId}
                 onClick={() => void submitRelation()}
               >
-                创建
+                {t('创建')}
               </button>
             </div>
           </div>
@@ -2925,16 +3326,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       {deleteDialog && (
         <div className="modal-overlay" onPointerDown={() => setDeleteDialog(null)}>
           <div className="modal" onPointerDown={(event) => event.stopPropagation()}>
-            <h2>删除元素</h2>
+            <h2>{t('删除元素')}</h2>
             <p className="modal-sub">
-              确认删除「{deleteDialog.name}」？
-              {deleteDialog.count > 0 && ` 将级联删除 ${deleteDialog.count} 个后代元素、相关关系与图形记法。`}
+              {t('确认删除「{name}」？', { name: deleteDialog.name })}
+              {deleteDialog.count > 0 && t(' 将级联删除 {count} 个后代元素、相关关系与图形记法。', { count: deleteDialog.count })}
             </p>
-            <p className="hint">服务端以单条原子命令完成，所有在线会话同步；可用「撤销」恢复整棵子树。</p>
+            <p className="hint">{t('服务端以单条原子命令完成，所有在线会话同步；可用「撤销」恢复整棵子树。')}</p>
             <div className="modal-actions">
-              <button type="button" onClick={() => setDeleteDialog(null)}>取消</button>
+              <button type="button" onClick={() => setDeleteDialog(null)}>{t('取消')}</button>
               <button type="button" className="primary danger" disabled={busy} onClick={() => void submitDelete()}>
-                确认删除
+                {t('确认删除')}
               </button>
             </div>
           </div>

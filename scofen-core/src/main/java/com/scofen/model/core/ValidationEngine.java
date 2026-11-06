@@ -89,7 +89,7 @@ public final class ValidationEngine {
                     if (!spec.editable()) {
                         throw new ValidationException("计算属性 / 派生属性不可修改（UML 规范只读）: " + key);
                     }
-                    assertPropertyValue(spec, value, remove);
+                    assertPropertyValue(repository, spec, value, remove);
                     if ("name".equals(key) && !remove) {
                         assertNameFormat(String.valueOf(value));
                         assertNameIsUnique(repository, element.ownerId(), String.valueOf(value), element.id());
@@ -111,7 +111,7 @@ public final class ValidationEngine {
                 if (!relSpec.editable()) {
                     throw new ValidationException("计算属性 / 派生属性不可修改（UML 规范只读）: " + key);
                 }
-                assertPropertyValue(relSpec, value, remove);
+                assertPropertyValue(repository, relSpec, value, remove);
                 if ("name".equals(key) && !remove) {
                     assertNameFormat(String.valueOf(value));
                 }
@@ -327,8 +327,14 @@ public final class ValidationEngine {
         }
     }
 
-    /** 通用属性写入的值类型校验：与 PropertyCatalog 声明的 ValueKind 一致。 */
-    private void assertPropertyValue(PropertyCatalog.PropertySpec spec, Object value, boolean remove) {
+    /**
+     * 通用属性写入的值类型校验：与 PropertyCatalog 声明的 ValueKind 一致。
+     *
+     * <p>引用型属性额外要求被引用的元素真实存在——界面上引用以「缩略图 + 名称」呈现，
+     * 指向不存在的 id 只会显示成「未引用的元素」，属于脏数据。</p>
+     */
+    private void assertPropertyValue(InMemoryModelRepository repository,
+            PropertyCatalog.PropertySpec spec, Object value, boolean remove) {
         if (remove) {
             return;
         }
@@ -363,16 +369,46 @@ public final class ValidationEngine {
                             + ": " + value + " (allowed: " + spec.options() + ")");
                 }
             }
-            case REFERENCE_LIST, STRING_LIST -> {
+            case REFERENCE_LIST -> {
+                if (!(value instanceof List<?>)) {
+                    throw new ValidationException("List property expects an array: " + spec.key());
+                }
+                for (Object item : (List<?>) value) {
+                    assertReferenceExists(repository, spec, item);
+                }
+            }
+            case STRING_LIST -> {
                 if (!(value instanceof List<?>)) {
                     throw new ValidationException("List property expects an array: " + spec.key());
                 }
             }
-            case STRING, TEXT, REFERENCE -> {
+            case REFERENCE -> {
+                if (!(value instanceof String || value instanceof Number || value instanceof Boolean)) {
+                    throw new ValidationException("Text property expects a scalar: " + spec.key());
+                }
+                assertReferenceExists(repository, spec, value);
+            }
+            case STRING, TEXT -> {
                 if (!(value instanceof String || value instanceof Number || value instanceof Boolean)) {
                     throw new ValidationException("Text property expects a scalar: " + spec.key());
                 }
             }
+        }
+    }
+
+    /** 引用型属性的目标元素必须存在于当前模型，否则拒绝写入。 */
+    private void assertReferenceExists(InMemoryModelRepository repository,
+            PropertyCatalog.PropertySpec spec, Object value) {
+        if (!PropertyCatalog.referencesElement(spec)) {
+            // 少数引用型属性指向的是元模型或表达式文本，不做存在性校验。
+            return;
+        }
+        String id = String.valueOf(value).trim();
+        if (id.isEmpty()) {
+            throw new ValidationException("引用属性不能为空: " + spec.key());
+        }
+        if (!repository.elementExists(id)) {
+            throw new ValidationException("引用的元素不存在: " + spec.key() + " → " + id);
         }
     }
 

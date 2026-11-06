@@ -31,11 +31,19 @@ export interface PropertySpec {
   key: string
   umlName: string
   label: string
+  /** 英文显示名，由规范原名派生；缺失时前端回退到 label。 */
+  labelEn?: string
   metaclass: string
   metaclassName: string
   metaclassLabel: string
+  metaclassLabelEn?: string
   spec: string
   kind: PropertyValueKind
+  /**
+   * 引用型属性是否指向模型里的元素。服务端据此校验目标存在，
+   * 界面据此决定渲染「缩略图 + 名称」卡片还是普通文本输入。
+   */
+  referencesElement?: boolean
   level: 'STANDARD' | 'EXPERT' | 'DERIVED'
   computed: boolean
   editable: boolean
@@ -47,6 +55,7 @@ export interface PropertyMetaclass {
   code: string
   name: string
   label: string
+  labelEn?: string
   spec: string
   parents: string[]
   propertyCount: number
@@ -55,7 +64,9 @@ export interface PropertyMetaclass {
 export interface PropertyViewLevel {
   code: PropertyView
   label: string
+  labelEn?: string
   description: string
+  descriptionEn?: string
 }
 
 export interface PropertyCatalogType {
@@ -132,6 +143,7 @@ export interface Health {
 export interface DiagramSpec {
   code: string
   label: string
+  labelEn?: string
   layout: string
   elementTypes: number
   allowedTypes: string[]
@@ -144,6 +156,7 @@ export interface DiagramSpec {
 export interface RelationshipTypeInfo {
   code: string
   label: string
+  labelEn?: string
   stereotype: string
   family: string
 }
@@ -152,12 +165,14 @@ export interface ElementTypeInfo {
   code: string
   uml: string
   label: string
+  labelEn?: string
   stereotype: string
 }
 
 export interface ContainmentRule {
   parent: string
   parentLabel: string
+  parentLabelEn?: string
   children: ElementTypeInfo[]
 }
 

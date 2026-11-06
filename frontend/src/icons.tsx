@@ -17,18 +17,20 @@ export interface IconSpec {
 export interface FamilyInfo {
   key: string
   label: string
+  /** 英文显示名，供中英文切换使用。 */
+  labelEn: string
   color: string
 }
 
 export const FAMILIES: FamilyInfo[] = [
-  { key: 'namespace', label: '命名空间 / 剖面', color: '#a16207' },
-  { key: 'requirement', label: '需求', color: '#0f766e' },
-  { key: 'structure', label: '结构 / 约束', color: '#1d4ed8' },
-  { key: 'activity', label: '活动', color: '#c2410c' },
-  { key: 'interaction', label: '交互', color: '#7c3aed' },
-  { key: 'state', label: '状态机', color: '#be123c' },
-  { key: 'usecase', label: '用例', color: '#15803d' },
-  { key: 'annotation', label: '注释', color: '#64748b' },
+  { key: 'namespace', label: '命名空间 / 剖面', labelEn: 'Namespace / Profile', color: '#a16207' },
+  { key: 'requirement', label: '需求', labelEn: 'Requirement', color: '#0f766e' },
+  { key: 'structure', label: '结构 / 约束', labelEn: 'Structure / Constraint', color: '#1d4ed8' },
+  { key: 'activity', label: '活动', labelEn: 'Activity', color: '#c2410c' },
+  { key: 'interaction', label: '交互', labelEn: 'Interaction', color: '#7c3aed' },
+  { key: 'state', label: '状态机', labelEn: 'State Machine', color: '#be123c' },
+  { key: 'usecase', label: '用例', labelEn: 'Use Case', color: '#15803d' },
+  { key: 'annotation', label: '注释', labelEn: 'Annotation', color: '#64748b' },
 ]
 
 const TYPE_META: Record<string, { family: string; glyph: string }> = {

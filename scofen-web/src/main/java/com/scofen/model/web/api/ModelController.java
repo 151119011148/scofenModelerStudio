@@ -94,6 +94,7 @@ public class ModelController {
             result.add(Map.of(
                     "code", kind.code(),
                     "label", kind.label(),
+                    "labelEn", kind.labelEn(),
                     "layout", spec.layout(),
                     "elementTypes", spec.elements().size(),
                     "allowedTypes", spec.elements().stream().map(ElementType::name).sorted().toList(),
@@ -112,6 +113,7 @@ public class ModelController {
             result.add(Map.of(
                     "code", type.code(),
                     "label", type.label(),
+                    "labelEn", type.labelEn(),
                     "stereotype", type.stereotype(),
                     "family", type.family()));
         }
@@ -135,6 +137,7 @@ public class ModelController {
             rules.add(Map.of(
                     "parent", parent.name(),
                     "parentLabel", parent.label(),
+                    "parentLabelEn", parent.labelEn(),
                     "children", ContainmentRules.childrenOf(parent).stream().map(this::typeInfo).toList()));
         }
         List<Map<String, Object>> types = new ArrayList<>();
@@ -157,6 +160,7 @@ public class ModelController {
                 "code", type.name(),
                 "uml", type.umlName(),
                 "label", type.label(),
+                "labelEn", type.labelEn(),
                 "stereotype", type.stereotype());
     }
 

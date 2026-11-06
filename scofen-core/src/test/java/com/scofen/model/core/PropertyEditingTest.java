@@ -134,4 +134,34 @@ class PropertyEditingTest {
         cmd("UPDATE_PROPERTY", Map.of("id", "blk", "key", "isLeaf", "remove", true));
         assertThat(property("blk", "isLeaf")).isNull();
     }
+
+    /**
+     * 引用型属性指向的元素必须真实存在。
+     *
+     * <p>界面上引用以「缩略图 + 名称」呈现，写入不存在的 id 只会显示成
+     * 「未引用的元素」，属于脏数据，因此在服务端就拒绝。</p>
+     */
+    @Test
+    void referencePropertiesMustPointToExistingElements() {
+        cmd("UPDATE_PROPERTY", Map.of("id", "blk", "key", "ownedAttribute", "value", List.of("part")));
+        assertThat(property("blk", "ownedAttribute")).isEqualTo(List.of("part"));
+
+        assertThatThrownBy(() ->
+                cmd("UPDATE_PROPERTY", Map.of("id", "blk", "key", "ownedAttribute", "value", List.of("ghost"))))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("引用的元素不存在");
+
+        // 单值引用同样受约束。
+        assertThatThrownBy(() ->
+                cmd("UPDATE_PROPERTY", Map.of("id", "part", "key", "type", "value", "ghost")))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("引用的元素不存在");
+
+        cmd("UPDATE_PROPERTY", Map.of("id", "part", "key", "type", "value", "blk"));
+        assertThat(property("part", "type")).isEqualTo("blk");
+
+        // 字符串列表存的是自由文本，不做存在性校验。
+        cmd("UPDATE_PROPERTY", Map.of("id", "blk", "key", "stereotypes", "value", List.of("sysML")));
+        assertThat(property("blk", "stereotypes")).isEqualTo(List.of("sysML"));
+    }
 }
