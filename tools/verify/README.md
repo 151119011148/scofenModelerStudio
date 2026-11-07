@@ -8,6 +8,7 @@
 | --- | --- |
 | `xmi-e2e.mjs` | XMI 导入导出：登录 → 「文件」菜单四个入口 → 导出三种格式 → 导入对话框 → 选文件 → 导入 → 撤销 → 无侧车导入（服务端重排九图）。末尾会自动撤销，把线上项目恢复干净 |
 | `root-package-e2e.mjs` | 项目根 Package + 可创建 Model 节点：登录 → 检查模型树根 → 「模型」菜单新建对话框 → 类型下拉选 MODEL → 创建 → 树上出现新节点 → 撤销恢复 → XMI 根标签为 `uml:Package` |
+| `reconnect-e2e.mjs` | 初始化失败自愈：用 CDP `Network.setBlockedURLs` 阻断所有 `/api` 请求后刷新，验证出现连接失败横幅、不再用「该父类型不允许再包含子元素」伪装成元模型规则；解除阻断后分别验证自动退避重试与「立即重试」按钮都能让页面恢复 |
 
 ## 运行
 
@@ -31,6 +32,11 @@ CDP_PORT=9444 node xmi-e2e.mjs
 SCOFEN_PASSWORD='<超管口令>' \
 APP_URL='http://<IP>/scofen/modelerStudio/' \
 CDP_PORT=9444 node root-package-e2e.mjs
+
+# 初始化失败自愈（会主动阻断页面 API，脚本内部自行恢复）
+SCOFEN_PASSWORD='<超管口令>' \
+APP_URL='http://<IP>/scofen/modelerStudio/' \
+CDP_PORT=9444 node reconnect-e2e.mjs
 ```
 
 ## 参数
@@ -53,4 +59,5 @@ CDP_PORT=9444 node root-package-e2e.mjs
 
 ## 产物
 
-截图落在 `/tmp/scofen-xmi-shots/`，导入用的样本文件落在 `/tmp/scofen-xmi-files/`。
+截图落在 `/tmp/scofen-xmi-shots/`、`/tmp/scofen-root-shots/` 与 `/tmp/scofen-reconnect-*.png`，
+导入用的样本文件落在 `/tmp/scofen-xmi-files/`。

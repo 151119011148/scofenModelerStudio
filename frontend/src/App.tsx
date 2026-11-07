@@ -248,6 +248,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const say = useCallback((key: string, vars?: Record<string, unknown>) => {
     setMessage({ key, vars })
   }, [])
+  // 初始化请求失败后自动退避重试。此前一次失败会让页面永远停在「空模型 + 无候选」，
+  // 用户只能靠手动刷新整个页面恢复，而且界面不会告诉他发生了什么。
+  const [connectionError, setConnectionError] = useState<string | null>(null)
+  const [retryCount, setRetryCount] = useState(0)
+  /** 元模型目录与项目无关，成功加载一次即可，失败则要跟着重试。 */
+  const catalogsReady = useRef(false)
   const [busy, setBusy] = useState(false)
   // 用户与角色管理抽屉：仅 user.manage 权限可见。
   const [adminOpen, setAdminOpen] = useState(false)
@@ -330,7 +336,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   // 同一次事件里连续发两条命令时，state 尚未更新，旧值会触发 409 乐观锁冲突。
   const revisionRef = useRef(0)
 
-  const refresh = useCallback(async () => {
+  /** 拉取当前项目的权威快照；失败返回 false，由 bootstrap 统一调度重试。 */
+  const refresh = useCallback(async (): Promise<boolean> => {
     try {
       const [nextHealth, nextModel, nextWorkspace] = await Promise.all([
         getHealth(),
@@ -345,50 +352,107 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         setWorkspace(nextWorkspace)
       }
       setMessage((current) => (current.key === '正在连接服务端…' ? { key: '已同步至服务端' } : current))
+      return true
     } catch (error) {
-      say('连接失败：{error}', { error: errorMessage(error) })
+      const detail = errorMessage(error)
+      setConnectionError(detail)
+      say('连接失败：{error}', { error: detail })
+      return false
     }
   }, [])
 
-  // 元模型目录与项目无关，登录后只加载一次。
-  useEffect(() => {
-    getDiagrams()
-      .then(setSpecs)
-      .catch((error: unknown) => say('图规格加载失败：{error}', { error: errorMessage(error) }))
-    getRelationships()
-      .then(setRelationCatalog)
-      .catch((error: unknown) => say('关系目录加载失败：{error}', { error: errorMessage(error) }))
-    getContainment()
-      .then(setContainment)
-      .catch((error: unknown) => say('元模型规则加载失败：{error}', { error: errorMessage(error) }))
-    getProperties()
-      .then(setPropCatalog)
-      .catch((error: unknown) => say('属性目录加载失败：{error}', { error: errorMessage(error) }))
-    // 通用扩展包清单：用于在模型树里识别并折叠系统提供的公共内容。
-    getExtensionPackages()
-      .then((catalog) => setExtensionPackages(catalog.packages ?? []))
-      .catch(() => setExtensionPackages([]))
-      .finally(() => setExtensionCatalogReady(true))
+  /**
+   * 元模型目录与项目无关，但失败必须能重试：containment 为 null 时「新建元素」
+   * 对话框会退化成「该父类型不允许再包含子元素」这种误导性的空状态。
+   */
+  const loadCatalogs = useCallback(async (): Promise<boolean> => {
+    const results = await Promise.allSettled([
+      getDiagrams().then(setSpecs),
+      getRelationships().then(setRelationCatalog),
+      getContainment().then(setContainment),
+      getProperties().then(setPropCatalog),
+      getExtensionPackages().then((catalog) => setExtensionPackages(catalog.packages ?? [])),
+    ])
+    setExtensionCatalogReady(true)
+    const failed = results.find((result) => result.status === 'rejected')
+    if (failed && failed.status === 'rejected') {
+      say('元模型目录加载失败：{error}', { error: errorMessage(failed.reason) })
+      return false
+    }
+    catalogsReady.current = true
+    return true
   }, [])
+
+  /** 模型快照与元模型目录都就绪，界面才算可用；否则挂上错误横幅并继续重试。 */
+  const bootstrap = useCallback(async (): Promise<boolean> => {
+    const [modelOk, catalogOk] = await Promise.all([
+      refresh(),
+      catalogsReady.current ? Promise.resolve(true) : loadCatalogs(),
+    ])
+    if (modelOk && catalogOk) {
+      setConnectionError(null)
+      setRetryCount(0)
+      return true
+    }
+    setConnectionError((current) => current ?? t('服务端或元模型目录尚未就绪'))
+    return false
+  }, [refresh, loadCatalogs])
 
   // 首次进入与每次「打开项目」都重新拉取该项目的权威快照。
   useEffect(() => {
-    void refresh()
-  }, [refresh, activeProjectId])
+    void bootstrap()
+  }, [bootstrap, activeProjectId])
+
+  // 初始化失败自动退避重试（1s → 2s → 4s … 上限 30s），直到成功；
+  // 用户也可以点顶部横幅的「立即重试」立刻再试一次。
+  useEffect(() => {
+    if (!connectionError) {
+      return
+    }
+    const delay = Math.min(1000 * 2 ** Math.min(retryCount, 5), 30_000)
+    const timer = window.setTimeout(() => {
+      setRetryCount((count) => count + 1)
+      void bootstrap()
+    }, delay)
+    return () => window.clearTimeout(timer)
+  }, [connectionError, retryCount, bootstrap])
 
   useEffect(() => {
-    const socket = new WebSocket(patchSocketUrl())
-    socket.onmessage = (event: MessageEvent<string>) => {
-      try {
-        const payload = JSON.parse(event.data) as { type?: string }
-        if (payload.type === 'patch') {
-          void refresh()
+    let socket: WebSocket | null = null
+    let timer = 0
+    let stopped = false
+    let attempt = 0
+    const open = () => {
+      if (stopped) {
+        return
+      }
+      socket = new WebSocket(patchSocketUrl())
+      socket.onopen = () => { attempt = 0 }
+      socket.onmessage = (event: MessageEvent<string>) => {
+        try {
+          const payload = JSON.parse(event.data) as { type?: string }
+          if (payload.type === 'patch') {
+            void refresh()
+          }
+        } catch {
+          // 忽略非 JSON 心跳帧
         }
-      } catch {
-        // 忽略非 JSON 心跳帧
+      }
+      socket.onerror = () => socket?.close()
+      socket.onclose = () => {
+        if (stopped) {
+          return
+        }
+        // 断线不会自愈：只有重连后才收得到别的会话广播的 Patch。
+        timer = window.setTimeout(open, Math.min(1000 * 2 ** attempt++, 15_000))
       }
     }
-    return () => socket.close()
+    open()
+    return () => {
+      stopped = true
+      window.clearTimeout(timer)
+      socket?.close()
+    }
   }, [refresh, activeProjectId, session.token])
 
   useEffect(() => {
@@ -1680,7 +1744,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }
 
   // 空白处的「新建」一律落到项目根 Package 下，保证模型树始终只有一个根。
+  // 数据未就绪时不要打开一个空对话框——那会显示「该父类型不允许再包含子元素」，
+  // 把连接故障伪装成元模型规则，用户根本无从判断发生了什么。
   const openCreate = (ownerId: string | null) => {
+    if (!containment || !projectRootId) {
+      say('模型数据尚未就绪，正在重新连接服务端；也可点顶部横幅的「立即重试」')
+      return
+    }
     const effective = ownerId ?? projectRootId
     const owner = effective
       ? model.elements.find((element) => element.id === effective)?.name ?? effective
@@ -1694,6 +1764,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }
 
   const openDiagramDialog = (ownerId: string | null, edit?: Diagram) => {
+    if (!projectRootId) {
+      say('模型数据尚未就绪，正在重新连接服务端；也可点顶部横幅的「立即重试」')
+      return
+    }
     const effective = ownerId ?? projectRootId
     const owner = effective
       ? model.elements.find((element) => element.id === effective)?.name ?? effective
@@ -2925,7 +2999,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           disabled: !canEdit || !selectedId,
         },
         'separator',
-        { label: '重新拉取模型快照', run: () => void refresh() },
+        { label: '重新连接并刷新', run: () => void bootstrap() },
       ],
     },
     {
@@ -3008,6 +3082,14 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           onClose={() => setAdminOpen(false)}
           onMessage={(key, vars) => say(key, vars)}
         />
+      )}
+      {connectionError && (
+        <div className="connection-banner" role="alert">
+          <span className="cb-dot" aria-hidden="true" />
+          <span className="cb-text">{t('连接服务端失败：{error}', { error: connectionError })}</span>
+          <span className="cb-retry">{t('自动重试第 {count} 次', { count: retryCount + 1 })}</span>
+          <button type="button" onClick={() => void bootstrap()}>{t('立即重试')}</button>
+        </div>
       )}
       <header className="topbar">
         <nav className="menubar" ref={menubarRef}>
@@ -4401,7 +4483,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               {t('新建元素')}
             </h2>
             <p className="modal-sub">{t('父节点：{name}', { name: createDialog.ownerName })}</p>
-            {createOptions.length === 0 ? (
+            {!containment ? (
+              <p className="hint">{t('元模型规则尚未加载，请检查网络连接；页面会自动重试。')}</p>
+            ) : createOptions.length === 0 ? (
               <p className="hint">{t('按元模型规则，该父类型不允许再包含子元素。')}</p>
             ) : (
               <>
@@ -4460,7 +4544,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <button
                 type="button"
                 className="primary"
-                disabled={busy || createOptions.length === 0 || !createName.trim()}
+                disabled={busy || !containment || createOptions.length === 0 || !createName.trim()}
                 onClick={() => void submitCreate()}
               >
                 {t('创建')}

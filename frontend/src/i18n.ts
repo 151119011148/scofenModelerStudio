@@ -754,6 +754,21 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
     zh: 'Scofen Modeler Studio · SysML 1.6 / UML 2.5.1 轻量建模器 · 每个项目独立命令通道与撤销栈',
     en: 'Scofen Modeler Studio · lightweight SysML 1.6 / UML 2.5.1 modeler · each project has its own command channel and undo stack',
   },
+  /* ── 连接失败与自动重连 ── */
+  '连接服务端失败：{error}': { zh: '连接服务端失败：{error}', en: 'Cannot reach the server: {error}' },
+  '自动重试第 {count} 次': { zh: '自动重试第 {count} 次', en: 'Auto retry #{count}' },
+  '立即重试': { zh: '立即重试', en: 'Retry now' },
+  '模型数据尚未就绪，正在重新连接服务端；也可点顶部横幅的「立即重试」': {
+    zh: '模型数据尚未就绪，正在重新连接服务端；也可点顶部横幅的「立即重试」',
+    en: 'Model data is not ready yet; reconnecting automatically. You can also click "Retry now" in the banner.',
+  },
+  '元模型规则尚未加载，请检查网络连接；页面会自动重试。': {
+    zh: '元模型规则尚未加载，请检查网络连接；页面会自动重试。',
+    en: 'Metamodel rules have not loaded; check your connection. The page will retry automatically.',
+  },
+  '元模型目录加载失败：{error}': { zh: '元模型目录加载失败：{error}', en: 'Failed to load metamodel catalog: {error}' },
+  '服务端或元模型目录尚未就绪': { zh: '服务端或元模型目录尚未就绪', en: 'Server or metamodel catalog is not ready' },
+  '重新连接并刷新': { zh: '重新连接并刷新', en: 'Reconnect & refresh' },
 }
 
 /** 语言包缺失时回退到中文原文，保证界面永远可读。 */

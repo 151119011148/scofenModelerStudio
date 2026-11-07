@@ -145,8 +145,16 @@ const created = await waitFor(page,
   `(async()=>{const m=await (${snapshotExpr});return m.elements.some(e=>e.name===${JSON.stringify(MODEL_NAME)}&&e.type==='Model')})()`,
   60, 300)
 check('新 Model 节点已写入服务端', created)
-const snap1 = created ? await page.evaluate(snapshotExpr, true) : snap0
-const newNode = snap1.elements.find((e) => e.name === MODEL_NAME)
+// 元素写入后还有 Patch 广播与前端 refresh，第二次取快照可能恰好落在这个窗口里。
+// 取不到就再等一会儿，别把偶发时序当成功能失败。
+let snap1 = snap0
+let newNode
+for (let i = 0; i < 20; i += 1) {
+  snap1 = await page.evaluate(snapshotExpr, true)
+  newNode = snap1.elements.find((e) => e.name === MODEL_NAME)
+  if (newNode) break
+  await sleep(200)
+}
 check('新节点挂在项目根下', newNode?.ownerId === 'model-root', String(newNode?.ownerId))
 check('项目根类型仍是 Package', snap1.elements.find((e) => e.id === 'model-root')?.type === 'Package')
 // runCommand 还要处理 Patch 与 refresh，比服务端落库稍慢，用等待式断言。
