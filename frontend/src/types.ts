@@ -164,6 +164,11 @@ export interface RelationshipTypeInfo {
   labelEn?: string
   stereotype: string
   family: string
+  /**
+   * true = 单向（模型树只挂到源端元素的「关系」虚拟节点）；
+   * false = 双向 / 无向（两端元素都挂）。由服务端元模型目录权威下发。
+   */
+  directed?: boolean
 }
 
 export interface ElementTypeInfo {
@@ -190,6 +195,8 @@ export interface ExtensionPackageInfo {
 
 export interface ExtensionCatalog {
   packages: ExtensionPackageInfo[]
+  /** 元模型层下发的只读定义（与项目快照隔离），用于模型树内嵌的扩展包虚拟分组。 */
+  elements?: ModelElement[]
 }
 
 export interface ContainmentRule {

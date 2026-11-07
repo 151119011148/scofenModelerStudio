@@ -2,6 +2,7 @@ package com.scofen.model.metamodel;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Arrays;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -62,6 +63,36 @@ class MetamodelRegistryTest {
         assertThat(bdd.elementIds()).containsExactly("e-1");
         assertThat(MetamodelRegistry.allows(DiagramKind.BDD, ElementType.BLOCK)).isTrue();
         assertThat(MetamodelRegistry.allows(DiagramKind.BDD, ElementType.LIFELINE)).isFalse();
+    }
+
+    /**
+     * 关系方向由元模型目录权威下发：模型树据此决定「单向挂源端一方 / 双向挂两端」，
+     * 前端不得自己硬编码方向表。
+     */
+    @Test
+    void relationshipDirectionIsMetamodelAuthority() {
+        assertThat(RelationshipType.SATISFY.directed()).isTrue();
+        assertThat(RelationshipType.VERIFY.directed()).isTrue();
+        assertThat(RelationshipType.TRACE.directed()).isTrue();
+        assertThat(RelationshipType.ASSOCIATION.directed()).isFalse();
+        assertThat(RelationshipType.CONNECTOR.directed()).isFalse();
+        assertThat(RelationshipType.BINDING.directed()).isFalse();
+        long bidirectional = Arrays.stream(RelationshipType.values())
+                .filter(type -> !type.directed()).count();
+        assertThat(bidirectional).isEqualTo(3);
+    }
+
+    /** 扩展包定义来自静态元模型目录，与项目快照 / 项目根状态隔离。 */
+    @Test
+    void extensionLibraryIsIndependentOfProjectSnapshot() {
+        List<ExtensionLibrary.Definition> definitions = ExtensionLibrary.definitions("model-root");
+        assertThat(definitions).extracting(ExtensionLibrary.Definition::id)
+                .contains(ExtensionLibrary.SYSML_PROFILE_ID, ExtensionLibrary.UML_PROFILE_ID);
+        assertThat(definitions).allSatisfy(def -> assertThat(def.ownerId()).isNotBlank());
+        assertThat(ExtensionLibrary.definitions("another-project-root"))
+                .extracting(ExtensionLibrary.Definition::id)
+                .containsExactlyElementsOf(definitions.stream()
+                        .map(ExtensionLibrary.Definition::id).toList());
     }
 
     @Test

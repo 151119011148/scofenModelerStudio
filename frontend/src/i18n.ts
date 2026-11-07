@@ -844,6 +844,36 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
     zh: '通用扩展包随项目提供，不可删除；包内的元类与构造型可以删除',
     en: 'Built-in extension packages cannot be deleted; metaclasses and stereotypes inside them can be removed',
   },
+
+  /* ── 模型树：扩展包显示开关 / 关系虚拟节点 ── */
+  '显示扩展包': { zh: '显示扩展包', en: 'Show extension packages' },
+  '隐藏扩展包': { zh: '隐藏扩展包', en: 'Hide extension packages' },
+  '项目元素数（不含隔离的扩展包）': {
+    zh: '项目元素数（不含隔离的扩展包）',
+    en: 'Project element count (isolated packages excluded)',
+  },
+  '{action} · UML / SysML 扩展包与项目隔离，由系统内嵌提供': {
+    zh: '{action} · UML / SysML 扩展包与项目隔离，由系统内嵌提供',
+    en: '{action} · UML / SysML packages are isolated from the project and embedded by the system',
+  },
+  'UML / SysML 扩展包与项目模型隔离，由系统内嵌提供，仅用于浏览与引用定位': {
+    zh: 'UML / SysML 扩展包与项目模型隔离，由系统内嵌提供，仅用于浏览与引用定位',
+    en: 'UML / SysML packages are isolated from the project model, embedded by the system for browsing and reference lookup only',
+  },
+  '系统 · 隔离': { zh: '系统 · 隔离', en: 'System · isolated' },
+  '系统内容，不计入项目元素数，也不参与项目命令': {
+    zh: '系统内容，不计入项目元素数，也不参与项目命令',
+    en: 'System content: excluded from project element counts and project commands',
+  },
+  '{name} · 扩展包只读定义（与项目模型隔离）': {
+    zh: '{name} · 扩展包只读定义（与项目模型隔离）',
+    en: '{name} · read-only package definition (isolated from the project model)',
+  },
+  '单向关系只挂到源端一方，双向关系同时挂到两端元素': {
+    zh: '单向关系只挂到源端一方，双向关系同时挂到两端元素',
+    en: 'Directed relationships mount under the source only; bidirectional ones mount under both ends',
+  },
+  '关系另一端': { zh: '关系另一端', en: 'Other end' },
 }
 
 /** 语言包缺失时回退到中文原文，保证界面永远可读。 */

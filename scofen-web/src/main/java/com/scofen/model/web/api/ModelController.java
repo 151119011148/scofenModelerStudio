@@ -3,6 +3,7 @@ package com.scofen.model.web.api;
 import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.core.Patch;
+import com.scofen.model.core.ProjectRoot;
 import com.scofen.model.core.ValidationEngine;
 import com.scofen.model.metamodel.ContainmentRules;
 import com.scofen.model.metamodel.DiagramKind;
@@ -26,6 +27,7 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -123,7 +125,8 @@ public class ModelController {
                     "label", type.label(),
                     "labelEn", type.labelEn(),
                     "stereotype", type.stereotype(),
-                    "family", type.family()));
+                    "family", type.family(),
+                    "directed", type.directed()));
         }
         return result;
     }
@@ -139,10 +142,12 @@ public class ModelController {
     }
 
     /**
-     * 通用扩展包清单：SysML / UML 的元类与构造型随每个项目提供。
+     * 通用扩展包清单 + 只读元素定义：SysML / UML 的元类与构造型由元模型层提供。
      *
-     * <p>界面据此把扩展包在模型树里默认折叠，并标出「通用」字样——
-     * 否则一百多个元类会淹没用户自己的模型。</p>
+     * <p>扩展包与项目模型是「隔离 + 内嵌」的关系：这里下发的 {@code elements} 取自静态
+     * 元模型目录，不读项目快照、也不随项目 revision 变化；界面只在模型树里内嵌一个
+     * 可显示/隐藏的虚拟分组来浏览它，不把它计入项目元素数、不参与项目筛选与命令。
+     * 项目快照里物化的同名元素仅用于让引用型属性（扩展的元类 / 构造型）可定位。</p>
      */
     @GetMapping("/metamodel/extension")
     @RequiresPermission(Permission.MODEL_VIEW)
@@ -159,7 +164,22 @@ public class ModelController {
                     "metaclassCount", info.metaclassCount(),
                     "stereotypeCount", info.stereotypeCount()));
         }
-        return Map.of("packages", packages);
+        // 静态只读定义：与项目快照隔离，界面据此内嵌渲染扩展包树。
+        List<Map<String, Object>> elements = new ArrayList<>();
+        for (ExtensionLibrary.Definition definition : ExtensionLibrary.definitions(ProjectRoot.ID)) {
+            Map<String, Object> element = new LinkedHashMap<>();
+            element.put("id", definition.id());
+            element.put("type", definition.type());
+            element.put("name", definition.name());
+            element.put("ownerId", definition.ownerId());
+            element.put("documentation", definition.documentation());
+            element.put("stereotypes", definition.stereotypes());
+            element.put("properties", definition.properties());
+            element.put("taggedValues", Map.of());
+            element.put("xmiId", null);
+            elements.add(element);
+        }
+        return Map.of("packages", packages, "elements", elements);
     }
 
     /** 元模型包含规则下发给前端：右键菜单只列出规范允许的父子组合。 */

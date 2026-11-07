@@ -21,7 +21,8 @@ public enum RelationshipType {
     IMPORT("import", "包导入", "Package Import", "namespace"),
     ACCESS("access", "包访问", "Package Access", "namespace"),
     GENERALIZATION("generalization", "泛化", "Generalization", "structure"),
-    ASSOCIATION("association", "关联", "Association", "structure"),
+    // 关联 / 连接器 / 绑定本身没有固有方向：模型树会在两端元素下各挂一个「关系」虚拟节点。
+    ASSOCIATION("association", "关联", "Association", "structure", false),
     DEPENDENCY("dependency", "依赖", "Dependency", "structure"),
 
     // 需求追溯
@@ -34,9 +35,9 @@ public enum RelationshipType {
     ALLOCATE("allocate", "分配", "Allocate", "requirement"),
 
     // 内部块 / 参数
-    CONNECTOR("connector", "连接器", "Connector", "structure"),
+    CONNECTOR("connector", "连接器", "Connector", "structure", false),
     ITEM_FLOW("itemFlow", "项目流", "Item Flow", "structure"),
-    BINDING("binding", "绑定", "Binding", "constraint"),
+    BINDING("binding", "绑定", "Binding", "constraint", false),
     DELEGATION("delegation", "委托", "Delegation", "structure"),
     CONSTRAINT_PARAMETER("constraintParameter", "约束参数", "Constraint Parameter", "constraint"),
 
@@ -58,12 +59,19 @@ public enum RelationshipType {
     private final String label;
     private final String labelEn;
     private final String family;
+    /** true = 有方向的单向关系（只挂载到源端）；false = 双向 / 无向关系（两端都挂载）。 */
+    private final boolean directed;
 
     RelationshipType(String code, String label, String labelEn, String family) {
+        this(code, label, labelEn, family, true);
+    }
+
+    RelationshipType(String code, String label, String labelEn, String family, boolean directed) {
         this.code = code;
         this.label = label;
         this.labelEn = labelEn;
         this.family = family;
+        this.directed = directed;
     }
 
     public String code() {
@@ -86,6 +94,14 @@ public enum RelationshipType {
 
     public String family() {
         return family;
+    }
+
+    /**
+     * 关系方向（元模型权威）：单向关系在模型树里只挂到源端元素的「关系」虚拟节点下，
+     * 双向 / 无向关系同时挂到源端与目标端。前端不得自行硬编码这张方向表。
+     */
+    public boolean directed() {
+        return directed;
     }
 
     /** 忽略大小写与连字符/下划线，兼容 deriveReqt / derive_reqt / derive-reqt 等写法。 */

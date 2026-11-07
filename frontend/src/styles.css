@@ -465,7 +465,7 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 }
 
 .tree { background: var(--surface); display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; padding: 0; }
-.browser { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 16px; }
+.browser { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; padding: 14px 16px; }
 
 .props-dock {
   flex: 0 0 auto;
@@ -996,6 +996,7 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   align-items: center;
   gap: 6px;
   width: 100%;
+  min-width: 0;
   text-align: left;
   border: none;
   background: transparent;
@@ -1024,6 +1025,62 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 .tree-row.relation.selected { background: var(--accent-soft); color: var(--accent); }
 .tree-label { overflow: hidden; text-overflow: ellipsis; flex: 1; }
 
+/* ── 模型树虚拟节点：扩展包（与项目隔离）/ 关系（按端点挂载） ── */
+.tree-row.virtual-group { font-size: 11.5px; }
+.tree-row.extension-group {
+  margin: 4px 0 2px;
+  border-top: 1px dashed var(--line);
+  border-bottom: 1px dashed var(--line);
+  border-radius: 0;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+.tree-row.extension-group .tree-label { font-weight: 600; }
+.tree-row.extension-element { color: var(--text-2); }
+.tree-row.extension-element .tree-type { color: var(--text-3); }
+.virtual-tag {
+  flex: none;
+  font-size: 9px;
+  line-height: 15px;
+  color: var(--text-3);
+  border: 1px dashed var(--line);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.tree-row.relation-group {
+  color: var(--text-2);
+  font-weight: 500;
+  border-left: 2px solid var(--accent-soft);
+  border-radius: 0 5px 5px 0;
+}
+.tree-row.relation-group:hover { background: var(--surface-2); }
+/* 关系行的两段文字：类型名按内容宽度、对端名吃掉剩余宽度并省略，
+   否则 .tree-label 的 flex:1 会把对端名挤出面板、连省略号都不给。 */
+.tree-row.relation .tree-label {
+  flex: 0 1 auto;
+  min-width: 26px;
+}
+.tree-row.relation .tree-type {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text-3);
+}
+.tree-row.relation .rel-direction {
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--accent);
+}
+.tree-row.relation .peer-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .twisty {
   border: none;
   background: transparent;
@@ -1045,7 +1102,8 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   font-family: var(--mono);
   font-size: 10px;
   color: var(--text-3);
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 0;
   max-width: 76px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1764,6 +1822,38 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 .browser-filter input:focus { outline: none; border-color: var(--accent); background: var(--surface); }
 .browser-filter button { border: none; background: transparent; padding: 0 4px; font-size: 13px; color: var(--text-3); }
 .browser-filter button:hover:not(:disabled) { background: transparent; color: var(--danger); }
+/* 搜索栏右侧的「扩展包显示 / 隐藏」开关：包图标 + 角标表示当前状态 */
+.browser-filter .ext-toggle {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 23px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+.browser-filter .ext-toggle:hover:not(:disabled) { color: var(--accent); background: var(--accent-soft); }
+.browser-filter .ext-toggle.active {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.browser-filter .ext-toggle .ext-toggle-mark {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  font-size: 8px;
+  line-height: 1;
+  color: inherit;
+  background: var(--surface);
+  border-radius: 50%;
+}
+.browser-filter button.clear-filter:hover:not(:disabled) { color: var(--danger); }
 
 .browser-foot {
   display: flex;
