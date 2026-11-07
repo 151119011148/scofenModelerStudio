@@ -134,7 +134,7 @@ FAIL ENUMERATION_LITERAL    owner=Block        → Containment rule violation（
 
 | 层 | 手段 | 结果 |
 | --- | --- | --- |
-| 单元测试 | `./mvnw -B -ntp test` | **137 项通过**（metamodel 17 / core 53 / xmi 12 / web 55，8 项 Testcontainers 跳过），BUILD SUCCESS |
+| 单元测试 | `./mvnw -B -ntp test` | **137 项、129 通过**（metamodel 17 / core 53 / xmi 12 / web 55；8 项 Testcontainers 无 Docker 跳过），BUILD SUCCESS |
 | 目录守卫 | `MetamodelRegistryTest.everyElementTypeIsFullyRegistered` | 157 个类型逐一断言「有主图归属 + 有属性表 + 有可挂载父类型」 |
 | 层级守卫 | `everyMetaclassIsConnectedToTheHierarchy` | 281 个元类不断链；抽象性按规范显式标注 |
 | 接口实测 | 真实命令写入 / 删除（本地实例） | 21 个新增类型全部可建，错误父级一律 400 `validation_rule violation`，无残留 |
