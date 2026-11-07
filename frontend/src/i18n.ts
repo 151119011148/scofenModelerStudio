@@ -769,6 +769,81 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
   '元模型目录加载失败：{error}': { zh: '元模型目录加载失败：{error}', en: 'Failed to load metamodel catalog: {error}' },
   '服务端或元模型目录尚未就绪': { zh: '服务端或元模型目录尚未就绪', en: 'Server or metamodel catalog is not ready' },
   '重新连接并刷新': { zh: '重新连接并刷新', en: 'Reconnect & refresh' },
+
+  /* ── 属性栏：工具栏 / 搜索排序 / 三点编辑弹框 ── */
+  '按属性 key 搜索': { zh: '按属性 key 搜索', en: 'Search properties by key' },
+  '按属性 key 排序（当前：规范顺序）': {
+    zh: '按属性 key 排序（当前：规范顺序）',
+    en: 'Sort by property key (currently: specification order)',
+  },
+  '按属性 key 升序（点击切换降序）': {
+    zh: '按属性 key 升序（点击切换降序）',
+    en: 'Sorted by key A→Z (click for Z→A)',
+  },
+  '按属性 key 降序（点击恢复规范顺序）': {
+    zh: '按属性 key 降序（点击恢复规范顺序）',
+    en: 'Sorted by key Z→A (click to restore specification order)',
+  },
+  '展开 / 收起全部属性分组': { zh: '展开 / 收起全部属性分组', en: 'Expand / collapse all groups' },
+  '搜索属性 key，如 name / visibility': {
+    zh: '搜索属性 key，如 name / visibility',
+    en: 'Search by key, e.g. name / visibility',
+  },
+  '{matched} / {total} 项': { zh: '{matched} / {total} 项', en: '{matched} / {total}' },
+  '关闭搜索': { zh: '关闭搜索', en: 'Close search' },
+  '没有匹配的属性 key': { zh: '没有匹配的属性 key', en: 'No matching property key' },
+  '按属性 key 升序': { zh: '按属性 key 升序', en: 'Properties by key A→Z' },
+  '按属性 key 降序': { zh: '按属性 key 降序', en: 'Properties by key Z→A' },
+  '编辑「{label}」…': { zh: '编辑「{label}」…', en: 'Edit "{label}"…' },
+  '编辑属性 · {label}': { zh: '编辑属性 · {label}', en: 'Edit property · {label}' },
+  '{metaclass} · {umlName} · {spec}': {
+    zh: '{metaclass} · {umlName} · {spec}',
+    en: '{metaclass} · {umlName} · {spec}',
+  },
+  '值类型 {kind}': { zh: '值类型 {kind}', en: 'Type {kind}' },
+  '即时生效': { zh: '即时生效', en: 'Applied immediately' },
+  '属性值': { zh: '属性值', en: 'Value' },
+  'JSON 对象': { zh: 'JSON 对象', en: 'JSON object' },
+  '当前值': { zh: '当前值', en: 'Current value' },
+  '留空表示清除': { zh: '留空表示清除', en: 'Leave blank to clear' },
+  '值类型 {kind} · 属性 key {key}': {
+    zh: '值类型 {kind} · 属性 key {key}',
+    en: 'Type {kind} · key {key}',
+  },
+  ' · 默认值 {value}': { zh: ' · 默认值 {value}', en: ' · default {value}' },
+  '规范允许的取值：{options}': { zh: '规范允许的取值：{options}', en: 'Allowed values: {options}' },
+  'Ctrl/⌘ + Enter 应用，Esc 取消': {
+    zh: 'Ctrl/⌘ + Enter 应用，Esc 取消',
+    en: 'Ctrl/⌘ + Enter to apply, Esc to cancel',
+  },
+  '形如 {"owner":"张三","phase":"M0"}；留空表示清除。Ctrl/⌘ + Enter 应用': {
+    zh: '形如 {"owner":"张三","phase":"M0"}；留空表示清除。Ctrl/⌘ + Enter 应用',
+    en: 'e.g. {"owner":"Alice","phase":"M0"}; leave blank to clear. Ctrl/⌘ + Enter to apply',
+  },
+  '增删立即写入模型，可在撤销栈中回退；点「完成」关闭。': {
+    zh: '增删立即写入模型，可在撤销栈中回退；点「完成」关闭。',
+    en: 'Changes are applied immediately and can be undone; click Done to close.',
+  },
+  '清除值': { zh: '清除值', en: 'Clear value' },
+  '应用': { zh: '应用', en: 'Apply' },
+  '完成': { zh: '完成', en: 'Done' },
+  '名称不能为空': { zh: '名称不能为空', en: 'Name cannot be empty' },
+
+  /* ── 历史遗漏补齐 ── */
+  '{relation}：{source} → {target}': {
+    zh: '{relation}：{source} → {target}',
+    en: '{relation}: {source} → {target}',
+  },
+  '重做 · Ctrl + Y': { zh: '重做 · Ctrl + Y', en: 'Redo · Ctrl + Y' },
+  '类元素': { zh: '类元素', en: 'Class element' },
+  '{elements} 元素 · {relations} 关系 · {diagrams} 图': {
+    zh: '{elements} 元素 · {relations} 关系 · {diagrams} 图',
+    en: '{elements} elements · {relations} relationships · {diagrams} diagrams',
+  },
+  '通用扩展包随项目提供，不可删除；包内的元类与构造型可以删除': {
+    zh: '通用扩展包随项目提供，不可删除；包内的元类与构造型可以删除',
+    en: 'Built-in extension packages cannot be deleted; metaclasses and stereotypes inside them can be removed',
+  },
 }
 
 /** 语言包缺失时回退到中文原文，保证界面永远可读。 */

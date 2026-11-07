@@ -9,6 +9,7 @@
 | `xmi-e2e.mjs` | XMI 导入导出：登录 → 「文件」菜单四个入口 → 导出三种格式 → 导入对话框 → 选文件 → 导入 → 撤销 → 无侧车导入（服务端重排九图）。末尾会自动撤销，把线上项目恢复干净 |
 | `root-package-e2e.mjs` | 项目根 Package + 可创建 Model 节点：登录 → 检查模型树根 → 「模型」菜单新建对话框 → 类型下拉选 MODEL → 创建 → 树上出现新节点 → 撤销恢复 → XMI 根标签为 `uml:Package` |
 | `reconnect-e2e.mjs` | 初始化失败自愈：用 CDP `Network.setBlockedURLs` 阻断所有 `/api` 请求后刷新，验证出现连接失败横幅、不再用「该父类型不允许再包含子元素」伪装成元模型规则；解除阻断后分别验证自动退避重试与「立即重试」按钮都能让页面恢复 |
+| `property-panel-e2e.mjs` | 属性栏三件套：右上角三档下拉与计数、按属性 key 搜索（含空态）、key 升序 / 降序 / 规范顺序三态排序、可编辑行「⋯」弹框的字符 / 数组 / 模型引用 / 枚举四类编辑器、清除值与 Esc 关闭、服务端快照写入与撤销恢复，末尾校验数据无残留 |
 
 ## 运行
 
@@ -37,6 +38,11 @@ CDP_PORT=9444 node root-package-e2e.mjs
 SCOFEN_PASSWORD='<超管口令>' \
 APP_URL='http://<IP>/scofen/modelerStudio/' \
 CDP_PORT=9444 node reconnect-e2e.mjs
+
+# 属性栏：三档下拉 / 搜索排序 / 三点编辑弹框
+SCOFEN_PASSWORD='<超管口令>' \
+APP_URL='http://<IP>/scofen/modelerStudio/' \
+CDP_PORT=9444 node property-panel-e2e.mjs
 ```
 
 ## 参数
@@ -59,5 +65,5 @@ CDP_PORT=9444 node reconnect-e2e.mjs
 
 ## 产物
 
-截图落在 `/tmp/scofen-xmi-shots/`、`/tmp/scofen-root-shots/` 与 `/tmp/scofen-reconnect-*.png`，
-导入用的样本文件落在 `/tmp/scofen-xmi-files/`。
+截图落在 `/tmp/scofen-xmi-shots/`、`/tmp/scofen-root-shots/`、`/tmp/scofen-prop-shots/`
+与 `/tmp/scofen-reconnect-*.png`，导入用的样本文件落在 `/tmp/scofen-xmi-files/`。

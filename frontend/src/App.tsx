@@ -62,6 +62,12 @@ const FALLBACK_CANVAS = { maxX: 480, maxY: 340, width: 640, height: 420 }
 const FALLBACK_NODE = { width: 168, height: 84 }
 const ROOT_KEY = '__root__'
 /** 画布缩放边界：低于 40% 看不清记法、高于 250% 只为对位，两侧都不需要。 */
+/** 属性面板排序：规范目录顺序 / 按属性 key 升序 / 降序。 */
+type PropertySort = 'CATALOG' | 'KEY_ASC' | 'KEY_DESC'
+
+/** 属性编辑弹框的交互方式：由元属性声明的值类型决定。 */
+type PropEditorMode = 'text' | 'textarea' | 'boolean' | 'enum' | 'reference' | 'list' | 'json'
+
 const ZOOM_MIN = 0.4
 const ZOOM_MAX = 2.5
 
@@ -284,8 +290,19 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [propCatalog, setPropCatalog] = useState<PropertyCatalogInfo | null>(null)
   const [propView, setPropView] = useState<PropertyView>('STANDARD')
   const [collapsedPropGroups, setCollapsedPropGroups] = useState<Set<string>>(() => new Set())
-  // 引用型属性：正在编辑的引用项（属性 key + 目标元素 id），用于展开内联选择器。
-  const [refEditing, setRefEditing] = useState<{ key: string; index: number } | null>(null)
+  /** 属性栏工具栏：按属性 key 搜索、按 key 排序、搜索框展开状态。 */
+  const [propQuery, setPropQuery] = useState('')
+  const [propSort, setPropSort] = useState<PropertySort>('CATALOG')
+  const [propSearchOpen, setPropSearchOpen] = useState(false)
+  /** 当前选中的属性行：仿桌面建模器，选中行的标签列深蓝底白字。 */
+  const [propActiveKey, setPropActiveKey] = useState<string | null>(null)
+  /**
+   * 属性编辑弹框：可编辑属性行尾的「⋯」打开，按属性类型分流编辑控件。
+   * 记录打开时的对象 id，切换对象时弹框自动失效，避免改错对象。
+   */
+  const [propDialog, setPropDialog] = useState<{ targetId: string; key: string } | null>(null)
+  /** 弹框内标量属性的草稿值。 */
+  const [propDraft, setPropDraft] = useState('')
   // 「树上高亮」：模型树中需要展开祖先并高亮定位的元素 id。
   const [treeLocateId, setTreeLocateId] = useState<string | null>(null)
   // 引用选择器：当前打开的属性（key）与其在数组中的位置（-1 表示单值引用）。
@@ -330,7 +347,6 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   setProjectId(activeProjectId)
 
   const svgRef = useRef<SVGSVGElement | null>(null)
-  const renameRef = useRef<HTMLInputElement | null>(null)
   const menubarRef = useRef<HTMLElement | null>(null)
   // 命令的 baseRevision 必须取「最新已知 revision」而非渲染闭包里的 model.revision：
   // 同一次事件里连续发两条命令时，state 尚未更新，旧值会触发 409 乐观锁冲突。
@@ -838,14 +854,33 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     if (!propEntry) {
       return [] as { code: string; label: string; specs: PropertySpec[] }[]
     }
-    const filtered = propEntry.properties.filter((spec) =>
+    const inView = propEntry.properties.filter((spec) =>
       propView === 'ALL'
         ? true
         : propView === 'EXPERT'
           ? spec.level !== 'DERIVED'
           : spec.level === 'STANDARD')
+    // 搜索以属性 key / 规范原名为准，同时兼容中文与英文显示名、元类名。
+    const keyword = propQuery.trim().toLowerCase()
+    const matched = keyword
+      ? inView.filter((spec) => [
+        spec.key, spec.umlName, spec.label, spec.labelEn, spec.metaclass,
+      ].some((field) => field?.toLowerCase().includes(keyword)))
+      : inView
+    // 按 key 排序时取消元类分组：只有全局有序才符合「按属性 key 排序」的语义。
+    if (propSort !== 'CATALOG') {
+      const sorted = [...matched].sort((a, b) => a.key.localeCompare(b.key, 'en'))
+      if (propSort === 'KEY_DESC') {
+        sorted.reverse()
+      }
+      return [{
+        code: '__sorted__',
+        label: propSort === 'KEY_ASC' ? t('按属性 key 升序') : t('按属性 key 降序'),
+        specs: sorted,
+      }]
+    }
     const groups = new Map<string, PropertySpec[]>()
-    for (const spec of filtered) {
+    for (const spec of matched) {
       const list = groups.get(spec.metaclass)
       if (list) {
         list.push(spec)
@@ -861,7 +896,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       })(),
       specs,
     }))
-  }, [propEntry, propCatalog, propView, locale])
+  }, [propEntry, propCatalog, propView, propQuery, propSort, locale])
   const propViewCount = (view: PropertyView): number => propEntry?.counts?.[view] ?? 0
   /** 当前档位下实际渲染的属性条数：属性面板底部统计条用它，与「共 N 项」一致。 */
   const propVisibleCount = useMemo(
@@ -1140,17 +1175,26 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
    * 属性提交：按注册表声明的值类型转换后走 UPDATE_PROPERTY，
    * 由服务端做规范校验、乐观锁与撤销栈；派生 / 计算属性不会走到这里。
    */
-  const commitProperty = (spec: PropertySpec, rawInput: string) => {
+  /**
+   * 属性提交：按注册表声明的值类型转换后走 UPDATE_PROPERTY，
+   * 由服务端做规范校验、乐观锁与撤销栈；派生 / 计算属性不会走到这里。
+   * 返回是否可结束编辑：值未变或已提交为 true，本地校验失败为 false（弹框保持打开）。
+   */
+  const commitProperty = (spec: PropertySpec, rawInput: string): boolean => {
     if (!propTargetId || !spec.editable) {
-      return
+      return false
     }
     const raw = rawInput.trim()
     if (raw === propertyText(spec).trim()) {
-      return
+      return true
     }
     if (raw === '') {
+      if (spec.key === 'name') {
+        say('名称不能为空')
+        return false
+      }
       void runCommand('UPDATE_PROPERTY', { id: propTargetId, key: spec.key, remove: true })
-      return
+      return true
     }
     // 标记值是 JSON 对象，单独解析，避免把字符串当成对象提交。
     if (spec.key === 'taggedValues') {
@@ -1162,8 +1206,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         void runCommand('UPDATE_PROPERTY', { id: propTargetId, key: spec.key, value: parsed })
       } catch {
         say('「标记值」需要 JSON 对象，例如 {"owner":"张三"}')
+        return false
       }
-      return
+      return true
     }
     let value: unknown = raw
     switch (spec.kind) {
@@ -1175,7 +1220,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         const parsed = spec.kind === 'INTEGER' ? Number.parseInt(raw, 10) : Number.parseFloat(raw)
         if (Number.isNaN(parsed)) {
           say('「{label}」需要数字，已忽略本次输入', { label: pick(spec.label, spec.labelEn) })
-          return
+          return false
         }
         value = parsed
         break
@@ -1188,7 +1233,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         const parsed = Number.parseInt(raw, 10)
         if (Number.isNaN(parsed)) {
           say('「{label}」需要自然数或 *，已忽略本次输入', { label: pick(spec.label, spec.labelEn) })
-          return
+          return false
         }
         value = parsed
         break
@@ -1196,13 +1241,20 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       case 'ENUM':
         if (!spec.options.includes(raw)) {
           say('「{label}」只能取：{options}', { label: pick(spec.label, spec.labelEn), options: spec.options.join(' / ') })
-          return
+          return false
         }
+        break
+      // 少数 REFERENCE_LIST 指向元模型 / 表达式文本，用逗号分隔的文本框编辑；
+      // 服务端对列表型属性一律要求数组，这里先拆再提交。
+      case 'REFERENCE_LIST':
+      case 'STRING_LIST':
+        value = raw.split(',').map((item) => item.trim()).filter((item) => item !== '')
         break
       default:
         break
     }
     void runCommand('UPDATE_PROPERTY', { id: propTargetId, key: spec.key, value })
+    return true
   }
 
   /**
@@ -1273,6 +1325,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
    */
   const renderStereotypePicker = (
     onPick: (stereotypeName: string) => void,
+    onCancel: () => void = () => setRefPicker(null),
   ): ReactNode => {
     const keyword = refSearch.trim().toLowerCase()
     const candidates = Array.from(stereotypeByName.values())
@@ -1304,7 +1357,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               </button>
             ))}
         </div>
-        <button type="button" className="prop-link" onClick={() => setRefPicker(null)}>{t('取消')}</button>
+        <button type="button" className="prop-link" onClick={onCancel}>{t('取消')}</button>
       </div>
     )
   }
@@ -1320,6 +1373,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const renderReferencePicker = (
     spec: PropertySpec,
     onPick: (elementId: string) => void,
+    onCancel: () => void = () => setRefPicker(null),
   ): ReactNode => {
     const keyword = refSearch.trim().toLowerCase()
     const candidates = model.elements
@@ -1387,13 +1441,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               </button>
             ))}
         </div>
-        <button type="button" className="prop-link" onClick={() => setRefPicker(null)}>{t('取消')}</button>
+        <button type="button" className="prop-link" onClick={onCancel}>{t('取消')}</button>
       </div>
     )
   }
 
   /**
-   * 数组型属性的编辑：chip 标签 + 内联增删。
+   * 数组型属性的编辑：chip 标签 + 增删。
    *
    * <p>REFERENCE_LIST 的 chip 显示「缩略图 + 名称」；STRING_LIST 的 chip 显示文本。
    * 每次增删都提交完整的数组值，走同一条 UPDATE_PROPERTY 通道。</p>
@@ -1504,6 +1558,220 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     )
   }
 
+  /** 编辑弹框当前对应的属性定义：切换对象 / 档位后自动失效，避免改错对象。 */
+  const propDialogSpec = propDialog && propDialog.targetId === propTargetId
+    ? propEntry?.properties.find((item) => item.key === propDialog.key) ?? null
+    : null
+
+  // 切换对象 / 档位后，旧弹框对应的属性可能已不在目录里：直接收起，避免改错对象。
+  useEffect(() => {
+    if (propDialog && !propDialogSpec) {
+      setPropDialog(null)
+    }
+  }, [propDialog, propDialogSpec])
+
+  /** 值类型 → 编辑交互：字符 / 长文本 / 布尔 / 枚举 / 模型引用 / 数组 / JSON。 */
+  const propEditorMode = (spec: PropertySpec): PropEditorMode => {
+    if (spec.key === 'taggedValues') return 'json'
+    switch (spec.kind) {
+      case 'BOOLEAN': return 'boolean'
+      case 'ENUM': return 'enum'
+      case 'TEXT': return 'textarea'
+      case 'REFERENCE_LIST': return spec.referencesElement === false ? 'text' : 'list'
+      case 'STRING_LIST': return 'list'
+      case 'REFERENCE': return spec.referencesElement === false ? 'text' : 'reference'
+      default: return 'text'
+    }
+  }
+
+  /** 弹框是否为「即时提交」型：数组与模型引用的每次增删直接落库，底部只有「完成」。 */
+  const propDialogLive = (spec: PropertySpec): boolean =>
+    propEditorMode(spec) === 'list' || propEditorMode(spec) === 'reference'
+
+  const closePropDialog = () => {
+    setPropDialog(null)
+    setRefPicker(null)
+    setRefSearch('')
+  }
+
+  /** 行尾「⋯」：选中该行并按属性类型准备草稿，再打开编辑弹框。 */
+  const openPropDialog = (spec: PropertySpec) => {
+    setPropActiveKey(spec.key)
+    setPropDraft(propertyText(spec))
+    setRefSearch('')
+    setRefPicker(null)
+    setPropDialog({ targetId: propTargetId, key: spec.key })
+  }
+
+  /** F2 / 右键「重命名」：行内输入框已取消，改为直接打开 name 属性弹框。 */
+  const openNameDialog = () => {
+    setPropsTab('attrs')
+    const spec = propEntry?.properties.find((item) => item.key === 'name')
+    if (spec && canEdit) {
+      openPropDialog(spec)
+    } else if (!canEdit) {
+      say('当前角色为只读，无法编辑模型')
+    }
+  }
+  // 右键菜单先切选中对象、下一帧才能拿到它的属性目录，故用 ref 读取最新闭包。
+  const openNameDialogRef = useRef(openNameDialog)
+  openNameDialogRef.current = openNameDialog
+
+  const applyPropDraft = (spec: PropertySpec) => {
+    if (commitProperty(spec, propDraft)) {
+      closePropDialog()
+    }
+  }
+
+  /** 清除值：名称是模型对象的必填字段，不允许清空（服务端会把 name 置为空串）。 */
+  const clearPropValue = (spec: PropertySpec) => {
+    if (spec.key === 'name') {
+      say('名称不能为空')
+      return
+    }
+    void runCommand('UPDATE_PROPERTY', { id: propTargetId, key: spec.key, remove: true })
+    closePropDialog()
+  }
+
+  /** 弹框内按类型分流的编辑控件。 */
+  const renderPropDialogEditor = (spec: PropertySpec): ReactNode => {
+    const mode = propEditorMode(spec)
+    if (mode === 'textarea' || mode === 'json') {
+      return (
+        <label className="field prop-dlg-field">
+          <span>{mode === 'json' ? t('JSON 对象') : t('属性值')}</span>
+          <textarea
+            autoFocus
+            rows={mode === 'json' ? 5 : 7}
+            spellCheck={false}
+            value={propDraft}
+            onChange={(event) => setPropDraft(event.target.value)}
+            onKeyDown={(event) => {
+              if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+                event.preventDefault()
+                applyPropDraft(spec)
+              }
+            }}
+          />
+          <span className="prop-dlg-hint">
+            {mode === 'json'
+              ? t('形如 {"owner":"张三","phase":"M0"}；留空表示清除。Ctrl/⌘ + Enter 应用')
+              : t('Ctrl/⌘ + Enter 应用，Esc 取消')}
+          </span>
+        </label>
+      )
+    }
+    if (mode === 'boolean' || mode === 'enum') {
+      const options = mode === 'boolean' ? ['true', 'false'] : spec.options
+      return (
+        <label className="field prop-dlg-field">
+          <span>{t('属性值')}</span>
+          <select
+            autoFocus
+            value={propDraft}
+            onChange={(event) => setPropDraft(event.target.value)}
+          >
+            <option value="">{t('未设置')}</option>
+            {options.map((option) => <option key={option} value={option}>{option}</option>)}
+          </select>
+          {mode === 'enum' && spec.options.length > 0 && (
+            <span className="prop-dlg-hint">{t('规范允许的取值：{options}', { options: spec.options.join(' / ') })}</span>
+          )}
+        </label>
+      )
+    }
+    if (mode === 'reference') {
+      const current = referenceIds(spec)[0] ?? ''
+      return (
+        <div className="prop-dlg-reference">
+          <div className="prop-dlg-current">
+            <span className="prop-dlg-caption">{t('当前值')}</span>
+            {current
+              ? renderReferenceCard(spec, current, 0)
+              : <span className="prop-empty">{t('未设置')}</span>}
+          </div>
+          {renderReferencePicker(spec, (elementId) => {
+            void runCommand('UPDATE_PROPERTY', { id: propTargetId, key: spec.key, value: elementId })
+            closePropDialog()
+          }, closePropDialog)}
+        </div>
+      )
+    }
+    if (mode === 'list') {
+      return (
+        <div className="prop-dlg-list">
+          <p className="prop-dlg-hint">{t('增删立即写入模型，可在撤销栈中回退；点「完成」关闭。')}</p>
+          {renderListEditor(spec)}
+        </div>
+      )
+    }
+    return (
+      <label className="field prop-dlg-field">
+        <span>{t('属性值')}</span>
+        <input
+          autoFocus
+          value={propDraft}
+          placeholder={t('留空表示清除')}
+          spellCheck={false}
+          onChange={(event) => setPropDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault()
+              applyPropDraft(spec)
+            }
+          }}
+        />
+        <span className="prop-dlg-hint">
+          {t('值类型 {kind} · 属性 key {key}', { kind: spec.kind, key: spec.key })}
+          {spec.defaultValue ? t(' · 默认值 {value}', { value: spec.defaultValue }) : ''}
+        </span>
+      </label>
+    )
+  }
+
+  /**
+   * 属性行的值：只读展示，不再提供行内输入框。
+   * 引用型显示元素卡片（右键可树上高亮），数组型显示 chip，其余显示文本。
+   */
+  const renderPropertyValue = (spec: PropertySpec, readOnly: boolean): ReactNode => {
+    if (readOnly) {
+      return <code className="prop-static">{derivedText(spec.key)}</code>
+    }
+    const isReference = (spec.kind === 'REFERENCE' || spec.kind === 'REFERENCE_LIST')
+      && spec.referencesElement !== false
+    if (isReference) {
+      const ids = referenceIds(spec)
+      return ids.length === 0
+        ? <span className="prop-empty">—</span>
+        : (
+          <div className="prop-value-cards">
+            {ids.map((elementId, index) => renderReferenceCard(spec, elementId, index))}
+          </div>
+        )
+    }
+    if (spec.kind === 'STRING_LIST' || spec.kind === 'REFERENCE_LIST') {
+      const values = spec.kind === 'STRING_LIST' ? stringList(spec) : referenceIds(spec)
+      return values.length === 0
+        ? <span className="prop-empty">—</span>
+        : (
+          <div className="prop-value-chips">
+            {values.map((value, index) => (
+              <span className="prop-chip" key={`${value}:${index}`}>
+                {spec.key === 'stereotypes'
+                  ? renderStereotypeChip(spec, value, index)
+                  : <span className="prop-chip-text">{value}</span>}
+              </span>
+            ))}
+          </div>
+        )
+    }
+    const text = propertyText(spec)
+    return text.trim()
+      ? <span className="prop-static-value" title={text}>{text}</span>
+      : <span className="prop-empty">—</span>
+  }
+
+  /** 属性行：仿桌面建模器的两列表格，行尾「⋯」是唯一编辑入口。 */
   const renderPropertyRow = (spec: PropertySpec): ReactNode => {
     if (!propTargetId) {
       return null
@@ -1511,109 +1779,43 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     // 派生属性本就只读；无编辑权限时全部属性降级为只读。
     const readOnly = !spec.editable || !canEdit
     const readOnlyNote = !spec.editable ? t(' · 只读') : (canEdit ? '' : t(' · 当前角色只读'))
-    const title = t('{metaclass} · {umlName} · {spec}{readOnly}', { metaclass: pick(spec.metaclassLabel, spec.metaclassLabelEn), umlName: spec.umlName, spec: spec.spec, readOnly: readOnlyNote })
-    const value = propertyText(spec)
-    let control: ReactNode
-    if (readOnly) {
-      control = <code className="prop-static">{derivedText(spec.key)}</code>
-    } else if (spec.kind === 'BOOLEAN') {
-      control = (
-        <select
-          value={value === '' ? '' : value === 'true' ? 'true' : 'false'}
-          onChange={(event) => commitProperty(spec, event.target.value)}
-        >
-          <option value="">{t('未设置')}</option>
-          <option value="true">true</option>
-          <option value="false">false</option>
-        </select>
-      )
-    } else if (spec.kind === 'ENUM') {
-      control = (
-        <select value={value} onChange={(event) => commitProperty(spec, event.target.value)}>
-          <option value="">{t('未设置')}</option>
-          {spec.options.map((option) => (
-            <option key={option} value={option}>{option}</option>
-          ))}
-        </select>
-      )
-    } else if (spec.kind === 'TEXT') {
-      control = (
-        <textarea
-          rows={2}
-          key={`${propTargetId}:${spec.key}:${value}`}
-          defaultValue={value}
-          onBlur={(event) => commitProperty(spec, event.target.value)}
-        />
-      )
-    } else if (spec.kind === 'REFERENCE_LIST' || spec.kind === 'STRING_LIST') {
-      // 只有「引用型列表指向元模型 / 表达式」才按普通文本编辑（metaclassReference、
-      // metamodelReference、icon 等），其余列表一律 chip 化——STRING_LIST 的
-      // referencesElement 恒为 false，不能拿它当「是否 chip 化」的开关。
-      control = spec.kind === 'REFERENCE_LIST' && spec.referencesElement === false
-        ? (
-          <input
-            key={`${propTargetId}:${spec.key}:${value}`}
-            defaultValue={value}
-            onBlur={(event) => commitProperty(spec, event.target.value)}
-          />
-        )
-        : renderListEditor(spec)
-    } else if (spec.kind === 'REFERENCE') {
-      if (spec.referencesElement === false) {
-        control = (
-          <input
-            key={`${propTargetId}:${spec.key}:${value}`}
-            defaultValue={value}
-            onBlur={(event) => commitProperty(spec, event.target.value)}
-          />
-        )
-      } else {
-        const ids = referenceIds(spec)
-        const current = ids[0] ?? ''
-        control = (
-          <div className="prop-ref-editor">
-            {current
-              ? renderReferenceCard(spec, current, 0)
-              : <span className="prop-ref-missing">{t('未设置')}</span>}
-            {refPicker?.key === spec.key ? (
-              renderReferencePicker(spec, (elementId) => {
-                void runCommand('UPDATE_PROPERTY', { id: propTargetId, key: spec.key, value: elementId })
-                setRefPicker(null)
-              })
-            ) : (
-              <button
-                type="button"
-                className="prop-link"
-                onClick={() => { setRefSearch(''); setRefPicker({ key: spec.key, index: 0 }) }}
-              >{current ? t('更换') : t('选择引用')}</button>
-            )}
-          </div>
-        )
-      }
-    } else {
-      control = (
-        <input
-          ref={spec.key === 'name' ? renameRef : undefined}
-          key={`${propTargetId}:${spec.key}:${value}`}
-          defaultValue={value}
-          placeholder="—"
-          onBlur={(event) => commitProperty(spec, event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter') {
-              event.preventDefault()
-              event.currentTarget.blur()
-            }
-          }}
-        />
-      )
-    }
+    const title = t('{metaclass} · {umlName} · {spec}{readOnly}', {
+      metaclass: pick(spec.metaclassLabel, spec.metaclassLabelEn),
+      umlName: spec.umlName, spec: spec.spec, readOnly: readOnlyNote,
+    })
+    const label = pick(spec.label, spec.labelEn)
     return (
-      <div className={`prop-row${readOnly ? ' readonly' : ''}`} key={spec.key} title={title}>
+      <div
+        className={`prop-row${readOnly ? ' readonly' : ''}${propActiveKey === spec.key ? ' active' : ''}`}
+        key={spec.key}
+        data-prop-key={spec.key}
+        data-prop-kind={spec.kind}
+        title={title}
+        onClick={() => setPropActiveKey(spec.key)}
+        onDoubleClick={() => { if (!readOnly) openPropDialog(spec) }}
+      >
         <span className="prop-label">
-          {pick(spec.label, spec.labelEn)}
+          {label}
           {readOnly && <em>{t('只读')}</em>}
         </span>
-        <div className="prop-value">{control}</div>
+        <div className="prop-value">{renderPropertyValue(spec, readOnly)}</div>
+        {readOnly
+          ? <span className="prop-more-slot" aria-hidden="true" />
+          : (
+            <button
+              type="button"
+              className="prop-more"
+              title={t('编辑「{label}」…', { label })}
+              aria-label={t('编辑「{label}」…', { label })}
+              onClick={(event) => { event.stopPropagation(); openPropDialog(spec) }}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+                <circle cx="3" cy="7" r="1.25" fill="currentColor" />
+                <circle cx="7" cy="7" r="1.25" fill="currentColor" />
+                <circle cx="11" cy="7" r="1.25" fill="currentColor" />
+              </svg>
+            </button>
+          )}
       </div>
     )
   }
@@ -1923,6 +2125,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       return tag === 'input' || tag === 'textarea' || tag === 'select' || node.isContentEditable
     }
     const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && propDialog) {
+        setPropDialog(null)
+        setRefPicker(null)
+        setRefSearch('')
+        return
+      }
       if (event.key === 'Escape' && relationTool) {
         setRelationTool(null)
         setRelationSource(null)
@@ -1956,7 +2164,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [handleUndo, handleRedo, relationTool, busy, health])
+  }, [handleUndo, handleRedo, relationTool, busy, health, propDialog])
 
   // 「树上高亮」的标记在 2.4 秒后自动消隐：用户看一眼就知道定位到了哪儿，
   // 又不会被一直高亮干扰后续操作。
@@ -2883,8 +3091,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   // ── 顶部菜单栏：把原先散落在顶栏与画布工具条里的命令收进 8 个菜单 ──
   const renameSelection = () => {
     if (selected) {
-      setPropsTab('attrs')
-      window.setTimeout(() => renameRef.current?.focus(), 30)
+      openNameDialog()
       return
     }
     if (selectedDiagram) {
@@ -3579,26 +3786,88 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               </>
             ) : (selected || selectedRelation) ? (
               <>
-                <div className="prop-view-switch" role="tablist" aria-label={t('属性档位')}>
-                  {(propCatalog?.levels ?? [
-                    { code: 'STANDARD' as PropertyView, label: t('标准'), description: t('最常用属性') },
-                    { code: 'EXPERT' as PropertyView, label: t('专家'), description: t('规范扩展属性') },
-                    { code: 'ALL' as PropertyView, label: t('全部'), description: t('含派生只读属性') },
-                  ]).map((level) => (
-                    <button
-                      key={level.code}
-                      type="button"
-                      role="tab"
-                      aria-selected={propView === level.code}
-                      className={propView === level.code ? 'active' : ''}
-                      title={level.description}
-                      onClick={() => setPropView(level.code)}
-                    >
-                      {pick(level.label, level.labelEn)}
-                      <span>{propViewCount(level.code)}</span>
-                    </button>
-                  ))}
+                <div className="prop-toolbar">
+                  <button
+                    type="button"
+                    className={`prop-tool${propSearchOpen || propQuery ? ' on' : ''}`}
+                    title={t('按属性 key 搜索')}
+                    aria-label={t('按属性 key 搜索')}
+                    onClick={() => setPropSearchOpen((previous) => !previous || !!propQuery)}
+                  >
+                    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                      <circle cx="6.8" cy="6.8" r="4.2" /><path d="M10 10l3.6 3.6" />
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    className={`prop-tool prop-sort-tool${propSort !== 'CATALOG' ? ' on' : ''}`}
+                    title={propSort === 'CATALOG'
+                      ? t('按属性 key 排序（当前：规范顺序）')
+                      : propSort === 'KEY_ASC'
+                        ? t('按属性 key 升序（点击切换降序）')
+                        : t('按属性 key 降序（点击恢复规范顺序）')}
+                    onClick={() => setPropSort((previous) =>
+                      previous === 'CATALOG' ? 'KEY_ASC' : previous === 'KEY_ASC' ? 'KEY_DESC' : 'CATALOG')}
+                  >{propSort === 'CATALOG' ? '⇅' : propSort === 'KEY_ASC' ? 'A↓Z' : 'Z↓A'}</button>
+                  <button
+                    type="button"
+                    className="prop-tool"
+                    title={t('展开 / 收起全部属性分组')}
+                    aria-label={t('展开 / 收起全部属性分组')}
+                    onClick={() => setCollapsedPropGroups((previous) =>
+                      previous.size >= propGroups.length && propGroups.length > 0
+                        ? new Set<string>()
+                        : new Set(propGroups.map((group) => group.code)))}
+                  >▤</button>
+                  <span className="prop-tool-spacer" />
+                  <select
+                    className="prop-view-select"
+                    value={propView}
+                    title={t('属性档位')}
+                    aria-label={t('属性档位')}
+                    onChange={(event) => setPropView(event.target.value as PropertyView)}
+                  >
+                    {(propCatalog?.levels ?? [
+                      { code: 'STANDARD' as PropertyView, label: t('标准'), labelEn: 'Standard' },
+                      { code: 'EXPERT' as PropertyView, label: t('专家'), labelEn: 'Expert' },
+                      { code: 'ALL' as PropertyView, label: t('全部'), labelEn: 'All' },
+                    ]).map((level) => (
+                      <option key={level.code} value={level.code}>
+                        {pick(level.label, level.labelEn)} · {propViewCount(level.code)}
+                      </option>
+                    ))}
+                  </select>
                 </div>
+                {propSearchOpen && (
+                  <div className="prop-search-row">
+                    <input
+                      autoFocus
+                      value={propQuery}
+                      spellCheck={false}
+                      placeholder={t('搜索属性 key，如 name / visibility')}
+                      onChange={(event) => setPropQuery(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Escape') {
+                          event.preventDefault()
+                          setPropQuery('')
+                          setPropSearchOpen(false)
+                        }
+                      }}
+                    />
+                    <span className="prop-search-count">
+                      {t('{matched} / {total} 项', {
+                        matched: propVisibleCount, total: propViewCount(propView),
+                      })}
+                    </span>
+                    <button
+                      type="button"
+                      className="prop-search-close"
+                      title={t('关闭搜索')}
+                      aria-label={t('关闭搜索')}
+                      onClick={() => { setPropQuery(''); setPropSearchOpen(false) }}
+                    >×</button>
+                  </div>
+                )}
                 {selectedRelation && (
                   <div className="rel-endpoints">
                     <button
@@ -3634,7 +3903,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 )}
                 <div className="prop-list">
                   {propGroups.length === 0 && (
-                    <p className="hint">{t('该类型暂无属性定义（属性目录加载中或服务端未登记）')}</p>
+                    <p className="hint">{propQuery.trim()
+                      ? t('没有匹配的属性 key')
+                      : t('该类型暂无属性定义（属性目录加载中或服务端未登记）')}</p>
                   )}
                   {propGroups.map((group) => {
                     const collapsed = collapsedPropGroups.has(group.code)
@@ -4288,8 +4559,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 type="button"
                 onClick={() => {
                   setSelectedId(menuElement!.id)
-                  renameRef.current?.focus()
+                  setSelectedRelationId(null)
+                  setSelectedDiagramId(null)
                   setMenu(null)
+                  window.setTimeout(() => openNameDialogRef.current(), 30)
                 }}
               >{t('重命名')}</button>
               {!menuInDiagram && menuTypeAllowed && activeDiagramId && (
@@ -4380,6 +4653,51 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <button type="button" onClick={() => openDiagramDialog(null)}>{t('在项目根下新建图…')}</button>
             </>
           )}
+        </div>
+      )}
+
+      {/* 属性编辑弹框：行尾「⋯」打开，控件由元属性的值类型决定 */}
+      {propDialogSpec && propDialogSpec.editable && canEdit && (
+        <div className="modal-overlay" onPointerDown={closePropDialog}>
+          <div className="modal prop-dialog" onPointerDown={(event) => event.stopPropagation()}>
+            <h2 className="modal-title">
+              <span className="prop-dlg-mark" aria-hidden="true">⋯</span>
+              {t('编辑属性 · {label}', { label: pick(propDialogSpec.label, propDialogSpec.labelEn) })}
+            </h2>
+            <p className="modal-sub">
+              {t('{metaclass} · {umlName} · {spec}', {
+                metaclass: pick(propDialogSpec.metaclassLabel, propDialogSpec.metaclassLabelEn),
+                umlName: propDialogSpec.umlName,
+                spec: propDialogSpec.spec,
+              })}
+            </p>
+            <div className="prop-dlg-meta">
+              <span>{t('值类型 {kind}', { kind: propDialogSpec.kind })}</span>
+              <code>{propDialogSpec.key}</code>
+              {propDialogLive(propDialogSpec) && <span className="prop-dlg-live">{t('即时生效')}</span>}
+            </div>
+            {renderPropDialogEditor(propDialogSpec)}
+            <div className="modal-actions">
+              {propDialogLive(propDialogSpec)
+                ? <button type="button" className="primary" onClick={closePropDialog}>{t('完成')}</button>
+                : <button type="button" onClick={closePropDialog}>{t('取消')}</button>}
+              {propertyText(propDialogSpec).trim() !== '' && propDialogSpec.key !== 'name' && (
+                <button
+                  type="button"
+                  className="danger"
+                  onClick={() => clearPropValue(propDialogSpec)}
+                >{t('清除值')}</button>
+              )}
+              {!propDialogLive(propDialogSpec) && (
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={busy}
+                  onClick={() => applyPropDraft(propDialogSpec)}
+                >{t('应用')}</button>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
