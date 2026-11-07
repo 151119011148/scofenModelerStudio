@@ -223,6 +223,14 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 .pp-open, .pp-current { flex: none; font-size: 10px; padding: 1px 6px; border-radius: 4px; }
 .pp-open { color: var(--accent); background: var(--accent-soft); }
 .pp-current { color: #1f7a5a; background: #e6f4ef; }
+/* 悬停时用删除按钮顶掉「打开 / 已打开」胶囊，避免两个控件叠在一起 */
+.pp-project-row { position: relative; }
+.pp-project-row:hover .pp-open,
+.pp-project-row:hover .pp-current,
+.pp-project-row:focus-within .pp-open,
+.pp-project-row:focus-within .pp-current { visibility: hidden; }
+.space-project-row:hover .space-current-dot,
+.space-project-row:focus-within .space-current-dot { visibility: hidden; }
 
 .user-chip { display: flex; align-items: center; gap: 7px; padding-left: 10px; margin-left: 2px; border-left: 1px solid var(--line); }
 .user-avatar { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-size: 12px; font-weight: 600; }
@@ -275,10 +283,11 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 .admin-row-actions .danger { color: #b42318; }
 
 /* 三列：模型树+属性 | 垂直组件工具箱 | 画布。
-   空间 / 项目列表收进顶栏，完整面板以抽屉覆盖在工作区左侧。 */
+   空间 / 项目列表收进顶栏，完整面板以抽屉覆盖在工作区左侧。
+   前两列宽度由拖拽写入的 CSS 变量决定（窄屏媒体查询仍接管）。 */
 .workspace {
   display: grid;
-  grid-template-columns: 268px 198px minmax(0, 1fr);
+  grid-template-columns: var(--dock-left, 268px) var(--dock-tool, 198px) minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
   gap: 1px;
   background: var(--line);
@@ -391,13 +400,44 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
-  padding: 6px 7px;
+  padding: 6px 22px 6px 7px;
   text-align: left;
   margin-bottom: 2px;
 }
 .space-project:hover:not(:disabled) { background: var(--surface-2); border-color: var(--line); }
 .space-project.selected { background: var(--accent-soft); border-color: var(--accent-soft); }
 .space-project.current .space-project-name { font-weight: 600; color: var(--accent); }
+
+/* 项目行 + 行尾删除按钮。
+   完整面板（空间抽屉）里常驻低透明度显示，方便发现；顶栏快捷选择器只在悬停时显形。 */
+.space-project-row { position: relative; }
+.space-project-del,
+.pp-project-del {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: var(--surface);
+  color: var(--text-3);
+  font-size: 13px;
+  line-height: 1;
+  box-shadow: 0 0 0 3px var(--surface);
+}
+.space-project-del { display: inline-flex; opacity: .62; }
+.pp-project-del { display: none; }
+.space-project-row:hover .space-project-del,
+.space-project-row:focus-within .space-project-del,
+.pp-project-row:hover .pp-project-del,
+.pp-project-row:focus-within .pp-project-del { display: inline-flex; opacity: 1; }
+.space-project-del:hover:not(:disabled),
+.pp-project-del:hover:not(:disabled) { color: var(--danger); background: #fdeaea; box-shadow: 0 0 0 3px #fdeaea; }
 .space-project-body {
   display: flex;
   flex-direction: column;
@@ -1081,6 +1121,8 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   white-space: nowrap;
 }
 
+/* 折叠三角：飞书文档同款蓝色实心三角，展开时旋转 90°。
+   用 CSS 边框画三角而不是 ▸/▾ 字符——文本三角的字形大小/基线随字体变化，行高会抖。 */
 .twisty {
   border: none;
   background: transparent;
@@ -1088,14 +1130,32 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   width: 15px;
   min-width: 15px;
   height: 20px;
-  line-height: 20px;
-  text-align: center;
-  color: var(--text-3);
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  color: var(--tri, #3370ff);
 }
-
-.twisty:hover:not(:disabled) { color: var(--accent); border: none; }
-.twisty.leaf { cursor: default; opacity: .45; }
+.twisty .tri {
+  width: 0;
+  height: 0;
+  border-left: 5px solid currentColor;
+  border-top: 4px solid transparent;
+  border-bottom: 4px solid transparent;
+  transform-origin: 40% 50%;
+  transition: transform .13s ease;
+}
+.twisty.open .tri { transform: rotate(90deg); }
+.twisty:hover:not(:disabled) { color: var(--tri-hover, #1a53e0); border: none; }
+.twisty.leaf { cursor: default; color: var(--text-3); opacity: .55; }
+.twisty.leaf .tri {
+  width: 4px;
+  height: 4px;
+  border: 0;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .7;
+}
 
 /* 模型树：图标取代统一文字 badge；右侧保留细小的元模型类型名 */
 .tree-type {
@@ -1501,6 +1561,26 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 .modal-sub { font-size: 12.5px; color: var(--text-2); margin: 0 0 16px; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 .modal-actions button.primary { width: auto; min-width: 96px; }
+/* 删除确认：把要删的对象实体化，避免用户点错项目 */
+.danger-target {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 1px solid #f3d2d2;
+  border-left: 3px solid var(--danger);
+  border-radius: 6px;
+  background: #fdf6f6;
+}
+.danger-target strong { font-size: 13px; color: var(--text); }
+.danger-target span {
+  min-width: 0;
+  font-size: 11.5px;
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 @media (max-width: 1180px) {
   .workspace { grid-template-columns: 232px 176px minmax(0, 1fr); }
@@ -1722,9 +1802,38 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 .tbi-sep { width: 1px; height: 16px; background: var(--line); margin: 0 4px; flex: none; }
 .top-actions .pill.rev { color: var(--accent); background: var(--accent-soft); }
 
-/* 三列宽：工具箱收窄 22px，全给画布 */
-.workspace { grid-template-columns: 268px 176px minmax(0, 1fr); }
-.workspace.toolbox-collapsed { grid-template-columns: 268px 46px minmax(0, 1fr); }
+/* 三列宽：默认值即变量缺省值；用户拖拽后由行内 CSS 变量覆盖 */
+.workspace { grid-template-columns: var(--dock-left, 268px) var(--dock-tool, 198px) minmax(0, 1fr); }
+.workspace.toolbox-collapsed { grid-template-columns: var(--dock-left, 268px) 46px minmax(0, 1fr); }
+
+/* 列宽拖拽手柄：贴在两列的分隔线上，命中区 7px，视觉上只在悬停时显形 */
+.dock-resizer {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 7px;
+  transform: translateX(-3px);
+  cursor: col-resize;
+  z-index: 40;
+  touch-action: none;
+}
+.dock-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 1px;
+  background: transparent;
+  transition: background .12s ease;
+}
+.dock-resizer:hover::after,
+.dock-resizer.dragging::after { background: var(--accent); }
+body.col-resizing { cursor: col-resize; user-select: none; }
+body.col-resizing * { cursor: col-resize !important; }
+@media (max-width: 1180px) {
+  .dock-resizer { display: none; }
+}
 
 /* ── 画布上方的文档标签条 ── */
 .doc-tabs {

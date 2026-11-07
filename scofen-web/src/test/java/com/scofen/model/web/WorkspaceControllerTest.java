@@ -4,6 +4,8 @@ import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.core.InMemoryModelRepository;
 import com.scofen.model.core.ValidationEngine;
+import com.scofen.model.web.persistence.PersistenceServiceFactory;
+import com.scofen.model.web.project.ProjectRegistry;
 import com.scofen.model.web.workspace.WorkspaceController;
 import com.scofen.model.web.workspace.WorkspaceDirectory;
 import com.scofen.model.web.ws.PatchBroker;
@@ -87,5 +89,64 @@ class WorkspaceControllerTest {
         assertThatThrownBy(() -> controller.createProject(
                 Map.of("spaceCode", "unknown", "name", "未知空间项目")))
                 .isInstanceOf(ResponseStatusException.class);
+    }
+
+    @Test
+    void deleteProjectRemovesDirectoryItemAndRejectsUnknownId() {
+        Map<String, Object> created = controller.createProject(
+                Map.of("spaceCode", "team", "name", "待删项目", "description", "临时"));
+        String id = (String) created.get("id");
+        assertThat(projects(1)).extracting(project -> project.get("id")).contains(id);
+
+        Map<String, Object> removed = controller.deleteProject(id);
+        assertThat(removed).containsEntry("id", id).containsEntry("spaceCode", "team");
+        // 目录项消失、空间计数同步回落
+        assertThat(projects(1)).extracting(project -> project.get("id")).doesNotContain(id);
+        assertThat(spaces().get(1)).containsEntry("projectCount", 3);
+
+        assertThatThrownBy(() -> controller.deleteProject(id))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode().value())
+                        .isEqualTo(404));
+    }
+
+    @Test
+    void primarySampleProjectIsProtectedFromDeletion() {
+        assertThatThrownBy(() -> controller.deleteProject(WorkspaceDirectory.CURRENT_PROJECT_ID))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode().value())
+                        .isEqualTo(400));
+        assertThat(projects(0)).extracting(project -> project.get("id"))
+                .contains(WorkspaceDirectory.CURRENT_PROJECT_ID);
+    }
+
+    @Test
+    void deleteProjectRemovesRuntimeFromRegistry() {
+        PatchBroker broker = new PatchBroker(new PatchWebSocketHandler());
+        WorkspaceDirectory scopedDirectory = new WorkspaceDirectory();
+        ProjectRegistry registry = new ProjectRegistry(
+                executor, broker, scopedDirectory,
+                new PersistenceServiceFactory() {
+                    @Override
+                    public boolean enabled() {
+                        return false;
+                    }
+
+                    @Override
+                    public com.scofen.model.core.PersistenceService forProject(String projectId) {
+                        return new com.scofen.model.core.NoopPersistenceService();
+                    }
+                });
+        WorkspaceController scoped = new WorkspaceController(scopedDirectory, executor);
+        scoped.setProjectRegistry(registry);
+
+        Map<String, Object> created = scoped.createProject(
+                Map.of("spaceCode", "personal", "name", "运行时待删"));
+        String id = (String) created.get("id");
+        assertThat(registry.resolve(id)).isNotNull();
+        assertThat(registry.isOpened(id)).isTrue();
+
+        assertThat(scoped.deleteProject(id)).containsEntry("runtimeDropped", true);
+        assertThat(registry.isOpened(id)).isFalse();
     }
 }

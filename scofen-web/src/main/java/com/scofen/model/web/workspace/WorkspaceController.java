@@ -8,7 +8,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import com.scofen.model.web.rbac.Permission;
 import com.scofen.model.web.rbac.RequiresPermission;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -78,6 +80,9 @@ public class WorkspaceController {
                 row.put("status", isActive ? "编辑中" : project.status());
                 row.put("current", isActive);
                 row.put("editable", true);
+                // 主示例项目是目录为空 / 当前项目失效时的回退目标，服务端拒绝删除；
+                // 由服务端下发 deletable，前端据此决定是否显示删除入口，避免「点了一定失败」。
+                row.put("deletable", !WorkspaceDirectory.CURRENT_PROJECT_ID.equals(project.id()));
                 row.put("opened", runtime != null);
                 row.put("spaceCode", project.spaceCode());
                 row.put("diagramCount", snapshot == null ? 0 : snapshot.diagrams().size());
@@ -121,6 +126,28 @@ public class WorkspaceController {
                     "name", project.name(),
                     "spaceCode", project.spaceCode());
         } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
+        }
+    }
+
+    /** 删除项目：目录项卸载 + 运行时丢弃；落库快照由外键级联清理。 */
+    @DeleteMapping("/projects/{id}")
+    @RequiresPermission(Permission.PROJECT_DELETE)
+    public Map<String, Object> deleteProject(@PathVariable("id") String id) {
+        if (id == null || id.isBlank() || directory.findProject(id).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "项目不存在：" + id);
+        }
+        try {
+            WorkspaceDirectory.Project removed = directory.removeProject(id);
+            boolean runtimeDropped = projects != null && projects.remove(id);
+            Map<String, Object> result = new LinkedHashMap<>();
+            result.put("id", removed.id());
+            result.put("name", removed.name());
+            result.put("spaceCode", removed.spaceCode());
+            result.put("runtimeDropped", runtimeDropped);
+            return result;
+        } catch (IllegalArgumentException ex) {
+            // 主示例项目受保护：它是目录为空 / 当前项目失效时的回退目标。
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, ex.getMessage());
         }
     }

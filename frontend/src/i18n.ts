@@ -874,6 +874,27 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
     en: 'Directed relationships mount under the source only; bidirectional ones mount under both ends',
   },
   '关系另一端': { zh: '关系另一端', en: 'Other end' },
+
+  /* ── 项目删除 / 左栏拖宽 ── */
+  '删除项目': { zh: '删除项目', en: 'Delete project' },
+  '删除项目「{name}」': { zh: '删除项目「{name}」', en: 'Delete project "{name}"' },
+  '删除后该项目目录项与落库快照一并移除，不可恢复。': {
+    zh: '删除后该项目目录项与落库快照一并移除，不可恢复。',
+    en: 'The directory entry and all stored snapshots for this project are removed permanently.',
+  },
+  '这是当前编辑项目，删除后会切换到目录里的第一个项目。': {
+    zh: '这是当前编辑项目，删除后会切换到目录里的第一个项目。',
+    en: 'This is the project you are editing; after deletion you will switch to the first project in the list.',
+  },
+  '永久删除': { zh: '永久删除', en: 'Delete permanently' },
+  '已删除项目「{name}」': { zh: '已删除项目「{name}」', en: 'Deleted project "{name}"' },
+  '已删除项目「{name}」，已切换到「{next}」': {
+    zh: '已删除项目「{name}」，已切换到「{next}」',
+    en: 'Deleted project "{name}"; switched to "{next}"',
+  },
+  '删除项目失败：{error}': { zh: '删除项目失败：{error}', en: 'Failed to delete project: {error}' },
+  '拖动调整模型树宽度': { zh: '拖动调整模型树宽度', en: 'Drag to resize the model tree' },
+  '拖动调整工具箱宽度': { zh: '拖动调整工具箱宽度', en: 'Drag to resize the toolbox' },
 }
 
 /** 语言包缺失时回退到中文原文，保证界面永远可读。 */

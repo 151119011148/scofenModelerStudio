@@ -118,6 +118,34 @@ public final class WorkspaceDirectory {
                 .findFirst();
     }
 
+    /**
+     * 删除项目目录项。
+     *
+     * <p>主示例项目是「当前项目已被删 / 未知项目」时的回退目标，也是新目录为空时的种子，
+     * 所以不允许删除——否则目录接口会回退到一个不存在的项目上。</p>
+     *
+     * <p>目录行删除后，落库模式下 {@code scofen_model_snapshot} 由外键
+     * {@code ON DELETE CASCADE} 一并清掉，不会留下取不回来的孤儿快照。</p>
+     */
+    public Project removeProject(String id) {
+        if (id == null || id.isBlank()) {
+            throw new IllegalArgumentException("缺少项目 id");
+        }
+        if (CURRENT_PROJECT_ID.equals(id)) {
+            throw new IllegalArgumentException("主示例项目不可删除");
+        }
+        Project found = findProject(id)
+                .orElseThrow(() -> new IllegalArgumentException("项目不存在：" + id));
+        CopyOnWriteArrayList<Project> list = projects.get(found.spaceCode());
+        if (list != null) {
+            list.removeIf(item -> item.id().equals(id));
+        }
+        if (store.enabled()) {
+            store.delete(id);
+        }
+        return found;
+    }
+
     public Project addProject(String spaceCode, String name, String description) {
         CopyOnWriteArrayList<Project> list = projects.get(spaceCode);
         if (list == null) {

@@ -119,6 +119,13 @@ export const createProject = (payload: { spaceCode: string; name: string; descri
     body: JSON.stringify(payload),
   })
 
+/** 删除项目：目录项与运行时一起移除，落库快照由外键级联清理。 */
+export const deleteProject = (id: string) =>
+  request<{ id: string; name: string; spaceCode: string }>(
+    `${BASE}api/workspaces/projects/${encodeURIComponent(id)}`,
+    { method: 'DELETE', headers: { 'X-Scofen-Session': 'web-ui' } },
+  )
+
 export const postCommand = (command: CommandRequest) =>
   request<Patch>(`${BASE}api/commands`, {
     method: 'POST',

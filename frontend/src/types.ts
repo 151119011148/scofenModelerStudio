@@ -224,6 +224,8 @@ export interface WorkspaceProject {
   status: string
   current: boolean
   editable: boolean
+  /** 是否允许删除；主示例项目是目录回退目标，服务端标记为不可删。 */
+  deletable?: boolean
   /** 是否已在服务端建立内存态模型运行时。 */
   opened: boolean
   spaceCode: string

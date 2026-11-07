@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { CSSProperties, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import {
   clearSession,
   createProject,
+  deleteProject,
   exportNative,
   exportSidecar,
   exportXmi,
@@ -70,6 +71,50 @@ type PropEditorMode = 'text' | 'textarea' | 'boolean' | 'enum' | 'reference' | '
 
 const ZOOM_MIN = 0.4
 const ZOOM_MAX = 2.5
+
+/** 两栏拖拽宽度的边界：太窄放不下属性表，太宽会把画布挤没。 */
+const DOCK_LEFT_MIN = 200
+const DOCK_LEFT_MAX = 460
+const DOCK_TOOL_MIN = 140
+const DOCK_TOOL_MAX = 360
+/** 工具箱收起时的图标条宽度（与 `.workspace.toolbox-collapsed` 保持一致）。 */
+const DOCK_TOOL_COLLAPSED = 46
+
+/**
+ * 模型树的折叠三角：飞书文档那种蓝色实心三角，展开时顺时针转 90°。
+ *
+ * <p>不用 ▸/▾ 文本字符：不同字体下大小与基线都不一致，行高会跟着抖；
+ * 纯 CSS 三角则与文字基线无关，还能做过渡动画。</p>
+ */
+function TreeTwisty({
+  open,
+  leaf,
+  label,
+  onToggle,
+}: {
+  open: boolean
+  leaf?: boolean
+  label: string
+  onToggle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      className={`twisty${leaf ? ' leaf' : ''}${!leaf && open ? ' open' : ''}`}
+      aria-label={label}
+      aria-expanded={leaf ? undefined : open}
+      tabIndex={-1}
+      onClick={(event) => {
+        event.stopPropagation()
+        if (!leaf) {
+          onToggle()
+        }
+      }}
+    >
+      <span className="tri" aria-hidden="true" />
+    </button>
+  )
+}
 
 type MenuTarget =
   | { kind: 'element'; id: string }
@@ -262,6 +307,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const canEdit = permissions.has('model.edit')
   const canExport = permissions.has('model.export')
   const canImport = permissions.has('model.import')
+  const canCreateProject = permissions.has('project.create')
+  const canDeleteProject = permissions.has('project.delete')
   const canManageUsers = permissions.has('user.manage')
   const [health, setHealth] = useState<Health | null>(null)
   const [model, setModel] = useState<ModelSnapshot>(EMPTY_MODEL)
@@ -368,6 +415,25 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [collapsedRelationGroups, setCollapsedRelationGroups] = useState<Set<string>>(() => new Set())
   /** 工具箱是否收成图标条：窄屏下把宽度还给画布。 */
   const [toolboxCollapsed, setToolboxCollapsed] = useState(false)
+  /** 左栏（模型树 / 属性）与工具箱的宽度：可拖拽，落 localStorage。 */
+  const [dockWidths, setDockWidths] = useState<{ left: number; tool: number }>(() => {
+    const clamp = (raw: string | null, fallback: number, min: number, max: number) => {
+      const parsed = Number.parseFloat(raw ?? '')
+      return Number.isFinite(parsed) ? Math.min(max, Math.max(min, parsed)) : fallback
+    }
+    try {
+      return {
+        left: clamp(localStorage.getItem('scofen.modeler.dock.left'), 268, DOCK_LEFT_MIN, DOCK_LEFT_MAX),
+        tool: clamp(localStorage.getItem('scofen.modeler.dock.tool'), 198, DOCK_TOOL_MIN, DOCK_TOOL_MAX),
+      }
+    } catch {
+      return { left: 268, tool: 198 }
+    }
+  })
+  /** 正在拖拽的分隔条（null 表示未拖拽）。 */
+  const [dockDrag, setDockDrag] = useState<'left' | 'tool' | null>(null)
+  /** 待删除项目：确认后调用删除接口。 */
+  const [deleteProjectTarget, setDeleteProjectTarget] = useState<WorkspaceProject | null>(null)
   /** 当前展开的顶级菜单名（null 表示全部收起）。 */
   const [menubarOpen, setMenubarOpen] = useState<string | null>(null)
   /** 画布缩放与平移：viewBox 只取其中一块视口，pointer 坐标由 getScreenCTM 自动换算。 */
@@ -379,6 +445,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   setProjectId(activeProjectId)
 
   const svgRef = useRef<SVGSVGElement | null>(null)
+  const workspaceRef = useRef<HTMLDivElement | null>(null)
   const menubarRef = useRef<HTMLElement | null>(null)
   // 命令的 baseRevision 必须取「最新已知 revision」而非渲染闭包里的 model.revision：
   // 同一次事件里连续发两条命令时，state 尚未更新，旧值会触发 409 乐观锁冲突。
@@ -386,6 +453,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
   /** 拉取当前项目的权威快照；失败返回 false，由 bootstrap 统一调度重试。 */
   const refresh = useCallback(async (): Promise<boolean> => {
+    // 记下发起时的项目：请求在飞行途中用户可能已经切项目（或删掉了当前项目），
+    // 那次失败属于旧项目，不该把「连接失败」横幅挂到新项目头上。
+    const projectAtStart = getProjectId()
     try {
       const [nextHealth, nextModel, nextWorkspace] = await Promise.all([
         getHealth(),
@@ -399,9 +469,14 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       if (nextWorkspace) {
         setWorkspace(nextWorkspace)
       }
+      // 成功即自愈：否则一次瞬时失败留下的红色横幅会一直挂着，直到用户手动重试。
+      setConnectionError(null)
       setMessage((current) => (current.key === '正在连接服务端…' ? { key: '已同步至服务端' } : current))
       return true
     } catch (error) {
+      if (getProjectId() !== projectAtStart) {
+        return false
+      }
       const detail = errorMessage(error)
       setConnectionError(detail)
       say('连接失败：{error}', { error: detail })
@@ -420,6 +495,55 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       // 隐私模式 / 禁用存储时忽略，功能本身不受影响。
     }
   }, [showExtensions])
+
+  /** 两栏宽度落 localStorage：刷新后保持上次拖到的位置。 */
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('scofen.modeler.dock.left', String(Math.round(dockWidths.left)))
+      window.localStorage.setItem('scofen.modeler.dock.tool', String(Math.round(dockWidths.tool)))
+    } catch {
+      // 隐私模式 / 禁用存储时忽略。
+    }
+  }, [dockWidths])
+
+  /**
+   * 拖拽分隔条调整列宽。
+   *
+   * <p>用 window 级 pointermove / pointerup 而不是给手柄加 pointer capture：
+   * 指针一旦移出手柄（7px 宽）就会丢失事件，拖拽会卡住。</p>
+   */
+  useEffect(() => {
+    if (!dockDrag) {
+      return
+    }
+    document.body.classList.add('col-resizing')
+    const onMove = (event: PointerEvent) => {
+      const originX = workspaceRef.current?.getBoundingClientRect().left ?? 0
+      const pointer = event.clientX - originX
+      if (dockDrag === 'left') {
+        setDockWidths((previous) => ({
+          ...previous,
+          left: Math.min(DOCK_LEFT_MAX, Math.max(DOCK_LEFT_MIN, pointer)),
+        }))
+        return
+      }
+      // 工具箱的左边界 = 左栏宽 + 1px 分隔线，宽度取指针到该边界的距离。
+      setDockWidths((previous) => ({
+        ...previous,
+        tool: Math.min(DOCK_TOOL_MAX, Math.max(DOCK_TOOL_MIN, pointer - previous.left - 1)),
+      }))
+    }
+    const onUp = () => setDockDrag(null)
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+    return () => {
+      document.body.classList.remove('col-resizing')
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+  }, [dockDrag])
 
   const loadCatalogs = useCallback(async (): Promise<boolean> => {
     const results = await Promise.allSettled([
@@ -821,24 +945,27 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     [extensionPackages],
   )
 
+  /**
+   * 首次进入项目时把「有子节点的元素」全部展开一次。
+   *
+   * <p>用 ref 记「已播种」而不是判断 {@code previous.size > 0}：项目根现在也遵守折叠状态，
+   * 用户把根连同下面全部收起后 size 会回到 0，靠 size 判断会立刻被重新展开。</p>
+   */
+  const expandedSeeded = useRef(false)
   useEffect(() => {
     // 元模型目录未就绪前不做自动展开：否则扩展包目录加载前后的树形态会跳变。
-    if (!extensionCatalogReady) {
+    if (!extensionCatalogReady || expandedSeeded.current) {
       return
     }
-    setExpanded((previous) => {
-      if (previous.size > 0) {
-        return previous
+    expandedSeeded.current = true
+    const next = new Set<string>()
+    for (const element of projectElements) {
+      // 有子元素 / 图、或挂了「关系」虚拟分组的元素都要展开，否则按端点挂载的关系看不到。
+      if ((childrenByOwner.get(element.id) ?? []).length > 0 || relationsByOwner.has(element.id)) {
+        next.add(element.id)
       }
-      const next = new Set<string>()
-      for (const element of projectElements) {
-        // 有子元素 / 图、或挂了「关系」虚拟分组的元素都要展开，否则按端点挂载的关系看不到。
-        if ((childrenByOwner.get(element.id) ?? []).length > 0 || relationsByOwner.has(element.id)) {
-          next.add(element.id)
-        }
-      }
-      return next
-    })
+    }
+    setExpanded(next)
   }, [childrenByOwner, projectElements, relationsByOwner, extensionCatalogReady])
 
   /**
@@ -2891,6 +3018,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     setMenu(null)
     setRelationTool(null)
     setRelationSource(null)
+    // 换项目后重新播种展开状态：否则新项目的树会沿用上一个项目的折叠集合。
+    expandedSeeded.current = false
     setExpanded(new Set())
     setCollapsedRelationGroups(new Set())
     const spaceLabel = workspace?.spaces.find((space) => space.code === project.spaceCode)?.label ?? ''
@@ -2924,6 +3053,51 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       say('已创建并打开项目「{name}」', { name: created.name })
     } catch (error) {
       say('新建项目失败：{error}', { error: errorMessage(error) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  /**
+   * 删除项目。
+   *
+   * <p>删掉当前项目时必须先把请求头切到别的项目，否则后续 refresh() 会带着
+   * 已经不存在的 project id 打到服务端（目录接口会回退到主示例项目，
+   * 模型接口则直接 404，界面就卡在空壳上）。</p>
+   */
+  const confirmDeleteProject = async () => {
+    const target = deleteProjectTarget
+    if (!target || busy) {
+      return
+    }
+    setBusy(true)
+    try {
+      await deleteProject(target.id)
+      setDeleteProjectTarget(null)
+      const fallback = (workspace?.spaces ?? [])
+        .flatMap((space) => space.projects)
+        .find((project) => project.id !== target.id)
+      if (target.id === activeProjectId) {
+        if (fallback) {
+          setProjectId(fallback.id)
+          setActiveProjectId(fallback.id)
+          setSelectedId(null)
+          setSelectedDiagramId(null)
+          setSelectedRelationId(null)
+          // 文档标签是按旧项目的图/元素打开的，换项目后一律清空。
+          setTabs([])
+          expandedSeeded.current = false
+          setExpanded(new Set())
+          say('已删除项目「{name}」，已切换到「{next}」', { name: target.name, next: fallback.name })
+        } else {
+          say('已删除项目「{name}」', { name: target.name })
+        }
+      } else {
+        say('已删除项目「{name}」', { name: target.name })
+      }
+      await refresh()
+    } catch (error) {
+      say('删除项目失败：{error}', { error: errorMessage(error) })
     } finally {
       setBusy(false)
     }
@@ -2983,12 +3157,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               }
             }}
           >
-            <button
-              type="button"
-              className="twisty"
-              onClick={(event) => { event.stopPropagation(); toggleExpanded(EXTENSION_GROUP_ID) }}
-              aria-label={isOpen ? t('折叠') : t('展开')}
-            >{isOpen ? '▾' : '▸'}</button>
+            <TreeTwisty
+              open={isOpen}
+              label={isOpen ? t('折叠') : t('展开')}
+              onToggle={() => toggleExpanded(EXTENSION_GROUP_ID)}
+            />
             <TypeIcon code="PROFILE" size={16} title={t('扩展包')} />
             <span className="tree-label">{t('扩展包')}</span>
             <span className="virtual-tag" title={t('系统内容，不计入项目元素数，也不参与项目命令')}>{t('系统 · 隔离')}</span>
@@ -3027,17 +3200,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               }
             }}
           >
-            <button
-              type="button"
-              className={`twisty ${children.length === 0 ? 'leaf' : ''}`}
-              onClick={(event) => {
-                event.stopPropagation()
-                if (children.length > 0) {
-                  toggleExpanded(element.id)
-                }
-              }}
-              aria-label={isOpen ? t('折叠') : t('展开')}
-            >{children.length > 0 ? (isOpen ? '▾' : '▸') : '·'}</button>
+            <TreeTwisty
+              open={isOpen}
+              leaf={children.length === 0}
+              label={isOpen ? t('折叠') : t('展开')}
+              onToggle={() => toggleExpanded(element.id)}
+            />
             <TypeIcon code={codeOf(element.type)} size={16} title={typeLabel(element.type)} />
             <span className="tree-label">{element.name}</span>
             <span className="tree-type">{typeLabel(element.type)}</span>
@@ -3069,12 +3237,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               }
             }}
           >
-            <button
-              type="button"
-              className="twisty"
-              onClick={(event) => { event.stopPropagation(); toggleRelationGroup(nodeId) }}
-              aria-label={isOpen ? t('折叠') : t('展开')}
-            >{isOpen ? '▾' : '▸'}</button>
+            <TreeTwisty
+              open={isOpen}
+              label={isOpen ? t('折叠') : t('展开')}
+              onToggle={() => toggleRelationGroup(nodeId)}
+            />
             <RelationIcon code="trace" size={15} />
             <span className="tree-label">{t('关系')}</span>
             <span className="child-count">{items.length}</span>
@@ -3126,7 +3293,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             }
           }}
         >
-          <span className="twisty leaf">·</span>
+          <TreeTwisty open={false} leaf label={t('关系')} onToggle={() => undefined} />
           <RelationIcon code={relation.type} size={15} />
           <span className="tree-label">{relation.name?.trim() || relationLabel(relation.type)}</span>
           <span className="tree-type" title={t('关系另一端')}>
@@ -3149,16 +3316,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           ...(relationsByOwner.has(element!.id)
             ? [{ type: 'relationGroup', ref: { id: relationGroupId(element!.id) }, ownerId: element!.id } as TreeNode]
             : []),
-          // 扩展包虚拟分组内嵌在项目根下，由工具栏开关控制显示 / 隐藏。
-          ...(element!.id === projectRootId && showExtensions && extensionRoots.length > 0
-            ? [{ type: 'extensionGroup', ref: { id: EXTENSION_GROUP_ID } } as TreeNode]
-            : []),
         ]
       : (projectElements
           .filter((e) => diagram!.elementIds.includes(e.id))
           .map((ref) => ({ type: 'element', ref }) as TreeNode))
-    // 项目根常驻展开：它下面挂着按端点挂载的关系与内嵌的扩展包虚拟分组。
-    const isOpen = treeFilterHits ? true : (isProjectRoot(element) || expanded.has(node.ref.id))
+    // 项目根与普通元素一样遵守折叠状态（默认展开由自动展开 effect 负责）。
+    const isOpen = treeFilterHits ? true : expanded.has(node.ref.id)
     const info = isElement ? typeInfo.get(codeOf(element!.type)) : null
     const isRoot = isProjectRoot(element)
     // 顶层扩展包：系统提供的公共内容，树上标「通用」以便与用户自己的模型区分。
@@ -3244,19 +3407,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             }
           }}
         >
-          <button
-            type="button"
-            className={`twisty ${children.length === 0 ? 'leaf' : ''}`}
-            onClick={(event) => {
-              event.stopPropagation()
-              if (children.length > 0) {
-                toggleExpanded(node.ref.id)
-              }
-            }}
-            aria-label={isOpen ? t('折叠') : t('展开')}
-          >
-            {children.length > 0 ? (isOpen ? '▾' : '▸') : '·'}
-          </button>
+          <TreeTwisty
+            open={isOpen}
+            leaf={children.length === 0}
+            label={isOpen ? t('折叠') : t('展开')}
+            onToggle={() => toggleExpanded(node.ref.id)}
+          />
           {isElement ? (
             <>
               <TypeIcon code={codeOf(element!.type)} size={16} title={typeLabel(element!.type)} />
@@ -3771,26 +3927,40 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       >＋</button>
                     </div>
                     {space.projects.map((project) => (
-                      <button
-                        type="button"
-                        key={project.id}
-                        className={`pp-project ${project.id === activeProjectId ? 'active' : ''}`}
-                        onClick={() => openProject(project)}
-                        title={`${project.name} · ${project.description || project.status}`}
-                      >
-                        <TypeIcon code="PACKAGE" size={15} />
-                        <span className="pp-project-body">
-                          <span className="pp-project-name">{project.name}</span>
-                          <span className="pp-project-meta">
-                            {project.opened
-                              ? t('{diagrams} 图 · {elements} 元素 · rev {revision}', { diagrams: project.diagramCount, elements: project.elementCount, revision: project.revision })
-                              : t('尚未打开 · 点击打开')}
+                      <div className="pp-project-row" key={project.id}>
+                        <button
+                          type="button"
+                          className={`pp-project ${project.id === activeProjectId ? 'active' : ''}`}
+                          onClick={() => openProject(project)}
+                          title={`${project.name} · ${project.description || project.status}`}
+                        >
+                          <TypeIcon code="PACKAGE" size={15} />
+                          <span className="pp-project-body">
+                            <span className="pp-project-name">{project.name}</span>
+                            <span className="pp-project-meta">
+                              {project.opened
+                                ? t('{diagrams} 图 · {elements} 元素 · rev {revision}', { diagrams: project.diagramCount, elements: project.elementCount, revision: project.revision })
+                                : t('尚未打开 · 点击打开')}
+                            </span>
                           </span>
-                        </span>
-                        {project.id === activeProjectId
-                          ? <span className="pp-current">{t('已打开')}</span>
-                          : <span className="pp-open">{t('打开')}</span>}
-                      </button>
+                          {project.id === activeProjectId
+                            ? <span className="pp-current">{t('已打开')}</span>
+                            : <span className="pp-open">{t('打开')}</span>}
+                        </button>
+                        {canDeleteProject && project.deletable !== false && (
+                          <button
+                            type="button"
+                            className="pp-project-del"
+                            data-project-delete={project.id}
+                            title={t('删除项目「{name}」', { name: project.name })}
+                            aria-label={t('删除项目「{name}」', { name: project.name })}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setDeleteProjectTarget(project)
+                            }}
+                          >×</button>
+                        )}
+                      </div>
                     ))}
                   </div>
                 ))}
@@ -3814,7 +3984,41 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         </div>
       </header>
 
-      <div className={`workspace ${toolboxCollapsed ? 'toolbox-collapsed' : ''}`}>
+      <div
+        className={`workspace ${toolboxCollapsed ? 'toolbox-collapsed' : ''}`}
+        ref={workspaceRef}
+        style={{
+          '--dock-left': `${Math.round(dockWidths.left)}px`,
+          '--dock-tool': `${Math.round(dockWidths.tool)}px`,
+        } as CSSProperties}
+      >
+        {/* 列宽拖拽手柄：贴在两列分隔线上（窄屏媒体查询会隐藏）。 */}
+        <div
+          className={`dock-resizer left${dockDrag === 'left' ? ' dragging' : ''}`}
+          style={{ left: `${Math.round(dockWidths.left)}px` }}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label={t('拖动调整模型树宽度')}
+          data-dock-resizer="left"
+          onPointerDown={(event) => {
+            event.preventDefault()
+            setDockDrag('left')
+          }}
+        />
+        {!toolboxCollapsed && (
+          <div
+            className={`dock-resizer tool${dockDrag === 'tool' ? ' dragging' : ''}`}
+            style={{ left: `${Math.round(dockWidths.left + 1 + dockWidths.tool)}px` }}
+            role="separator"
+            aria-orientation="vertical"
+            aria-label={t('拖动调整工具箱宽度')}
+            data-dock-resizer="tool"
+            onPointerDown={(event) => {
+              event.preventDefault()
+              setDockDrag('tool')
+            }}
+          />
+        )}
         {/* 完整空间面板按需从左侧展开；平时只保留顶栏的项目选择器，不占画布宽度 */}
         {spaceDrawerOpen && (
           <>
@@ -3862,24 +4066,38 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       >＋</button>
                     </div>
                     {space.projects.map((project) => (
-                      <button
-                        type="button"
-                        key={project.id}
-                        className={`space-project ${project.id === activeProjectId ? 'selected' : ''} ${project.current ? 'current' : ''}`}
-                        onClick={() => openProject(project)}
-                        title={`${project.name} · ${project.description || project.status}`}
-                      >
-                        <TypeIcon code={project.current ? 'MODEL' : 'PACKAGE'} size={15} />
-                        <span className="space-project-body">
-                          <span className="space-project-name">{project.name}</span>
-                          <span className="space-project-meta">
-                            {project.opened
-                              ? t('{diagrams} 图 · {elements} 元素 · rev {revision}', { diagrams: project.diagramCount, elements: project.elementCount, revision: project.revision })
-                              : t('尚未打开 · {owner}', { owner: project.owner })}
+                      <div className="space-project-row" key={project.id}>
+                        <button
+                          type="button"
+                          className={`space-project ${project.id === activeProjectId ? 'selected' : ''} ${project.current ? 'current' : ''}`}
+                          onClick={() => openProject(project)}
+                          title={`${project.name} · ${project.description || project.status}`}
+                        >
+                          <TypeIcon code={project.current ? 'MODEL' : 'PACKAGE'} size={15} />
+                          <span className="space-project-body">
+                            <span className="space-project-name">{project.name}</span>
+                            <span className="space-project-meta">
+                              {project.opened
+                                ? t('{diagrams} 图 · {elements} 元素 · rev {revision}', { diagrams: project.diagramCount, elements: project.elementCount, revision: project.revision })
+                                : t('尚未打开 · {owner}', { owner: project.owner })}
+                            </span>
                           </span>
-                        </span>
-                        {project.current && <span className="space-current-dot" title={t('当前编辑项目')} />}
-                      </button>
+                          {project.current && <span className="space-current-dot" title={t('当前编辑项目')} />}
+                        </button>
+                        {canDeleteProject && project.deletable !== false && (
+                          <button
+                            type="button"
+                            className="space-project-del"
+                            data-project-delete={project.id}
+                            title={t('删除项目「{name}」', { name: project.name })}
+                            aria-label={t('删除项目「{name}」', { name: project.name })}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              setDeleteProjectTarget(project)
+                            }}
+                          >×</button>
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}
@@ -4035,6 +4253,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             ) : (
               <>
             {rootNodes.map((node) => renderTreeNode(node, 0))}
+            {/* 扩展包与项目根同级：它是系统提供的独立内容，不是项目根的子节点。 */}
+            {showExtensions && extensionRoots.length > 0 && !treeFilterHits && (
+              renderTreeNode({ type: 'extensionGroup', ref: { id: EXTENSION_GROUP_ID } }, 0)
+            )}
             {rootNodes.length === 0 && <p className="hint">{t('暂无元素，右键空白处新建元素')}</p>}
             {treeFilterHits && treeFilterHits.size === 0 && (
               <p className="hint">{t('没有匹配「{keyword}」的元素或图', { keyword: treeFilter })}</p>
@@ -4043,10 +4265,6 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <span>{t('{elements} 元素 · {diagrams} 图', { elements: projectElements.length, diagrams: model.diagrams.length })}</span>
               <span>{t('{count} 关系', { count: model.relationships.length })}</span>
             </div>
-            {/* 项目根缺失时，扩展包分组仍要在树内可见；两端都失效的关系兜底到顶层分组。 */}
-            {!projectRootId && showExtensions && extensionRoots.length > 0 && !treeFilterHits && (
-              renderTreeNode({ type: 'extensionGroup', ref: { id: EXTENSION_GROUP_ID } }, 0)
-            )}
             {relationsByOwner.has(ORPHAN_RELATION_OWNER) && !treeFilterHits && (
               renderTreeNode({
                 type: 'relationGroup',
@@ -5034,6 +5252,36 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   onClick={() => applyPropDraft(propDialogSpec)}
                 >{t('应用')}</button>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {deleteProjectTarget && (
+        <div className="modal-overlay" onPointerDown={() => setDeleteProjectTarget(null)}>
+          <div className="modal" role="alertdialog" onPointerDown={(event) => event.stopPropagation()}>
+            <h2 className="modal-title">
+              <TypeIcon code="PACKAGE" size={18} />
+              {t('删除项目')}
+            </h2>
+            <p className="modal-sub">{t('删除后该项目目录项与落库快照一并移除，不可恢复。')}</p>
+            <div className="danger-target">
+              <TypeIcon code="PACKAGE" size={16} />
+              <strong>{deleteProjectTarget.name}</strong>
+              <span>{deleteProjectTarget.description || deleteProjectTarget.status}</span>
+            </div>
+            {deleteProjectTarget.id === activeProjectId && (
+              <p className="hint">{t('这是当前编辑项目，删除后会切换到目录里的第一个项目。')}</p>
+            )}
+            <div className="modal-actions">
+              <button type="button" onClick={() => setDeleteProjectTarget(null)}>{t('取消')}</button>
+              <button
+                type="button"
+                className="primary danger"
+                data-confirm="delete-project"
+                disabled={busy}
+                onClick={() => void confirmDeleteProject()}
+              >{t('永久删除')}</button>
             </div>
           </div>
         </div>

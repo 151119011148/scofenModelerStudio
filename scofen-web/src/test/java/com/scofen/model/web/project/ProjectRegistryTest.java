@@ -12,11 +12,13 @@ import com.scofen.model.web.ws.PatchBroker;
 import com.scofen.model.web.ws.PatchWebSocketHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /** 打开项目 = 拿到一份独立的内存态模型运行时，互不串写。 */
 class ProjectRegistryTest {
@@ -70,5 +72,16 @@ class ProjectRegistryTest {
     void peekingDoesNotCreateRuntime() {
         assertThat(registry.peek("project-eea")).isNull();
         assertThat(registry.isOpened("project-eea")).isFalse();
+    }
+
+    @Test
+    void unknownProjectIdIsRejectedInsteadOfCreatingWildRuntime() {
+        // 已删项目 / 手改的旧项目头：不能凭空造运行时，否则删掉的项目会复活。
+        assertThatThrownBy(() -> registry.resolve("project-deleted-xyz"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(error -> assertThat(((ResponseStatusException) error).getStatusCode().value())
+                        .isEqualTo(404));
+        assertThat(registry.isOpened("project-deleted-xyz")).isFalse();
+        assertThat(registry.peek("project-deleted-xyz")).isNull();
     }
 }

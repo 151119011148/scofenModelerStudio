@@ -16,7 +16,9 @@ import com.scofen.model.metamodel.PropertyCatalog;
 import com.scofen.model.web.persistence.PersistenceServiceFactory;
 import com.scofen.model.web.workspace.WorkspaceDirectory;
 import com.scofen.model.web.ws.PatchBroker;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Map;
@@ -55,6 +57,12 @@ public class ProjectRegistry {
         if (isPrimary(projectId)) {
             return primary;
         }
+        // 未知项目一律拒绝：否则任何还带着旧项目头的请求（已删项目的 WS 重连、
+        // 浏览器里的历史请求）都能凭空造出一个「野生运行时」并整包写回库，
+        // 删掉的项目就会以「新建项目」的名字复活。
+        if (directory.findProject(projectId).isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "项目不存在：" + projectId);
+        }
         return runtimes.computeIfAbsent(projectId, this::create);
     }
 
@@ -68,6 +76,20 @@ public class ProjectRegistry {
 
     public boolean isOpened(String projectId) {
         return isPrimary(projectId) || runtimes.containsKey(projectId);
+    }
+
+    /**
+     * 丢弃项目的运行时（删除项目时调用）。
+     *
+     * <p>主示例项目与 Spring 单例 executor 绑定，不在 runtimes 里，因此不参与删除；
+     * 其它项目把运行时从 map 中摘掉，之后的目录统计会显示为「未打开」，
+     * 也不会再有残留的撤销栈或 WS 会话持有它的旧快照。</p>
+     */
+    public boolean remove(String projectId) {
+        if (isPrimary(projectId)) {
+            return false;
+        }
+        return runtimes.remove(projectId) != null;
     }
 
     private boolean isPrimary(String projectId) {

@@ -11,6 +11,7 @@
 | `reconnect-e2e.mjs` | 初始化失败自愈：用 CDP `Network.setBlockedURLs` 阻断所有 `/api` 请求后刷新，验证出现连接失败横幅、不再用「该父类型不允许再包含子元素」伪装成元模型规则；解除阻断后分别验证自动退避重试与「立即重试」按钮都能让页面恢复 |
 | `property-panel-e2e.mjs` | 属性栏三件套：右上角三档下拉与计数、按属性 key 搜索（含空态）、key 升序 / 降序 / 规范顺序三态排序、可编辑行「⋯」弹框的字符 / 数组 / 模型引用 / 枚举四类编辑器、清除值与 Esc 关闭、服务端快照写入与撤销恢复，末尾校验数据无残留 |
 | `tree-extensions-relations-e2e.mjs` | 模型树两项改造：扩展包开关默认隐藏 / 显示 / 刷新后持久化，静态目录独立下发、项目元素计数排除扩展包、虚拟分组可逐级展开且不与项目树混行；关系不再全局平铺，单向关系只挂源端、双向 `association` 在两端各挂一次（写入后 `DELETE_RELATIONSHIP` 清理并校验无残留）、虚拟节点可折叠、关系行可点选进属性窗口 |
+| `shell-ux-e2e.mjs` | 外壳与树形态：扩展包分组与项目根同缩进且不在根子树内、项目根可折叠并校验蓝色三角（`rgb(51,112,255)`）与 90° 旋转、两条分隔线用 CDP 真实鼠标事件拖宽并校验 localStorage 跨刷新保持、空间项目列表删除（主项目无删除按钮、删除当前项目自动切走、服务端目录无残留） |
 
 ## 运行
 
@@ -49,6 +50,11 @@ CDP_PORT=9444 node property-panel-e2e.mjs
 SCOFEN_PASSWORD='<超管口令>' \
 APP_URL='http://<IP>/scofen/modelerStudio/' \
 CDP_PORT=9444 node tree-extensions-relations-e2e.mjs
+
+# 外壳与树形态：扩展包层级 / 项目根折叠 / 蓝色三角 / 两栏拖宽 / 删除项目
+SCOFEN_PASSWORD='<超管口令>' \
+APP_URL='http://<IP>/scofen/modelerStudio/' \
+CDP_PORT=9444 node shell-ux-e2e.mjs
 ```
 
 ## 参数
@@ -72,4 +78,4 @@ CDP_PORT=9444 node tree-extensions-relations-e2e.mjs
 ## 产物
 
 截图落在 `/tmp/scofen-xmi-shots/`、`/tmp/scofen-root-shots/`、`/tmp/scofen-prop-shots/`、
-`/tmp/scofen-tree-shots/` 与 `/tmp/scofen-reconnect-*.png`，导入用的样本文件落在 `/tmp/scofen-xmi-files/`。
+`/tmp/scofen-tree-shots/`、`/tmp/scofen-shell-shots/` 与 `/tmp/scofen-reconnect-*.png`，导入用的样本文件落在 `/tmp/scofen-xmi-files/`。
