@@ -214,7 +214,9 @@ public class ModelController {
                 "uml", type.umlName(),
                 "label", type.label(),
                 "labelEn", type.labelEn(),
-                "stereotype", type.stereotype());
+                "stereotype", type.stereotype(),
+                // 类型档次：ADVANCED 收在工具箱「更多规范类型」里，默认不铺开。
+                "tier", type.tier().name());
     }
 
     public Patch commands(CommandRequest request, String sessionId) {
@@ -229,7 +231,10 @@ public class ModelController {
         String clientCmdId = request.clientCmdId() == null || request.clientCmdId().isBlank()
                 ? UUID.randomUUID().toString()
                 : request.clientCmdId();
-        Command command = new Command(request.type(), request.payload(), request.baseRevision(), clientCmdId);
+        // 载荷缺失按校验失败处理：Command 内部 Map.copyOf(null) 会抛 NPE 变成 500，
+        // 客户端拿到的应是可诊断的 400，而不是「服务器内部错误」。
+        Map<String, Object> payload = request.payload() == null ? Map.of() : request.payload();
+        Command command = new Command(request.type(), payload, request.baseRevision(), clientCmdId);
         return forProject(projectId).execute(sessionId, command);
     }
 

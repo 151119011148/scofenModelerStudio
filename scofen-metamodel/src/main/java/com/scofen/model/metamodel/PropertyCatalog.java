@@ -659,6 +659,213 @@ public final class PropertyCatalog {
                 s("ownedDefault", "拥有的默认值", REF, EXP),
                 d("signature", "签名（派生）", REF));
 
+        /* ── §7.3 模板绑定 ── */
+        mc(UmlMetaclass.TEMPLATE_BINDING,
+                s("boundElement", "绑定元素", REF, STD),
+                s("signature", "模板签名", REF, STD),
+                s("parameterSubstitution", "参数替换", REFS, STD));
+        mc(UmlMetaclass.TEMPLATE_PARAMETER_SUBSTITUTION,
+                s("formal", "形式参数", REF, STD),
+                s("actual", "实际参数", REF, STD),
+                s("ownedActual", "拥有的实际参数", REF, EXP));
+        mc(UmlMetaclass.REDEFINABLE_TEMPLATE_SIGNATURE,
+                s("inheritedParameter", "继承的模板参数", REFS, EXP));
+        mc(UmlMetaclass.CLASSIFIER_TEMPLATE_PARAMETER,
+                s("allowSubstitutable", "允许可替换", BOOL, EXP),
+                s("constrainingClassifier", "约束分类器", REFS, EXP));
+
+        /* ── §8.4 观察与区间约束 ── */
+        mc(UmlMetaclass.DURATION_OBSERVATION,
+                s("event", "事件", REFS, STD),
+                s("firstEvent", "首个事件", BOOL, EXP));
+        mc(UmlMetaclass.TIME_OBSERVATION,
+                s("event", "事件", REF, STD),
+                s("firstEvent", "首个事件", BOOL, EXP),
+                s("now", "当前时刻", BOOL, EXP));
+        mc(UmlMetaclass.DURATION_CONSTRAINT,
+                s("firstEvent", "首个事件", BOOL, EXP));
+        mc(UmlMetaclass.TIME_CONSTRAINT,
+                s("firstEvent", "首个事件", BOOL, EXP));
+
+        /* ── §9 / §11 关联类与实现 ── */
+        mc(UmlMetaclass.ASSOCIATION_CLASS,
+                s("memberEnd", "成员端", REFS, STD));
+        mc(UmlMetaclass.INTERFACE_REALIZATION,
+                s("contract", "契约接口", REF, STD),
+                s("implementingClassifier", "实现分类器", REF, STD));
+        mc(UmlMetaclass.COMPONENT_REALIZATION,
+                s("abstraction", "抽象", REF, EXP),
+                s("realizingClassifier", "实现分类器", REFS, STD));
+        mc(UmlMetaclass.INFORMATION_ITEM,
+                s("representation", "表示", REFS, EXP));
+        mc(UmlMetaclass.INFORMATION_FLOW,
+                e("direction", "方向", EXP, "source", "target"),
+                s("informationSource", "信息源", REF, STD),
+                s("informationTarget", "信息目标", REF, STD),
+                s("conveyed", "传递的信息项", REFS, STD),
+                s("realization", "实现", REFS, EXP));
+
+        /* ── §14.2 协议状态机 ── */
+        mc(UmlMetaclass.PROTOCOL_STATE_MACHINE,
+                s("conformance", "符合关系", REFS, STD));
+        mc(UmlMetaclass.PROTOCOL_CONFORMANCE,
+                s("conformance", "符合", REF, STD),
+                s("generalMachine", "一般状态机", REF, STD),
+                s("specificMachine", "特定状态机", REF, STD));
+
+        /* ── §15.3 控制节点与结构化节点 ── */
+        mc(UmlMetaclass.DECISION_NODE,
+                s("decisionInput", "判定输入", REF, EXP),
+                s("decisionInputFlow", "判定输入流", REF, EXP));
+        mc(UmlMetaclass.JOIN_NODE,
+                s("isCombined", "是否组合", BOOL, EXP),
+                s("joinSpec", "汇合规格", STR, EXP));
+        mc(UmlMetaclass.STRUCTURED_ACTIVITY_NODE,
+                s("mustIsolate", "必须隔离", BOOL, EXP),
+                s("activity", "所属活动", REF, EXP),
+                s("node", "节点", REFS, EXP),
+                s("edge", "边", REFS, EXP),
+                d("isVariable", "是否变量（派生）", BOOL));
+        mc(UmlMetaclass.EXPANSION_REGION,
+                e("mode", "扩展模式", STD, "iterative", "concurrent", "stream"),
+                s("inputElement", "输入扩展节点", REFS, STD),
+                s("outputElement", "输出扩展节点", REFS, STD));
+        mc(UmlMetaclass.INTERRUPTIBLE_ACTIVITY_REGION,
+                s("interruptingEdge", "中断边", REFS, STD));
+        mc(UmlMetaclass.VALUE_PIN,
+                s("value", "值", STR, STD));
+
+        /* ── §16 具体动作 ── */
+        mc(UmlMetaclass.ACCEPT_EVENT_ACTION,
+                s("isUnmarshall", "是否解组", BOOL, EXP),
+                s("result", "结果", REFS, STD),
+                s("trigger", "触发器", REFS, STD));
+        mc(UmlMetaclass.ACCEPT_CALL_ACTION,
+                s("returnInformation", "返回信息", REFS, STD));
+        mc(UmlMetaclass.CALL_BEHAVIOR_ACTION,
+                s("behavior", "调用的行为", REF, STD));
+        mc(UmlMetaclass.CALL_OPERATION_ACTION,
+                s("operation", "调用的操作", REF, STD),
+                s("target", "目标", REF, STD));
+        mc(UmlMetaclass.START_OBJECT_BEHAVIOR_ACTION,
+                s("isSynchronous", "是否同步", BOOL, EXP),
+                s("object", "对象", REF, STD));
+        mc(UmlMetaclass.START_CLASSIFIER_BEHAVIOR_ACTION,
+                s("object", "对象", REF, STD));
+        mc(UmlMetaclass.SEND_SIGNAL_ACTION,
+                s("signal", "信号", REF, STD),
+                s("target", "目标", REF, STD));
+        mc(UmlMetaclass.BROADCAST_SIGNAL_ACTION,
+                s("signal", "信号", REF, STD));
+        mc(UmlMetaclass.SEND_OBJECT_ACTION,
+                s("request", "请求", REF, STD),
+                s("target", "目标", REF, STD));
+        mc(UmlMetaclass.REPLY_ACTION,
+                s("replyValue", "回复值", REFS, STD),
+                s("returnInformation", "返回信息", REFS, STD));
+        mc(UmlMetaclass.CREATE_OBJECT_ACTION,
+                s("classifier", "分类器", REF, STD),
+                s("result", "结果", REF, STD));
+        mc(UmlMetaclass.DESTROY_OBJECT_ACTION,
+                s("isDestroyLinks", "销毁链接", BOOL, EXP),
+                s("isDestroyPins", "销毁引脚", BOOL, EXP),
+                s("target", "目标", REF, STD));
+        mc(UmlMetaclass.READ_SELF_ACTION,
+                s("result", "结果", REF, STD));
+        mc(UmlMetaclass.STRUCTURAL_FEATURE_ACTION,
+                s("object", "对象", REF, STD),
+                s("structuralFeature", "结构特征", REF, STD));
+        mc(UmlMetaclass.READ_STRUCTURAL_FEATURE_ACTION,
+                s("result", "结果", REF, STD));
+        mc(UmlMetaclass.WRITE_STRUCTURAL_FEATURE_ACTION,
+                s("value", "值", REF, STD),
+                s("result", "结果", REF, EXP));
+        mc(UmlMetaclass.ADD_STRUCTURAL_FEATURE_VALUE_ACTION,
+                s("insertAt", "插入位置", REF, EXP),
+                s("isReplaceAll", "是否全替换", BOOL, EXP));
+        mc(UmlMetaclass.REMOVE_STRUCTURAL_FEATURE_VALUE_ACTION,
+                s("isRemoveDuplicates", "移除重复", BOOL, EXP),
+                s("removeAt", "移除位置", REF, EXP));
+        mc(UmlMetaclass.CLEAR_STRUCTURAL_FEATURE_ACTION,
+                s("result", "结果", REF, EXP));
+        mc(UmlMetaclass.VARIABLE_ACTION,
+                s("variable", "变量", REF, STD));
+        mc(UmlMetaclass.READ_VARIABLE_ACTION,
+                s("result", "结果", REF, STD));
+        mc(UmlMetaclass.WRITE_VARIABLE_ACTION,
+                s("value", "值", REF, STD));
+        mc(UmlMetaclass.ADD_VARIABLE_VALUE_ACTION,
+                s("insertAt", "插入位置", REF, EXP),
+                s("isReplaceAll", "是否全替换", BOOL, EXP));
+        mc(UmlMetaclass.REMOVE_VARIABLE_VALUE_ACTION,
+                s("isRemoveDuplicates", "移除重复", BOOL, EXP),
+                s("removeAt", "移除位置", REF, EXP));
+        mc(UmlMetaclass.LINK_ACTION,
+                s("endData", "端数据", REFS, STD),
+                s("inputValue", "输入值", REFS, EXP));
+        mc(UmlMetaclass.CREATE_LINK_ACTION,
+                s("endData", "端数据", REFS, STD));
+        mc(UmlMetaclass.DESTROY_LINK_ACTION,
+                s("endData", "端数据", REFS, STD));
+        mc(UmlMetaclass.READ_LINK_ACTION,
+                s("result", "结果", REF, STD));
+        mc(UmlMetaclass.CLEAR_ASSOCIATION_ACTION,
+                s("association", "关联", REF, STD),
+                s("object", "对象", REF, STD));
+        mc(UmlMetaclass.READ_EXTENT_ACTION,
+                s("classifier", "分类器", REF, STD),
+                s("result", "结果", REF, STD));
+        mc(UmlMetaclass.READ_IS_CLASSIFIED_OBJECT_ACTION,
+                s("classifier", "分类器", REF, STD),
+                s("isDirect", "是否直接", BOOL, EXP),
+                s("result", "结果", REF, STD));
+        mc(UmlMetaclass.RECLASSIFY_OBJECT_ACTION,
+                s("isReplaceAll", "是否全替换", BOOL, EXP),
+                s("newClassifier", "新分类器", REFS, STD),
+                s("oldClassifier", "旧分类器", REFS, EXP),
+                s("object", "对象", REF, STD));
+        mc(UmlMetaclass.REDUCE_ACTION,
+                s("collection", "集合", REF, STD),
+                s("reducer", "归约行为", REF, STD),
+                s("result", "结果", REF, STD),
+                s("isOrdered", "是否有序", BOOL, EXP));
+        mc(UmlMetaclass.RAISE_EXCEPTION_ACTION,
+                s("exception", "异常", REF, STD));
+        mc(UmlMetaclass.UNMARSHALL_ACTION,
+                s("object", "对象", REF, STD),
+                s("result", "结果", REFS, STD),
+                s("unmarshallType", "解组类型", REF, STD));
+        mc(UmlMetaclass.TEST_IDENTITY_ACTION,
+                s("first", "第一操作数", REF, STD),
+                s("second", "第二操作数", REF, STD),
+                s("result", "结果", REF, STD));
+        mc(UmlMetaclass.VALUE_SPECIFICATION_ACTION,
+                s("result", "结果", REF, STD),
+                s("value", "值规格", REF, STD));
+
+        /* ── §17.3 / §17.6 交互片段 ── */
+        mc(UmlMetaclass.CONTINUATION,
+                s("setting", "是否设置", BOOL, STD));
+        mc(UmlMetaclass.CONSIDER_IGNORE_FRAGMENT,
+                s("consider", "考虑的消息", REFS, STD),
+                s("ignore", "忽略的消息", REFS, STD));
+        mc(UmlMetaclass.INTERACTION_CONSTRAINT,
+                s("maxint", "最大整数", REF, EXP),
+                s("minint", "最小整数", REF, EXP));
+        mc(UmlMetaclass.EXECUTION_OCCURRENCE_SPECIFICATION,
+                s("execution", "执行规格", REF, STD));
+        mc(UmlMetaclass.ACTION_EXECUTION_SPECIFICATION,
+                s("action", "动作", REF, STD));
+        mc(UmlMetaclass.BEHAVIOR_EXECUTION_SPECIFICATION,
+                s("behavior", "行为", REF, STD));
+
+        /* ── §19.4 部署 ── */
+        mc(UmlMetaclass.DEPLOYMENT_SPECIFICATION,
+                s("deploymentLocation", "部署位置", STR, STD),
+                s("executionLocation", "执行位置", STR, EXP));
+        mc(UmlMetaclass.MANIFESTATION,
+                s("utilizedElement", "被使用的元素", REF, STD));
+
         /* ── SysML 1.6 构造型 ── */
         mc(UmlMetaclass.SYSML_BLOCK,
                 s("isEncapsulated", "是否封装", BOOL, STD),
@@ -673,6 +880,8 @@ public final class PropertyCatalog {
         mc(UmlMetaclass.SYSML_VALUE_TYPE,
                 s("unit", "单位", REF, STD),
                 s("dimension", "量纲", REF, STD),
+                // 单位 / 量纲库里的元素也是 ValueType，符号写在值类型上最自然。
+                s("symbol", "符号", STR, STD),
                 s("quantityKind", "量纲种类", STRS, EXP));
         mc(UmlMetaclass.SYSML_UNIT,
                 s("symbol", "单位符号", STR, STD),
@@ -733,6 +942,39 @@ public final class PropertyCatalog {
                 s("rationaleId", "理由 ID", STR, EXP));
         mc(UmlMetaclass.SYSML_PROBLEM,
                 s("problemId", "问题 ID", STR, EXP));
+
+        /* ── SysML 1.6 其余规范构造型 ── */
+        mc(UmlMetaclass.SYSML_STAKEHOLDER,
+                s("concern", "关注点", TXT, EXP));
+        mc(UmlMetaclass.SYSML_ELEMENT_GROUP,
+                s("orderedMember", "有序成员", REFS, EXP));
+        mc(UmlMetaclass.SYSML_ELEMENT_PROPERTY_PATH,
+                s("propertyPath", "属性路径", REFS, STD));
+        mc(UmlMetaclass.SYSML_ADJUNCT_PROPERTY,
+                s("principal", "主体", REF, STD));
+        mc(UmlMetaclass.SYSML_PARTICIPANT_PROPERTY,
+                s("end", "关联端", REF, STD),
+                s("part", "参与部件", REF, STD));
+        mc(UmlMetaclass.SYSML_CONNECTOR_PROPERTY,
+                s("connector", "连接器", REF, STD));
+        mc(UmlMetaclass.SYSML_BOUND_REFERENCE,
+                s("bindingPath", "绑定路径", REFS, STD));
+        mc(UmlMetaclass.SYSML_NESTED_CONNECTOR_END,
+                s("propertyPath", "属性路径", REFS, STD));
+        mc(UmlMetaclass.SYSML_INTERFACE_BLOCK,
+                s("isEncapsulated", "是否封装", BOOL, STD));
+        mc(UmlMetaclass.SYSML_END_PATH_MULTIPLICITY,
+                s("endPath", "端路径", REFS, STD));
+        mc(UmlMetaclass.SYSML_INVOCATION_ON_NESTED_PORT_ACTION,
+                s("onNestedPort", "嵌套端口", REFS, STD));
+        mc(UmlMetaclass.SYSML_TRIGGER_ON_NESTED_PORT,
+                s("onNestedPort", "嵌套端口", REFS, STD));
+        mc(UmlMetaclass.SYSML_RATE,
+                s("rate", "速率表达式", STR, STD));
+        mc(UmlMetaclass.SYSML_PROBABILITY,
+                s("probability", "概率表达式", STR, STD));
+        mc(UmlMetaclass.SYSML_CHANGE_STRUCTURAL_FEATURE_EVENT,
+                s("structuralFeature", "结构特征", REF, STD));
 
         /* ── 实现层系统属性：文档/构造型可编辑，标识与统计量只读 ── */
         mc(UmlMetaclass.SCOFEN_CORE,
@@ -804,6 +1046,142 @@ public final class PropertyCatalog {
         roots(ElementType.ACTOR, UmlMetaclass.ACTOR);
         roots(ElementType.COMMENT, UmlMetaclass.COMMENT);
 
+        /* ── 扩充类型：分类器 / 特征 / 部署 ── */
+        roots(ElementType.CLASS, UmlMetaclass.CLASS);
+        roots(ElementType.INTERFACE, UmlMetaclass.INTERFACE);
+        roots(ElementType.SIGNAL, UmlMetaclass.SIGNAL);
+        roots(ElementType.DATA_TYPE, UmlMetaclass.DATA_TYPE);
+        roots(ElementType.PRIMITIVE_TYPE, UmlMetaclass.PRIMITIVE_TYPE);
+        roots(ElementType.ENUMERATION, UmlMetaclass.ENUMERATION);
+        roots(ElementType.ENUMERATION_LITERAL, UmlMetaclass.ENUMERATION_LITERAL);
+        roots(ElementType.ASSOCIATION_CLASS, UmlMetaclass.ASSOCIATION_CLASS);
+        roots(ElementType.COMPONENT, UmlMetaclass.COMPONENT);
+        roots(ElementType.COLLABORATION, UmlMetaclass.COLLABORATION);
+        roots(ElementType.COLLABORATION_USE, UmlMetaclass.COLLABORATION_USE);
+        roots(ElementType.INFORMATION_ITEM, UmlMetaclass.INFORMATION_ITEM);
+        roots(ElementType.INSTANCE_SPECIFICATION, UmlMetaclass.INSTANCE_SPECIFICATION);
+        roots(ElementType.OPERATION, UmlMetaclass.OPERATION);
+        roots(ElementType.PARAMETER, UmlMetaclass.PARAMETER);
+        roots(ElementType.RECEPTION, UmlMetaclass.RECEPTION);
+        roots(ElementType.NODE, UmlMetaclass.NODE);
+        roots(ElementType.DEVICE, UmlMetaclass.DEVICE);
+        roots(ElementType.EXECUTION_ENVIRONMENT, UmlMetaclass.EXECUTION_ENVIRONMENT);
+        roots(ElementType.ARTIFACT, UmlMetaclass.ARTIFACT);
+        roots(ElementType.DEPLOYMENT_SPECIFICATION, UmlMetaclass.DEPLOYMENT_SPECIFICATION);
+
+        /* ── 扩充类型：SysML 属性 / 流规格 / 视图 ── */
+        roots(ElementType.VALUE_PROPERTY, UmlMetaclass.SYSML_VALUE_PROPERTY);
+        roots(ElementType.REFERENCE_PROPERTY, UmlMetaclass.SYSML_REFERENCE_PROPERTY);
+        roots(ElementType.FLOW_PROPERTY, UmlMetaclass.SYSML_FLOW_PROPERTY);
+        roots(ElementType.FLOW_SPECIFICATION, UmlMetaclass.SYSML_FLOW_SPECIFICATION);
+        roots(ElementType.VIEW, UmlMetaclass.SYSML_VIEW);
+        roots(ElementType.VIEWPOINT, UmlMetaclass.SYSML_VIEWPOINT);
+        roots(ElementType.RATIONALE, UmlMetaclass.SYSML_RATIONALE);
+        roots(ElementType.PROBLEM, UmlMetaclass.SYSML_PROBLEM);
+
+        /* ── 扩充类型：活动控制节点 / 区域 / 引脚 ── */
+        roots(ElementType.INITIAL_NODE, UmlMetaclass.INITIAL_NODE);
+        roots(ElementType.ACTIVITY_FINAL_NODE, UmlMetaclass.ACTIVITY_FINAL_NODE);
+        roots(ElementType.FLOW_FINAL_NODE, UmlMetaclass.FLOW_FINAL_NODE);
+        roots(ElementType.DECISION_NODE, UmlMetaclass.DECISION_NODE);
+        roots(ElementType.MERGE_NODE, UmlMetaclass.MERGE_NODE);
+        roots(ElementType.FORK_NODE, UmlMetaclass.FORK_NODE);
+        roots(ElementType.JOIN_NODE, UmlMetaclass.JOIN_NODE);
+        roots(ElementType.DATA_STORE_NODE, UmlMetaclass.DATA_STORE_NODE);
+        roots(ElementType.CENTRAL_BUFFER_NODE, UmlMetaclass.CENTRAL_BUFFER_NODE);
+        roots(ElementType.ACTIVITY_PARAMETER_NODE, UmlMetaclass.ACTIVITY_PARAMETER_NODE);
+        roots(ElementType.STRUCTURED_ACTIVITY_NODE, UmlMetaclass.STRUCTURED_ACTIVITY_NODE);
+        roots(ElementType.EXPANSION_REGION, UmlMetaclass.EXPANSION_REGION);
+        roots(ElementType.INTERRUPTIBLE_ACTIVITY_REGION, UmlMetaclass.INTERRUPTIBLE_ACTIVITY_REGION);
+        roots(ElementType.VALUE_PIN, UmlMetaclass.VALUE_PIN);
+        roots(ElementType.ACTION_INPUT_PIN, UmlMetaclass.ACTION_INPUT_PIN);
+
+        /* ── 扩充类型：§16 具体动作 ── */
+        roots(ElementType.CALL_BEHAVIOR_ACTION, UmlMetaclass.CALL_BEHAVIOR_ACTION);
+        roots(ElementType.CALL_OPERATION_ACTION, UmlMetaclass.CALL_OPERATION_ACTION);
+        roots(ElementType.SEND_SIGNAL_ACTION, UmlMetaclass.SEND_SIGNAL_ACTION);
+        roots(ElementType.BROADCAST_SIGNAL_ACTION, UmlMetaclass.BROADCAST_SIGNAL_ACTION);
+        roots(ElementType.SEND_OBJECT_ACTION, UmlMetaclass.SEND_OBJECT_ACTION);
+        roots(ElementType.ACCEPT_EVENT_ACTION, UmlMetaclass.ACCEPT_EVENT_ACTION);
+        roots(ElementType.ACCEPT_CALL_ACTION, UmlMetaclass.ACCEPT_CALL_ACTION);
+        roots(ElementType.REPLY_ACTION, UmlMetaclass.REPLY_ACTION);
+        roots(ElementType.CREATE_OBJECT_ACTION, UmlMetaclass.CREATE_OBJECT_ACTION);
+        roots(ElementType.DESTROY_OBJECT_ACTION, UmlMetaclass.DESTROY_OBJECT_ACTION);
+        roots(ElementType.READ_SELF_ACTION, UmlMetaclass.READ_SELF_ACTION);
+        roots(ElementType.READ_STRUCTURAL_FEATURE_ACTION, UmlMetaclass.READ_STRUCTURAL_FEATURE_ACTION);
+        roots(ElementType.WRITE_STRUCTURAL_FEATURE_ACTION, UmlMetaclass.WRITE_STRUCTURAL_FEATURE_ACTION);
+        roots(ElementType.ADD_STRUCTURAL_FEATURE_VALUE_ACTION, UmlMetaclass.ADD_STRUCTURAL_FEATURE_VALUE_ACTION);
+        roots(ElementType.REMOVE_STRUCTURAL_FEATURE_VALUE_ACTION, UmlMetaclass.REMOVE_STRUCTURAL_FEATURE_VALUE_ACTION);
+        roots(ElementType.CLEAR_STRUCTURAL_FEATURE_ACTION, UmlMetaclass.CLEAR_STRUCTURAL_FEATURE_ACTION);
+        roots(ElementType.READ_VARIABLE_ACTION, UmlMetaclass.READ_VARIABLE_ACTION);
+        roots(ElementType.WRITE_VARIABLE_ACTION, UmlMetaclass.WRITE_VARIABLE_ACTION);
+        roots(ElementType.ADD_VARIABLE_VALUE_ACTION, UmlMetaclass.ADD_VARIABLE_VALUE_ACTION);
+        roots(ElementType.REMOVE_VARIABLE_VALUE_ACTION, UmlMetaclass.REMOVE_VARIABLE_VALUE_ACTION);
+        roots(ElementType.CLEAR_VARIABLE_ACTION, UmlMetaclass.CLEAR_VARIABLE_ACTION);
+        roots(ElementType.CREATE_LINK_ACTION, UmlMetaclass.CREATE_LINK_ACTION);
+        roots(ElementType.DESTROY_LINK_ACTION, UmlMetaclass.DESTROY_LINK_ACTION);
+        roots(ElementType.READ_LINK_ACTION, UmlMetaclass.READ_LINK_ACTION);
+        roots(ElementType.CLEAR_ASSOCIATION_ACTION, UmlMetaclass.CLEAR_ASSOCIATION_ACTION);
+        roots(ElementType.READ_EXTENT_ACTION, UmlMetaclass.READ_EXTENT_ACTION);
+        roots(ElementType.READ_IS_CLASSIFIED_OBJECT_ACTION, UmlMetaclass.READ_IS_CLASSIFIED_OBJECT_ACTION);
+        roots(ElementType.RECLASSIFY_OBJECT_ACTION, UmlMetaclass.RECLASSIFY_OBJECT_ACTION);
+        roots(ElementType.REDUCE_ACTION, UmlMetaclass.REDUCE_ACTION);
+        roots(ElementType.RAISE_EXCEPTION_ACTION, UmlMetaclass.RAISE_EXCEPTION_ACTION);
+        roots(ElementType.UNMARSHALL_ACTION, UmlMetaclass.UNMARSHALL_ACTION);
+        roots(ElementType.TEST_IDENTITY_ACTION, UmlMetaclass.TEST_IDENTITY_ACTION);
+        roots(ElementType.VALUE_SPECIFICATION_ACTION, UmlMetaclass.VALUE_SPECIFICATION_ACTION);
+        roots(ElementType.START_CLASSIFIER_BEHAVIOR_ACTION, UmlMetaclass.START_CLASSIFIER_BEHAVIOR_ACTION);
+        roots(ElementType.START_OBJECT_BEHAVIOR_ACTION, UmlMetaclass.START_OBJECT_BEHAVIOR_ACTION);
+
+        /* ── 扩充类型：交互片段 / 状态机细节 ── */
+        roots(ElementType.INTERACTION_USE, UmlMetaclass.INTERACTION_USE);
+        roots(ElementType.STATE_INVARIANT, UmlMetaclass.STATE_INVARIANT);
+        roots(ElementType.CONTINUATION, UmlMetaclass.CONTINUATION);
+        roots(ElementType.CONSIDER_IGNORE_FRAGMENT, UmlMetaclass.CONSIDER_IGNORE_FRAGMENT);
+        roots(ElementType.DESTRUCTION_OCCURRENCE_SPECIFICATION, UmlMetaclass.DESTRUCTION_OCCURRENCE_SPECIFICATION);
+        roots(ElementType.ACTION_EXECUTION_SPECIFICATION, UmlMetaclass.ACTION_EXECUTION_SPECIFICATION);
+        roots(ElementType.BEHAVIOR_EXECUTION_SPECIFICATION, UmlMetaclass.BEHAVIOR_EXECUTION_SPECIFICATION);
+        roots(ElementType.GATE, UmlMetaclass.GATE);
+        roots(ElementType.PROTOCOL_STATE_MACHINE, UmlMetaclass.PROTOCOL_STATE_MACHINE);
+        roots(ElementType.FINAL_STATE, UmlMetaclass.FINAL_STATE);
+        roots(ElementType.CONNECTION_POINT_REFERENCE, UmlMetaclass.CONNECTION_POINT_REFERENCE);
+
+        /* ── 扩充类型：§7 模板 / §8 值规格与观察 / §13 事件 / §17 交互细节 ── */
+        roots(ElementType.TEMPLATE_SIGNATURE, UmlMetaclass.TEMPLATE_SIGNATURE);
+        roots(ElementType.REDEFINABLE_TEMPLATE_SIGNATURE, UmlMetaclass.REDEFINABLE_TEMPLATE_SIGNATURE);
+        roots(ElementType.TEMPLATE_PARAMETER, UmlMetaclass.TEMPLATE_PARAMETER);
+        roots(ElementType.CLASSIFIER_TEMPLATE_PARAMETER, UmlMetaclass.CLASSIFIER_TEMPLATE_PARAMETER);
+        roots(ElementType.TEMPLATE_BINDING, UmlMetaclass.TEMPLATE_BINDING);
+        roots(ElementType.TEMPLATE_PARAMETER_SUBSTITUTION, UmlMetaclass.TEMPLATE_PARAMETER_SUBSTITUTION);
+        roots(ElementType.OPAQUE_EXPRESSION, UmlMetaclass.OPAQUE_EXPRESSION);
+        roots(ElementType.INSTANCE_VALUE, UmlMetaclass.INSTANCE_VALUE);
+        roots(ElementType.DURATION_OBSERVATION, UmlMetaclass.DURATION_OBSERVATION);
+        roots(ElementType.TIME_OBSERVATION, UmlMetaclass.TIME_OBSERVATION);
+        roots(ElementType.DURATION_INTERVAL, UmlMetaclass.DURATION_INTERVAL);
+        roots(ElementType.TIME_INTERVAL, UmlMetaclass.TIME_INTERVAL);
+        roots(ElementType.INTERVAL_CONSTRAINT, UmlMetaclass.INTERVAL_CONSTRAINT);
+        roots(ElementType.DURATION_CONSTRAINT, UmlMetaclass.DURATION_CONSTRAINT);
+        roots(ElementType.TIME_CONSTRAINT, UmlMetaclass.TIME_CONSTRAINT);
+        roots(ElementType.SIGNAL_EVENT, UmlMetaclass.SIGNAL_EVENT);
+        roots(ElementType.CALL_EVENT, UmlMetaclass.CALL_EVENT);
+        roots(ElementType.TIME_EVENT, UmlMetaclass.TIME_EVENT);
+        roots(ElementType.CHANGE_EVENT, UmlMetaclass.CHANGE_EVENT);
+        roots(ElementType.ANY_RECEIVE_EVENT, UmlMetaclass.ANY_RECEIVE_EVENT);
+        roots(ElementType.TRIGGER, UmlMetaclass.TRIGGER);
+        roots(ElementType.REGION, UmlMetaclass.REGION);
+        roots(ElementType.OPAQUE_ACTION, UmlMetaclass.OPAQUE_ACTION);
+        roots(ElementType.OUTPUT_PIN, UmlMetaclass.OUTPUT_PIN);
+        roots(ElementType.VARIABLE, UmlMetaclass.VARIABLE);
+        roots(ElementType.EXCEPTION_HANDLER, UmlMetaclass.EXCEPTION_HANDLER);
+        roots(ElementType.PROPERTY, UmlMetaclass.PROPERTY);
+        roots(ElementType.SLOT, UmlMetaclass.SLOT);
+        roots(ElementType.MESSAGE_OCCURRENCE_SPECIFICATION, UmlMetaclass.MESSAGE_OCCURRENCE_SPECIFICATION);
+        roots(ElementType.EXECUTION_OCCURRENCE_SPECIFICATION, UmlMetaclass.EXECUTION_OCCURRENCE_SPECIFICATION);
+        roots(ElementType.INTERACTION_OPERAND, UmlMetaclass.INTERACTION_OPERAND);
+        roots(ElementType.PART_DECOMPOSITION, UmlMetaclass.PART_DECOMPOSITION);
+        roots(ElementType.INTERACTION_CONSTRAINT, UmlMetaclass.INTERACTION_CONSTRAINT);
+        roots(ElementType.GENERAL_ORDERING, UmlMetaclass.GENERAL_ORDERING);
+
         /* ── RelationshipType → 元类链：关系与元素一样按规范铺开属性 ── */
         relationChain(RelationshipType.CONTAINMENT, UmlMetaclass.NAMED_ELEMENT);
         relationChain(RelationshipType.IMPORT, UmlMetaclass.PACKAGE_IMPORT, UmlMetaclass.NAMED_ELEMENT);
@@ -838,6 +1216,32 @@ public final class PropertyCatalog {
         relationChain(RelationshipType.REGION, UmlMetaclass.REGION, UmlMetaclass.NAMED_ELEMENT);
         relationChain(RelationshipType.INCLUDE, UmlMetaclass.INCLUDE, UmlMetaclass.NAMED_ELEMENT);
         relationChain(RelationshipType.EXTEND, UmlMetaclass.EXTEND, UmlMetaclass.NAMED_ELEMENT);
+
+        /* ── 依赖家族扩充：抽象 / 实现 / 接口实现 / 替换 / 使用 / 体现 ── */
+        relationChain(RelationshipType.ABSTRACTION,
+                UmlMetaclass.ABSTRACTION, UmlMetaclass.DEPENDENCY, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.REALIZATION,
+                UmlMetaclass.REALIZATION, UmlMetaclass.ABSTRACTION, UmlMetaclass.DEPENDENCY,
+                UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.INTERFACE_REALIZATION,
+                UmlMetaclass.INTERFACE_REALIZATION, UmlMetaclass.REALIZATION, UmlMetaclass.ABSTRACTION,
+                UmlMetaclass.DEPENDENCY, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.SUBSTITUTION,
+                UmlMetaclass.SUBSTITUTION, UmlMetaclass.REALIZATION, UmlMetaclass.ABSTRACTION,
+                UmlMetaclass.DEPENDENCY, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.USAGE,
+                UmlMetaclass.USAGE, UmlMetaclass.DEPENDENCY, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.MANIFESTATION,
+                UmlMetaclass.MANIFESTATION, UmlMetaclass.ABSTRACTION, UmlMetaclass.DEPENDENCY,
+                UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.INFORMATION_FLOW,
+                UmlMetaclass.INFORMATION_FLOW, UmlMetaclass.NAMED_ELEMENT);
+
+        /* ── 包机制扩充：包合并 / 剖面应用 ── */
+        relationChain(RelationshipType.PACKAGE_MERGE,
+                UmlMetaclass.PACKAGE_MERGE, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.PROFILE_APPLICATION,
+                UmlMetaclass.PROFILE_APPLICATION, UmlMetaclass.NAMED_ELEMENT);
     }
 
     private PropertyCatalog() {

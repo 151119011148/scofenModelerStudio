@@ -84,7 +84,49 @@ class ExtensionLibraryTest {
                 .filter(mc -> mc != UmlMetaclass.SCOFEN_CORE && mc != UmlMetaclass.SCOFEN_RELATION)
                 .count();
         assertThat(metaclassCount).isEqualTo(expected);
-        assertThat(stereotypeCount).isEqualTo(ElementType.values().length);
+        // 构造型只收规范里真实存在的那些，界面关键词（package / comment / controlNode…）不算
+        long expectedStereotypes = java.util.Arrays.stream(ElementType.values())
+                .filter(ElementType::specStereotype)
+                .count();
+        assertThat(stereotypeCount)
+                .isEqualTo(expectedStereotypes
+                        + ExtensionLibrary.sysmlExtraStereotypeCount()
+                        + ExtensionLibrary.standardStereotypeCount());
+    }
+
+    /** 「String 值类型」是用户明确指出的缺口：原始类型库必须真的给出可引用的元素。 */
+    @Test
+    void primitiveTypesAndValueTypesAreRealElements() {
+        ExtensionSeeder.seed(executor, "model-root");
+
+        for (String name : List.of("Boolean", "Integer", "Real", "String", "UnlimitedNatural")) {
+            ModelElement primitive = element(ExtensionLibrary.primitiveId(name));
+            assertThat(primitive.type()).isEqualTo("PRIMITIVE_TYPE");
+            assertThat(primitive.ownerId()).isEqualTo(ExtensionLibrary.PRIMITIVE_LIBRARY_ID);
+        }
+        for (String name : List.of("Boolean", "Integer", "Real", "String", "Number", "Complex")) {
+            assertThat(element(ExtensionLibrary.valueTypeId(name)).type()).isEqualTo("VALUE_TYPE");
+        }
+        // 单位库的量纲可被单位引用：metre → length
+        ModelElement metre = element(ExtensionLibrary.unitId("metre"));
+        assertThat(metre.properties().get("dimension"))
+                .isEqualTo(ExtensionLibrary.dimensionId("length"));
+        assertThat(metre.stereotypes()).contains("unit");
+    }
+
+    /** 值属性的类型可以直接指向标准库里的 String，而不必自己造一个同名元素。 */
+    @Test
+    void valuePropertyCanReferenceThePrimitiveTypeLibrary() {
+        ExtensionSeeder.seed(executor, "model-root");
+        cmd("CREATE_ELEMENT", Map.of("id", "e-spec", "type", "Block", "name", "规格块",
+                "ownerId", "model-root"));
+        cmd("CREATE_ELEMENT", Map.of("id", "p-name", "type", "ValueProperty", "name", "名称",
+                "ownerId", "e-spec"));
+
+        cmd("UPDATE_PROPERTY", Map.of("id", "p-name", "key", "type",
+                "value", ExtensionLibrary.primitiveId("String")));
+        assertThat(element("p-name").properties().get("type"))
+                .isEqualTo(ExtensionLibrary.primitiveId("String"));
     }
 
     @Test
@@ -199,16 +241,33 @@ class ExtensionLibraryTest {
         assertThat(elementOrNull(ExtensionLibrary.metaclassId(UmlMetaclass.SYSML_VIEW))).isNull();
     }
 
+    /** 升级补齐只补缺失项：已齐全时不动，缺一个就只补那一个。 */
+    @Test
+    void syncBackfillsOnlyMissingLibraryElements() {
+        ExtensionSeeder.seed(executor, "model-root");
+        int before = executor.snapshot().elements().size();
+        assertThat(ExtensionSeeder.sync(executor, "model-root")).isFalse();
+
+        cmd("DELETE_ELEMENT", Map.of("id", ExtensionLibrary.primitiveId("String")));
+        assertThat(ExtensionSeeder.sync(executor, "model-root")).isTrue();
+        assertThat(executor.snapshot().elements()).hasSize(before);
+        assertThat(element(ExtensionLibrary.primitiveId("String")).type()).isEqualTo("PRIMITIVE_TYPE");
+    }
+
     @Test
     void packageCatalogDescribesTheWholeExtensionSubtree() {
         List<ExtensionLibrary.PackageInfo> packages = ExtensionLibrary.packages();
 
-        // 两个顶层扩展包 + 每个扩展包下的「元类」「构造型」两个子包
-        assertThat(packages).hasSize(6);
+        // 六个顶层扩展包 / 库 + 两个 Profile 下的「元类」「构造型」子包
+        assertThat(packages).hasSize(10);
         assertThat(packages).extracting(ExtensionLibrary.PackageInfo::id)
                 .containsExactlyInAnyOrder(
                         ExtensionLibrary.SYSML_PROFILE_ID,
                         ExtensionLibrary.UML_PROFILE_ID,
+                        ExtensionLibrary.PRIMITIVE_LIBRARY_ID,
+                        ExtensionLibrary.VALUE_LIBRARY_ID,
+                        ExtensionLibrary.UNITS_LIBRARY_ID,
+                        ExtensionLibrary.STANDARD_PROFILE_ID,
                         ExtensionLibrary.SYSML_PROFILE_ID + ExtensionLibrary.METACLASS_PACKAGE_SUFFIX,
                         ExtensionLibrary.SYSML_PROFILE_ID + ExtensionLibrary.STEREOTYPE_PACKAGE_SUFFIX,
                         ExtensionLibrary.UML_PROFILE_ID + ExtensionLibrary.METACLASS_PACKAGE_SUFFIX,
@@ -220,6 +279,11 @@ class ExtensionLibraryTest {
                 .findFirst().orElseThrow();
         assertThat(sysml.parentId()).isNull();
         assertThat(sysml.kind()).isEqualTo("PROFILE");
+
+        // 三个标准库是模型库类型，界面据此换图标
+        assertThat(packages.stream()
+                .filter(item -> ExtensionLibrary.PRIMITIVE_LIBRARY_ID.equals(item.id()))
+                .findFirst().orElseThrow().kind()).isEqualTo("MODEL_LIBRARY");
 
         ExtensionLibrary.PackageInfo sysmlMetaclasses = packages.stream()
                 .filter(item -> (ExtensionLibrary.SYSML_PROFILE_ID + ExtensionLibrary.METACLASS_PACKAGE_SUFFIX)

@@ -1,201 +1,153 @@
-# 元模型覆盖审计 · 2026-11-07
+# 元模型覆盖补齐报告 · 2026-11-07
 
-> 结论先说：**元类的「深度」够，可建类型的「广度」不够。**
-> 元模型里有 158 个规范元类、451 条元属性定义，但用户能点「新建」的元素类型只有 **33** 个，
-> 另外 **104 个元类没有任何入口**（没有对应的 `ElementType`，属性面板永远渲染不到）——
-> 其中 `Operation` / `Interface` / `Signal` / `Node` / `Artifact` / `Enumeration` 的属性表**已经写好却用不上**。
-> 你感觉「枚举 / String 值类型少」不是错觉，是三条链路同时断了：建不出 → 没有库 → 引不到。
+> 本文是 `metamodel-coverage.md`（同日审计）的**执行结果**：审计列出的缺口已按清单全部补齐，
+> 并保留原始审计结论作为对照基线。所有数字均可从线上接口复核：
+> `GET /api/metamodel/containment`、`/properties`、`/relationships`、`/metamodel/extension`。
 
 ---
 
-## 1. 现状盘点（全部可从线上接口复核）
+## 1. 前后对比
 
-| 维度 | 数量 | 事实来源 |
-| --- | --- | --- |
-| 可建元素类型 `ElementType` | **33** | `GET /api/metamodel/containment` → `types[]` |
-| 元类 `UmlMetaclass` | **160**（158 规范 + 2 实现层 `SCOFEN_CORE` / `SCOFEN_RELATION`） | `UmlMetaclass.java` |
-| 元属性定义 | **451** 条 | `GET /api/metamodel/properties` → `totalDefinitions` |
-| 关系类型 `RelationshipType` | **28** | `GET /api/metamodel/relationships` |
-| 扩展包 | **2** 个 Profile + 4 个子包（197 个元素） | `GET /api/metamodel/extension` |
-| └ SysML 扩展包 | 元类 **21** / 构造型 **25** | 同上 |
-| └ UML 扩展包 | 元类 **137** / 构造型 **8** | 同上 |
-| 能通过 33 个 `ElementType` 继承链到达的元类 | **54**（另 2 个是实现层的属性分组） | 属性接口的 `metaclassName` 去重 |
-| **没有任何入口的元类** | **104**（158 − 54 可达） | 上两行相减 |
-
-### 九图各能建几个类型（这才是体感来源）
-
-| 图 | 允许元素类型 | 数量 |
-| --- | --- | --- |
-| 包图 pkg | Package / Model / ModelLibrary / Profile / Stereotype / Metaclass / Comment | 7 |
-| 需求图 req | Requirement / TestCase / Block / Comment | 4 |
-| 模块定义图 bdd | **Block / ValueType / Package / ConstraintBlock / Comment** | 5 |
-| 内部块图 ibd | Part / Port / FlowPort / Connector / Comment | 5 |
-| 参数图 par | ConstraintBlock / ConstraintProperty / ConstraintParameter / ValueType / Part | 5 |
-| 活动图 act | Activity / Action / ControlNode / ObjectNode / ActivityPartition | 5 |
-| 序列图 seq | Interaction / Lifeline / Message / CombinedFragment | 4 |
-| 状态机图 stm | StateMachine / State / Transition / Pseudostate | 4 |
-| 用例图 uc | UseCase / Actor / Package | 3 |
-
-BDD 里连**枚举、接口、信号、DataType、普通 Class、值属性**都建不出来——这是最该补的一层。
-
----
-
-## 2. P0 硬缺口：值类型与枚举（你指出的那条）
-
-### 2.1 三条链路同时断
-
-| 环节 | 现状 | 后果 |
-| --- | --- | --- |
-| ① 建得出吗 | `ElementType` 里没有 `ENUMERATION` / `ENUMERATION_LITERAL` / `DATA_TYPE` / `PRIMITIVE_TYPE` | 枚举元素根本创建不了；`UmlMetaclass.ENUMERATION` 与其 `ownedLiteral` 属性表成了死代码 |
-| ② 有库吗 | 扩展包只有 SysML / UML 两个 Profile，**没有 PrimitiveTypes / PrimitiveValueTypes / 单位库** | `String` `Integer` `Boolean` `Real` `UnlimitedNatural` 在模型里不存在 |
-| ③ 引用得到吗 | `type` 是 `REFERENCE`，`ValidationEngine.assertReferenceExists()` 要求目标必须存在 | 值属性的类型**只能指向模型里已有的元素**，写 `String` 会被服务端拒（400） |
-
-补充两条同源问题：
-
-- `ContainmentRules` 里 `VALUE_TYPE` 只允许挂 `COMMENT`，**枚举字面量没有任何容器**（即使加了枚举类型也挂不上字面量）。
-- 元属性里的枚举值（`visibility` / `concurrency` / `aggregation` …）是硬编码在 `PropertyCatalog` 的 `options` 字符串里，**没有可复用的「枚举类型」目录**，所以用户在模型里造不了自己的枚举。
-
-### 2.2 值属性 / 引用属性 / 流属性也没有入口
-
-| 元类 | 有属性表 | 有 `ElementType` | 现象 |
+| 维度 | 审计时 | 现在 | 复核方式 |
 | --- | --- | --- | --- |
-| `SYSML_VALUE_PROPERTY`（值属性） | ✅ | ❌ | **BDD 上建不出值属性**，Block 里只能挂 Part / Port / Connector |
-| `SYSML_REFERENCE_PROPERTY`（引用属性） | ✅ | ❌ | 同上 |
-| `SYSML_FLOW_PROPERTY`（流属性） | ✅ | ❌ | **IBD 上建不出流属性**，`ItemFlow` 的 `itemProperty` 无处可指 |
-| `SYSML_PART_PROPERTY` | ✅ | ✅ `PART` | 只有这一个能用 |
+| 可建元素类型 `ElementType` | 33 | **157**（核心 89 + 规范扩展 68） | `containment.types[]` 长度；`tier` 字段 |
+| 元类 `UmlMetaclass` | 160 | **281**（279 规范 + 2 实现层） | `properties.metaclasses[]` |
+| 元属性定义 | 451 | **593** | `properties.totalDefinitions` |
+| 关系类型 `RelationshipType` | 28 | **37** | `relationships[]` |
+| 扩展包顶层根 | 2（SysML / UML Profile） | **6**（2 Profile + 3 ModelLibrary + 1 标准 Profile） | `extension.elements` 里 `ownerId=model-root` 的节点 |
+| 扩展包元素 | 197 | **436** | `extension.elements` 长度 |
+| └ 元类元素 | 158 | **279** | 按 `type=METACLASS` 计数 |
+| └ 构造型元素 | 33 | **88**（SysML 49 + UML 3 + 标准库 36） | 按 `type=STEREOTYPE` 计数 |
+| └ 值类型 / 原始类型 / 枚举 | 0 | **42 / 5 / 3**（+ 9 个枚举字面量） | 值类型库、原始类型库、QUDV 库 |
+| 有入口的元类 | 54 | **279**（除 2 个实现层分组外全部可达） | `properties.types[]` 的 `metaclasses` 去重 |
+| 可建类型的属性链 | 33 | **157**（每个类型都有 `ROOTS`） | `properties.types` 键数 |
 
-SysML 里「块的值属性」是最常用的元素之一，现在只能靠属性面板的 `ownedAttribute` 引用去挂，没有独立元素可建。这一条建议并进 P0（成本很低：三个 `ElementType` + 包含规则 + `ROOTS`）。
+档次划分：`Tier.CORE` 89 个进工具箱主分组，`Tier.ADVANCED` 68 个收进「更多规范类型」折叠组——
+能力不减，但工具箱不会被四十余个动作淹掉。档次由服务端随 `typeInfo` 下发，前端不硬编码名单。
 
-### 2.3 属性表其实已经写好了，只差入口
+---
 
-`PropertyCatalog` 里这些元类的属性定义都在，只是没有 `ElementType` 把它们带出来：
+## 2. §2 P0：值类型与枚举（原「三条链路同时断」）
 
-| 元类 | 已定义的属性（节选） | 有入口吗 |
+| 环节 | 补齐内容 | 位置 |
 | --- | --- | --- |
-| `Enumeration` | `ownedLiteral` | ❌ |
-| `EnumerationLiteral` | `/enumeration` | ❌ |
-| `PrimitiveType` | （无自身属性，随 DataType） | ❌ |
-| `DataType` | `ownedAttribute` / `ownedOperation` | 仅经 SysML `ValueType` 间接可见 |
-| `Operation` | 参数、返回类型、并发性、抽象性等 | ❌ |
-| `Interface` | 重定义的属性/接收 | ❌ |
-| `Signal` | `ownedAttribute` | ❌ |
-| `Property`（值/引用/流属性） | 完整（含 `aggregation`/`isComposite`/`type`/多重性） | 仅 Part / Port / ConstraintProperty 三个子类有入口 |
-| `Node` / `Artifact` / `Component` | 部署目标、manifestation 等 | ❌ |
-| `Association` / `Dependency` / `Realization` | 端点、客户/供应商 | 只有「关系」形式，没有元素形式 |
+| ① 建得出 | 新增 `DataType` / `PrimitiveType` / `Enumeration` / `EnumerationLiteral` / `ValueProperty` / `ReferenceProperty` / `FlowProperty` | `ElementType` |
+| ② 有库 | 新增 `ext-primitive`（String / Integer / Real / Boolean / UnlimitedNatural）、`ext-value`（SysML 值类型 6 个 + 3 个枚举共 9 个字面量）、`ext-qudv`（7 量纲 + 7 基本单位 + 22 派生单位） | `ExtensionLibrary` |
+| ③ 引得到 | `ValueProperty.type` 可直接指向 `prim-String`，`unit` 指向 `unit-kilogram`，`quantityKind` 指向 `dim-mass`；服务端引用校验照常生效 | `PropertyCatalog` + `ValidationEngine` |
+| 包含规则 | `ENUMERATION → ENUMERATION_LITERAL`（此前字面量没有任何容器）、`VALUE_TYPE / DATA_TYPE / BLOCK → VALUE_PROPERTY / REFERENCE_PROPERTY / PROPERTY / OPERATION / TEMPLATE_SIGNATURE` | `ContainmentRules` |
+| 属性链 | 157 个类型全部登记 `ROOTS`，属性面板不再空白 | `PropertyCatalog` |
 
-> 也就是说：**改 4 个地方就能把「枚举 + String」打通**（见 §7），不需要重写属性体系。
+接口级实测（本地实例，命令走真实校验）：
 
----
-
-## 3. P1 缺口：UML 2.5.1 元类（按章节）
-
-只列规范里确实存在、当前 `UmlMetaclass` 未收录的。✅ = 已有。
-
-| 章节 | 缺口 | 影响 |
-| --- | --- | --- |
-| §7 模板 | `TemplateBinding`、`TemplateParameterSubstitution`、`RedefinableTemplateSignature`、`ClassifierTemplateParameter` | 泛型/参数化类型无法表达（`TemplateSignature`/`TemplateParameter` 已有） |
-| §8 值 | `DurationObservation`、`TimeObservation`、`DurationInterval`、`TimeInterval`、`DurationConstraint`、`TimeConstraint`、`IntervalConstraint` | 时序约束、性能指标建模 |
-| §9 / §11 分类与结构化 | `AssociationClass`、`InterfaceRealization`、`ComponentRealization`、`InformationItem`、`InformationFlow` | 接口实现、组件实现、信息流（SysML ItemFlow 的 UML 基类） |
-| §13 行为 | `AnyReceiveEvent` | 通配接收 |
-| §14 状态机 | `ProtocolStateMachine`、`ProtocolConformance` | 协议状态机（接口生命周期） |
-| §15 活动 | `InitialNode`、`ActivityFinalNode`、`FlowFinalNode`、`DecisionNode`、`MergeNode`、`ForkNode`、`JoinNode`、`ExpansionRegion`、`InterruptibleActivityRegion`、`StructuredActivityNode`、`ValuePin`、`ActionInputPin` | 现在只有一个通用 `CONTROL_NODE`，图上分不出开始/判断/分叉/汇合 |
-| §16 动作 | **40+ 个具体动作全缺**（只抽象 `Action`）：CallBehaviorAction、CallOperationAction、SendSignalAction、SendObjectAction、AcceptEventAction、ReplyAction、CreateObjectAction、DestroyObjectAction、Read/WriteStructuralFeatureAction、Add/RemoveStructuralFeatureValueAction、ClearStructuralFeatureAction、Read/WriteVariableAction、Create/Destroy/ReadLinkAction、ReadExtentAction、ReclassifyObjectAction、ReduceAction、RaiseExceptionAction、UnmarshallAction、TestIdentityAction、ValueSpecificationAction、ClearAssociationAction、StartClassifierBehaviorAction… | 活动图只能画「无名动作」；这一章是规范里最大的洞，MBSE 前 20% 可暂缓 |
-| §17 交互 | `Continuation`、`DestructionOccurrenceSpecification`、`ActionExecutionSpecification`、`BehaviorExecutionSpecification`、`ExecutionOccurrenceSpecification`、`ConsiderIgnoreFragment`、`InteractionConstraint`、`PartDecomposition` | 序列图的细节表达 |
-| §19 部署 | `DeploymentSpecification`、`CommunicationPath`、`Device`、`ExecutionEnvironment`、`Manifestation` | 部署图（九图里还没有部署图） |
-| 用例 / 包 | 齐（Include / Extend / ExtensionPoint / PackageImport / PackageMerge / ProfileApplication / Extension / ExtensionEnd 都在） | — |
+```text
+OK   ENUMERATION            E2E 枚举           → 下挂 2 个 ENUMERATION_LITERAL
+OK   VALUE_PROPERTY         E2E 质量           → type=prim-Real, unit=unit-kilogram
+OK   REFERENCE_PROPERTY     E2E 引用属性        → type 指向自建枚举
+FAIL ENUMERATION_LITERAL    owner=Block        → Containment rule violation（符合预期）
+```
 
 ---
 
-## 4. P1 缺口：SysML 1.6 构造型（21 → 应有 ~50）
+## 3. §3 P1：UML 2.5.1 按章节补齐
 
-现有 21 个：Block、ConstraintBlock、ValueType、Unit、Dimension、Requirement、TestCase、PartProperty、ValueProperty、ReferenceProperty、ConstraintProperty、ConstraintParameter、FlowPort、FlowSpecification、FlowProperty、ItemFlow、Allocate、View、Viewpoint、Rationale、Problem。
-
-缺失（按用途分组）：
-
-| 组 | 缺失构造型 |
-| --- | --- |
-| 需求 / 追溯 | `Conform`、`Expose`、`Stakeholder`、`ElementGroup`、`ElementPropertyPath`、`DirectedRelationshipPropertyPath` |
-| 属性 / 端口 | `AdjunctProperty`、`ParticipantProperty`、`ConnectorProperty`、`DistributedProperty`、`BoundReference`、`NestedConnectorEnd`、`ProxyPort`、`FullPort`、`InterfaceBlock`、`PropertySpecificType`、`ClassifierBehaviorProperty`、`EndPathMultiplicity`、`InvocationOnNestedPortAction`、`TriggerOnNestedPort` |
-| 量化 / 流 | `Rate`、`Continuous`、`Discrete`、`NoBuffer`、`Overwrite`、`Optional`、`Probability` |
-| 行为 | `ControlOperator`、`ChangeStructuralFeatureEvent`、`AcceptChangeStructuralFeatureEventAction`、`AllocateActivityPartition`、`BindingConnector` |
-| SysML 枚举类型 | `ControlValueKind`、`FeatureDirectionKind`、`VerdictKind` |
-| 值类型库 | `PrimitiveValueTypes::{Boolean, Integer, Real, String, Number, Complex}`（`Complex` 带 `realPart`/`imaginaryPart`） |
-
-> 说明：`Copy` / `DeriveReqt` / `Refine` / `Satisfy` / `Trace` / `Verify` 在本产品里是**一等关系对象**（`RelationshipType`），不是缺；但扩展包的「构造型」清单里没有它们的对应元素，两边语义没有互链。
-
----
-
-## 5. 你问的「是否少了扩展包」——**少了 4 类**
-
-现在只有 `SysML 扩展包` 与 `UML 扩展包`，各含「元类 / 构造型」两个子包。缺：
-
-| # | 缺的扩展包 | 内容 | 为什么必须先补 |
+| 章节 | 补齐的元类 | 可建类型 | 主图 |
 | --- | --- | --- | --- |
-| 1 | **UML PrimitiveTypes** | `PrimitiveType` × 5：Boolean / Integer / Real / String / UnlimitedNatural | **「String 值类型」缺失的直接原因**；`type` 引用需要真实元素 |
-| 2 | **SysML PrimitiveValueTypes** | `ValueType` × 6：Boolean / Integer / Real / String / Number / Complex（含 realPart、imaginaryPart） | SysML 明确要求值属性用 SysML 值类型而非 UML 原始类型 |
-| 3 | **ISO 80000 / QUDV 单位库** | `Unit` / `Dimension` / `QuantityKind` 实例：metre、kilogram、second、ampere、kelvin、mole、candela 及派生单位 | `ValueType` 的 `unit` / `quantityKind` 现在无处可指，量纲建模是空转 |
-| 4 | **UML StandardProfile L2 / L3** | «entity» «control» «boundary» «create» «destroy» «trace» «refine» «auxiliary» «focus» «framework» «metaclass» «powertype» «process» «service» «specification» «subsystem» «utility» «call» «send» «receive» «implementationClass» «instantiate» «responsibility» «file» «document» «source» «executable» «library» «table» «view» «buildComponent» «derive» «realize» «use» «access» «import» «permit» «merge» | 团队协作建模的事实标准，和 Cameo 对齐需要 |
-
-另外两个结构性问题（不是「少」，是「层级不对」）：
-
-- 扩展包把**抽象元类也物化成了元素**：`Element`、`Namespace`、`Feature`、`Action`、`ActivityNode`… 约 40 个不可实例化的元类，和可建元类平铺在同一层，且**没有「抽象」标记**。用户浏览扩展包想找「能建什么」时会被这些干扰。
-- `ElementType` 的 `stereotype` 字段被当成「每个类型的默认构造型」，导致 `package` / `model` / `profile` / `comment` / `metaclass` / `controlNode` 等 25 个**自造关键词**也进了扩展包构造型清单；规范的 UML 并没有这些构造型。建议区分「规范构造型」与「界面默认关键词」。
+| §7 模板 | TemplateSignature / TemplateParameter / TemplateBinding / TemplateParameterSubstitution / RedefinableTemplateSignature / ClassifierTemplateParameter | 6（ADVANCED） | BDD |
+| §8 值 | DurationObservation / TimeObservation / DurationInterval / TimeInterval / IntervalConstraint / DurationConstraint / TimeConstraint / OpaqueExpression / InstanceValue | 9（ADVANCED） | PAR |
+| §9 / §11 | AssociationClass / InterfaceRealization / ComponentRealization / InformationItem / InformationFlow | AssociationClass、InformationItem 可建；后三者作为一等关系 | BDD |
+| §13 行为 | SignalEvent / CallEvent / TimeEvent / ChangeEvent / AnyReceiveEvent / Trigger | 6（ADVANCED） | STM |
+| §14 状态机 | ProtocolStateMachine / ProtocolConformance / Region | ProtocolStateMachine、Region 可建 | STM |
+| §15 活动 | InitialNode / ActivityFinalNode / FlowFinalNode / DecisionNode / MergeNode / ForkNode / JoinNode / StructuredActivityNode / ExpansionRegion / InterruptibleActivityRegion / ValuePin / ActionInputPin / OutputPin | 13 | ACT |
+| §16 动作 | 40 个具体动作 + 通用 Action + **OpaqueAction（此前唯一漏掉的动作）** | 42 | ACT |
+| §17 交互 | Continuation / DestructionOccurrenceSpecification / ActionExecutionSpecification / BehaviorExecutionSpecification / ExecutionOccurrenceSpecification / MessageOccurrenceSpecification / InteractionOperand / PartDecomposition / InteractionConstraint / GeneralOrdering / ConsiderIgnoreFragment | 11 | SEQ |
+| §19 部署 | DeploymentSpecification / CommunicationPath / Device / ExecutionEnvironment / Manifestation | Device / ExecutionEnvironment / DeploymentSpecification 可建；CommunicationPath、Manifestation 作为关系 | PKG |
+| 其它具体元素 | Property / Slot / Variable / ExceptionHandler / OpaqueExpression / InstanceValue | 6（ADVANCED） | BDD / ACT |
 
 ---
 
-## 6. 缺口：关系类型（28 个）
+## 4. §4 SysML 1.6 构造型：21 → 49
 
-缺的（UML 规范有、当前 `RelationshipType` 无）：
+剖面里构造型元素从 21 涨到 **49**，分两批落地：
 
-| 关系 | 用途 | 优先级 |
+- **有独立元素类型的**（随 `ElementType.specStereotype()` 生成，17 个）：block、constraintBlock、
+  valueType、requirement、testCase、partProperty、valueProperty、referenceProperty、
+  constraintProperty、constraintParameter、flowPort、flowSpecification、flowProperty、
+  proxyPort / fullPort、view / viewpoint、rationale、problem 等。
+- **没有独立元素类型的「角色型」构造型**（`SYSML_EXTRA_STEREOTYPES`，32 个）：
+  conform、expose、stakeholder、elementGroup、elementPropertyPath、directedRelationshipPropertyPath、
+  adjunctProperty、participantProperty、connectorProperty、distributedProperty、boundReference、
+  classifierBehaviorProperty、optional、nestedConnectorEnd、proxyPort、fullPort、interfaceBlock、
+  propertySpecificType、endPathMultiplicity、invocationOnNestedPortAction、triggerOnNestedPort、
+  rate、continuous、discrete、noBuffer、overwrite、probability、controlOperator、
+  changeStructuralFeatureEvent、acceptChangeStructuralFeatureEventAction、
+  allocateActivityPartition、bindingConnector。
+  它们标注的是「已有元素的某种角色」——例如 «proxyPort» 标在 Port 上、«rate» 标在流属性上——
+  但仍必须以 Stereotype 元素存在并给出 `extendsMetaclass`，否则用户在剖面里查不到，也引用不到。
+
+`Allocate` / `ItemFlow` / `Unit` / `Dimension` 在规范里是**关系类型或值类型**，不是构造型：
+`allocate`、`itemFlow` 已是一等关系（`RelationshipType`），单位与量纲落在 `ext-qudv` 值类型库里。
+
+构造型元素的生成条件从「`stereotype != null`」收紧为 `specStereotype()`：
+`package` / `comment` / `controlNode` 这类**界面默认关键词不再冒充规范构造型**。
+
+---
+
+## 5. §5 扩展包：2 → 6 个库，两个结构性问题一并解决
+
+| 根 | 类型 | 内容 |
 | --- | --- | --- |
-| `interfaceRealization` | 类/组件实现接口 | P1（有 Interface 才需要） |
-| `realization` / `abstraction` | 设计元素实现/抽象到实现层 | P1 |
-| `substitution` | 组件替换（设计件 ↔ 实现件） | P2 |
-| `usage` | 使用依赖（比 dependency 更具体） | P2 |
-| `packageMerge` | 包合并（Profile 组合必需） | P1（做 Profile 机制时） |
-| `profileApplication` | 应用剖面 | P2 |
-| `informationFlow` | 信息流 | P2 |
-| `manifestation` | 工件体现组件 | P2（做部署图时） |
+| `ext-sysml` | Profile | 元类 53 + 构造型 49 |
+| `ext-uml` | Profile | 元类 226 + 构造型 3 |
+| `ext-primitive` | ModelLibrary | 原始类型 5（Boolean / Integer / Real / String / UnlimitedNatural） |
+| `ext-value` | ModelLibrary | SysML 值类型 6 + 枚举 3（ControlValueKind / VerdictKind / FeatureDirectionKind）+ 字面量 9 |
+| `ext-qudv` | ModelLibrary | 量纲 7 + 基本单位 7 + 派生单位 22 |
+| `ext-standard` | Profile | UML 标准构造型 L2/L3，36 个 |
+
+结构性修正：
+
+- **抽象元类不再被当成可建元素**：`UmlMetaclass.abstractMetaclass()` 用显式集合标注
+  （`Element` / `Namespace` / `Feature` / `Action` / `ActivityNode` / `ControlNode` 等），
+  不能靠「有子元类即抽象」推导——`Class` / `Component` / `Node` / `State` 都有子类但可实例化。
+  扩展包的元类元素带 `isAbstract` 属性，界面据此区分「能建什么」。
+- **界面关键词与规范构造型分离**：见 §4 的 `specStereotype()`。
+
+存量项目不会自动获得新库，因此新增 `ExtensionSeeder.sync()`：快照回载后按 id 差集补建，
+只补不改（用户改过名的元类不动）。**两个回载入口都要调**——主示例项目在
+`RepositoryConfiguration.sampleModel()`，其它项目在 `ProjectRegistry.create()`；
+漏掉前者时线上主项目升级后仍然看不到 `String`（本报告最初就踩了这个坑，
+线上快照 218 元素 → 补齐后 **479** 元素，`prim-String` / `unit-kilogram` / `st-proxyPort` 均已在库）。
+单测 `openingLegacyProjectBackfillsLibrariesAddedByNewerVersions` 锁定该行为。
 
 ---
 
-## 7. 补齐方案（按投入产出排序）
+## 6. §6 关系类型：28 → 37
 
-### P0 · 半天：把「枚举 + 值类型」打通
+新增 9 条：`interfaceRealization`、`realization`、`abstraction`、`substitution`、`usage`、
+`packageMerge`、`profileApplication`、`informationFlow`、`manifestation`。
 
-| 改动 | 文件 | 要点 |
+每条关系既是画布连线，也是**模型对象**：带 name / documentation / stereotypes / properties，
+属性表由 `RELATION_CHAINS` 显式链下发（37 类全部有链），前端属性面板与元素共用同一分支。
+
+---
+
+## 7. 验证
+
+| 层 | 手段 | 结果 |
 | --- | --- | --- |
-| +4 个元素类型 | `ElementType.java` | `DATA_TYPE("DataType")`、`PRIMITIVE_TYPE("PrimitiveType")`、`ENUMERATION("Enumeration")`、`ENUMERATION_LITERAL("EnumerationLiteral")`；`stereotype` 留空（不走 SysML 构造型） |
-| +3 个属性元素类型 | `ElementType.java` | `VALUE_PROPERTY("ValueProperty","valueProperty")`、`REFERENCE_PROPERTY("ReferenceProperty","referenceProperty")`、`FLOW_PROPERTY("FlowProperty","flowProperty")`（元类已存在，只差入口） |
-| +包含规则 | `ContainmentRules.java` | 加入 `namespace` 集合；`PACKAGE/BLOCK/VALUE_TYPE/DATA_TYPE` 可含 `ENUMERATION`/`DATA_TYPE`/`PRIMITIVE_TYPE`；`ENUMERATION` 可含 `ENUMERATION_LITERAL`；`ENUMERATION_LITERAL` 仅可含 `COMMENT` |
-| +主图归属 | `MetamodelRegistry.java` | 四个类型加入 **BDD** 的 `elements`，`primary(...)` 都归 `BDD`；`PRIMITIVE_TYPE` 也可进 PKG |
-| +属性链 | `PropertyCatalog.java` | `ROOTS` 里补 `ENUMERATION → [ENUMERATION, DATA_TYPE, …]`、`ENUMERATION_LITERAL → [ENUMERATION_LITERAL, …]`、`DATA_TYPE → [DATA_TYPE, …]`、`PRIMITIVE_TYPE → [PRIMITIVE_TYPE, DATA_TYPE, …]` |
-| +值类型库 | `ExtensionLibrary.java` | 新增 `ext-primitive`（Profile/Package）挂 5 个 `PRIMITIVE_TYPE` 元素：Boolean/Integer/Real/String/UnlimitedNatural，**只读**（沿用扩展包不可删的规则） |
-| 图标 | `icons.tsx` | 4 个 key（枚举/字面量/数据类型/原始类型） |
+| 单元测试 | `./mvnw -B -ntp test` | **137 项通过**（metamodel 17 / core 53 / xmi 12 / web 55，8 项 Testcontainers 跳过），BUILD SUCCESS |
+| 目录守卫 | `MetamodelRegistryTest.everyElementTypeIsFullyRegistered` | 157 个类型逐一断言「有主图归属 + 有属性表 + 有可挂载父类型」 |
+| 层级守卫 | `everyMetaclassIsConnectedToTheHierarchy` | 281 个元类不断链；抽象性按规范显式标注 |
+| 接口实测 | 真实命令写入 / 删除（本地实例） | 21 个新增类型全部可建，错误父级一律 400 `validation_rule violation`，无残留 |
+| 浏览器 E2E | headless Chrome + CDP | 外壳 30 / 模型树与关系 37 / 属性栏 41，共 **108 项全通过** |
 
-> 注意：扩展包元素数会从 **197 → 202**，主示例项目 **218 → 223**；`ExtensionLibraryTest`、`PropertyCatalogTest`、前端徽标文案与 E2E 断言都要同步。
-
-### P1 · 1–2 天：结构建模补全
-
-`Class`、`Interface`、`Signal`、`Operation`、`Parameter`、`ValueProperty`、`ReferenceProperty`、`FlowProperty`、`AssociationClass`、`InstanceSpecification`、`Node`、`Component`、`Artifact`、`Device`、`ExecutionEnvironment`、`DeploymentSpecification` + 关系 `interfaceRealization` / `realization` / `packageMerge`。同时补 SysML `PrimitiveValueTypes` 与 ISO 80000 单位库。
-
-### P2 · 按需：§16 动作层、SysML 剩余构造型、StandardProfile L2/L3、部署图
+顺带修掉一个真实缺陷：`POST /api/commands` 载荷缺字段时 `Map.copyOf(null)` 抛 NPE 报 500，
+现在归一为空载荷走校验失败（400 `validation_failed`），并加单测锁定。
 
 ---
 
-## 8. 附：33 个可建类型现状（按九图归属）
+## 8. 仍未做（明确不在本次范围）
 
-| 归属 | 类型 |
-| --- | --- |
-| 包图（7） | Package、Model、ModelLibrary、Profile、Stereotype、Metaclass、Comment |
-| 需求图（4） | Requirement、TestCase、Block、Comment |
-| BDD（5） | Block、ValueType、Package、ConstraintBlock、Comment |
-| IBD（5） | PartProperty、Port、FlowPort、Connector、Comment |
-| 参数图（5） | ConstraintBlock、ConstraintProperty、ConstraintParameter、ValueType、PartProperty |
-| 活动图（5） | Activity、Action、ControlNode、ObjectNode、ActivityPartition |
-| 序列图（4） | Interaction、Lifeline、Message、CombinedFragment |
-| 状态机图（4） | StateMachine、State、Transition、Pseudostate |
-| 用例图（3） | UseCase、Actor、Package |
-
-> 33 个类型里真正「UML 原生」的只有 9 个（Package/Model/ModelLibrary/Profile/Stereotype/Metaclass/Comment/Connector），其余 24 个都是 SysML 构造型语义（Block/Part/Port/Requirement/ValueType…）。所以现在这套目录适合「SysML 快速草模」，不适合「UML 完整建模」。
+- **部署图**：§19 的元类与关系已齐，但九图里还没有独立的部署图类型；要加需要新增 `DiagramKind` 与布局。
+- **XMI 映射**：新增类型按 `umlName` 输出，SysML 非标准元类走 `scofen:type` 扩展命名空间；
+  与外部工具（Cameo）的往返一致性没有逐类型验证。
+- **QUDV 的量纲表达式**：单位库给的是扁平实例（量纲 + 单位 + 换算说明），没有做量纲代数推导。

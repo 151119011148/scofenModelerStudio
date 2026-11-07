@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ModelControllerTest {
 
@@ -130,5 +131,16 @@ class ModelControllerTest {
 
         assertThat(undone.revision()).isEqualTo(3L);
         assertThat(controller.model().elements().get(0).name()).isEqualTo("A");
+    }
+
+    /**
+     * 载荷缺失要走校验失败（400），不能因为 {@code Map.copyOf(null)} 抛 NPE 变成 500。
+     * 这是客户端能自查的错误，服务端不该报「内部错误」。
+     */
+    @Test
+    void missingPayloadIsAValidationFailureNotAServerError() {
+        assertThatThrownBy(() -> controller.commands(
+                new CommandRequest("CREATE_ELEMENT", null, 0L, "c-null"), "session-1"))
+                .isInstanceOf(ValidationException.class);
     }
 }

@@ -20,10 +20,19 @@ public enum RelationshipType {
     CONTAINMENT("containment", "包含", "Containment", "namespace"),
     IMPORT("import", "包导入", "Package Import", "namespace"),
     ACCESS("access", "包访问", "Package Access", "namespace"),
+    PACKAGE_MERGE("packageMerge", "包合并", "Package Merge", "namespace"),
+    PROFILE_APPLICATION("profileApplication", "剖面应用", "Profile Application", "namespace"),
     GENERALIZATION("generalization", "泛化", "Generalization", "structure"),
     // 关联 / 连接器 / 绑定本身没有固有方向：模型树会在两端元素下各挂一个「关系」虚拟节点。
     ASSOCIATION("association", "关联", "Association", "structure", false),
     DEPENDENCY("dependency", "依赖", "Dependency", "structure"),
+    ABSTRACTION("abstraction", "抽象", "Abstraction", "structure"),
+    REALIZATION("realization", "实现", "Realization", "structure"),
+    INTERFACE_REALIZATION("interfaceRealization", "接口实现", "Interface Realization", "structure"),
+    SUBSTITUTION("substitution", "替换", "Substitution", "structure"),
+    USAGE("usage", "使用", "Usage", "structure"),
+    INFORMATION_FLOW("informationFlow", "信息流", "Information Flow", "structure"),
+    MANIFESTATION("manifestation", "体现", "Manifestation", "structure"),
 
     // 需求追溯
     SATISFY("satisfy", "满足", "Satisfy", "requirement"),

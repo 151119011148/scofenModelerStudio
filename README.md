@@ -14,6 +14,8 @@
 |---|---|
 | 四对象分离 | `ModelElement` / `Relationship` / `Diagram(View)` / `Notation`，图只持有 id 引用 |
 | 九图注册表 | 表驱动的 9 种图规格、元素集合、校验分组；序列图指向专用 `Java SequenceLayout` |
+| 元模型覆盖 | 可建类型 **157**（核心 89 / 规范扩展 68，后者默认收在工具箱「更多规范类型」里）、元类 **281**、元属性定义 **593**、关系类型 **37**。UML 2.5.1 的 §7 模板、§8 观察与区间约束、§9/§11 关联类与接口实现、§13 事件、§14 协议状态机、§15 控制节点族与区域、§16 四十余个具体动作、§17 交互片段、§19 部署类全部有可建入口；SysML 1.6 剖面 **49** 个构造型 |
+| 扩展包六库 | 项目自带 6 个顶层扩展根：SysML / UML 两个 Profile，加 **UML 原始类型库**（Boolean / Integer / Real / String / UnlimitedNatural）、**SysML 值类型库**（含 ControlValueKind / VerdictKind / FeatureDirectionKind 三个枚举）、**ISO 80000 / QUDV 单位量纲库**（7 量纲 + 7 基本单位 + 22 派生单位）、**UML 标准构造型库 L2/L3**（36 个）。值属性的 `type` 可直接指向 `prim-String`，`unit` 可指向 `unit-kilogram`；存量项目首次打开时按 id 差集增量补齐 |
 | Command 协议 | `type / payload / baseRevision / clientCmdId` → 服务端校验 → 原子写 → `revision` / `seq` 递增 |
 | 乐观锁与幂等 | 过期 `baseRevision` 返回 409；重复 `clientCmdId` 不重复执行 |
 | Patch 广播 | `affectedIds` / `changes` / `inverse` / `validationDelta`，经 WebSocket 推给所有只读会话 |

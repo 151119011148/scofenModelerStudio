@@ -80,6 +80,13 @@ public class RepositoryConfiguration {
                         System.out.println("[scofen] 项目根已归一为 Package，project="
                                 + WorkspaceDirectory.CURRENT_PROJECT_ID);
                     }
+                    // 扩展包随版本演进：升级后新增的元类 / 构造型 / 原始类型库 / 单位库
+                    // 要给存量项目补齐一次——否则用户升级后仍然见不到 String 这类值类型。
+                    if (ExtensionSeeder.sync(executor, ProjectRoot.ID)) {
+                        persistence.save(executor.repository().snapshot());
+                        System.out.println("[scofen] 扩展包已补齐到当前版本，project="
+                                + WorkspaceDirectory.CURRENT_PROJECT_ID);
+                    }
                     return;
                 }
                 // 播种期间先摘掉持久化，避免每条种子命令都写一份整包快照。

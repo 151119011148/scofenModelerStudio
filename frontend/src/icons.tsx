@@ -67,6 +67,100 @@ const TYPE_META: Record<string, { family: string; glyph: string }> = {
   USE_CASE: { family: 'usecase', glyph: 'usecase' },
   ACTOR: { family: 'usecase', glyph: 'actor' },
   COMMENT: { family: 'annotation', glyph: 'comment' },
+
+  /* ── UML 分类器与特征（扩充类型） ── */
+  CLASS: { family: 'structure', glyph: 'block' },
+  INTERFACE: { family: 'structure', glyph: 'interface' },
+  SIGNAL: { family: 'structure', glyph: 'signal' },
+  DATA_TYPE: { family: 'structure', glyph: 'datatype' },
+  PRIMITIVE_TYPE: { family: 'structure', glyph: 'datatype' },
+  ENUMERATION: { family: 'structure', glyph: 'enum' },
+  ENUMERATION_LITERAL: { family: 'structure', glyph: 'enumlit' },
+  ASSOCIATION_CLASS: { family: 'structure', glyph: 'block' },
+  COMPONENT: { family: 'structure', glyph: 'component' },
+  COLLABORATION: { family: 'structure', glyph: 'collab' },
+  COLLABORATION_USE: { family: 'structure', glyph: 'collab' },
+  INFORMATION_ITEM: { family: 'structure', glyph: 'info' },
+  INSTANCE_SPECIFICATION: { family: 'structure', glyph: 'instance' },
+  OPERATION: { family: 'structure', glyph: 'operation' },
+  PARAMETER: { family: 'structure', glyph: 'parameter' },
+  RECEPTION: { family: 'structure', glyph: 'signal' },
+  NODE: { family: 'structure', glyph: 'node' },
+  DEVICE: { family: 'structure', glyph: 'node' },
+  EXECUTION_ENVIRONMENT: { family: 'structure', glyph: 'node' },
+  ARTIFACT: { family: 'structure', glyph: 'artifact' },
+  DEPLOYMENT_SPECIFICATION: { family: 'structure', glyph: 'artifact' },
+  VALUE_PROPERTY: { family: 'structure', glyph: 'part' },
+  REFERENCE_PROPERTY: { family: 'structure', glyph: 'part' },
+  FLOW_PROPERTY: { family: 'structure', glyph: 'flowport' },
+  FLOW_SPECIFICATION: { family: 'structure', glyph: 'interface' },
+  VIEW: { family: 'namespace', glyph: 'view' },
+  VIEWPOINT: { family: 'namespace', glyph: 'viewpoint' },
+  RATIONALE: { family: 'annotation', glyph: 'comment' },
+  PROBLEM: { family: 'annotation', glyph: 'comment' },
+
+  /* ── 活动控制节点（扩充类型） ── */
+  INITIAL_NODE: { family: 'activity', glyph: 'initial' },
+  ACTIVITY_FINAL_NODE: { family: 'activity', glyph: 'final' },
+  FLOW_FINAL_NODE: { family: 'activity', glyph: 'flowfinal' },
+  DECISION_NODE: { family: 'activity', glyph: 'decision' },
+  MERGE_NODE: { family: 'activity', glyph: 'merge' },
+  FORK_NODE: { family: 'activity', glyph: 'fork' },
+  JOIN_NODE: { family: 'activity', glyph: 'fork' },
+  DATA_STORE_NODE: { family: 'activity', glyph: 'object' },
+  CENTRAL_BUFFER_NODE: { family: 'activity', glyph: 'object' },
+  ACTIVITY_PARAMETER_NODE: { family: 'activity', glyph: 'object' },
+  STRUCTURED_ACTIVITY_NODE: { family: 'activity', glyph: 'structured' },
+  EXPANSION_REGION: { family: 'activity', glyph: 'structured' },
+  INTERRUPTIBLE_ACTIVITY_REGION: { family: 'activity', glyph: 'structured' },
+  VALUE_PIN: { family: 'activity', glyph: 'pin' },
+  ACTION_INPUT_PIN: { family: 'activity', glyph: 'pin' },
+
+  /* ── 交互 / 状态机（扩充类型） ── */
+  INTERACTION_USE: { family: 'interaction', glyph: 'fragment' },
+  STATE_INVARIANT: { family: 'interaction', glyph: 'invariant' },
+  CONTINUATION: { family: 'interaction', glyph: 'continuation' },
+  GATE: { family: 'interaction', glyph: 'gate' },
+  CONSIDER_IGNORE_FRAGMENT: { family: 'interaction', glyph: 'fragment' },
+  PROTOCOL_STATE_MACHINE: { family: 'state', glyph: 'stateMachine' },
+  FINAL_STATE: { family: 'state', glyph: 'finalState' },
+  CONNECTION_POINT_REFERENCE: { family: 'state', glyph: 'pseudostate' },
+
+  /* ── §7 模板 / §8 值规格与观察 / §13 事件 / §15-§17 细节 ── */
+  TEMPLATE_SIGNATURE: { family: 'structure', glyph: 'guillemet' },
+  REDEFINABLE_TEMPLATE_SIGNATURE: { family: 'structure', glyph: 'guillemet' },
+  TEMPLATE_PARAMETER: { family: 'structure', glyph: 'parameter' },
+  CLASSIFIER_TEMPLATE_PARAMETER: { family: 'structure', glyph: 'parameter' },
+  TEMPLATE_BINDING: { family: 'structure', glyph: 'guillemet' },
+  TEMPLATE_PARAMETER_SUBSTITUTION: { family: 'structure', glyph: 'guillemet' },
+  OPAQUE_EXPRESSION: { family: 'structure', glyph: 'constraint' },
+  INSTANCE_VALUE: { family: 'structure', glyph: 'instance' },
+  DURATION_OBSERVATION: { family: 'structure', glyph: 'invariant' },
+  TIME_OBSERVATION: { family: 'structure', glyph: 'invariant' },
+  DURATION_INTERVAL: { family: 'structure', glyph: 'invariant' },
+  TIME_INTERVAL: { family: 'structure', glyph: 'invariant' },
+  INTERVAL_CONSTRAINT: { family: 'structure', glyph: 'constraint' },
+  DURATION_CONSTRAINT: { family: 'structure', glyph: 'constraint' },
+  TIME_CONSTRAINT: { family: 'structure', glyph: 'constraint' },
+  PROPERTY: { family: 'structure', glyph: 'part' },
+  SLOT: { family: 'structure', glyph: 'instance' },
+  OPAQUE_ACTION: { family: 'activity', glyph: 'action' },
+  OUTPUT_PIN: { family: 'activity', glyph: 'pin' },
+  VARIABLE: { family: 'activity', glyph: 'object' },
+  EXCEPTION_HANDLER: { family: 'activity', glyph: 'control' },
+  MESSAGE_OCCURRENCE_SPECIFICATION: { family: 'interaction', glyph: 'execution' },
+  EXECUTION_OCCURRENCE_SPECIFICATION: { family: 'interaction', glyph: 'execution' },
+  INTERACTION_OPERAND: { family: 'interaction', glyph: 'fragment' },
+  PART_DECOMPOSITION: { family: 'interaction', glyph: 'execution' },
+  INTERACTION_CONSTRAINT: { family: 'interaction', glyph: 'invariant' },
+  GENERAL_ORDERING: { family: 'interaction', glyph: 'message' },
+  REGION: { family: 'state', glyph: 'stateMachine' },
+  TRIGGER: { family: 'state', glyph: 'transition' },
+  SIGNAL_EVENT: { family: 'state', glyph: 'transition' },
+  CALL_EVENT: { family: 'state', glyph: 'transition' },
+  TIME_EVENT: { family: 'state', glyph: 'transition' },
+  CHANGE_EVENT: { family: 'state', glyph: 'transition' },
+  ANY_RECEIVE_EVENT: { family: 'state', glyph: 'transition' },
 }
 
 /** 九大图各有独立字形与独立颜色，页签、模型树、工具箱组标题共用。 */
@@ -83,11 +177,23 @@ export const DIAGRAM_ICONS: Record<string, IconSpec> = {
 }
 
 export function familyOfType(code: string): string {
-  return TYPE_META[code]?.family ?? 'annotation'
+  return TYPE_META[code]?.family ?? patternMeta(code)?.family ?? 'annotation'
+}
+
+/**
+ * 按命名规律兜底：UML §16 有三十余个具体动作，逐个登记既啰嗦又容易漏。
+ * 后缀相同的类型共用族色与字形，界面仍然可辨（工具箱会分组显示全名）。
+ */
+function patternMeta(code: string): { family: string; glyph: string } | undefined {
+  if (code.endsWith('_OCCURRENCE_SPECIFICATION')) return { family: 'interaction', glyph: 'execution' }
+  if (code.endsWith('_EXECUTION_SPECIFICATION')) return { family: 'interaction', glyph: 'execution' }
+  if (code.endsWith('_ACTION')) return { family: 'activity', glyph: 'action' }
+  if (code.endsWith('_NODE')) return { family: 'activity', glyph: 'control' }
+  return undefined
 }
 
 export function typeIcon(code: string): IconSpec {
-  const meta = TYPE_META[code]
+  const meta = TYPE_META[code] ?? patternMeta(code)
   const family = FAMILIES.find((item) => item.key === meta?.family)
   return {
     glyph: meta?.glyph ?? 'default',
@@ -133,6 +239,15 @@ const RELATION_GLYPHS: Record<string, string> = {
   region: 'rel-dashed-open',
   include: 'rel-dashed-open',
   extend: 'rel-dashed-open',
+  abstraction: 'rel-dashed-open',
+  realization: 'rel-dashed-hollow',
+  interfacerealization: 'rel-dashed-hollow',
+  substitution: 'rel-dashed-hollow',
+  usage: 'rel-dashed-open',
+  packagemerge: 'rel-dashed-hollow',
+  profileapplication: 'rel-dashed-open',
+  informationflow: 'rel-solid-open',
+  manifestation: 'rel-dashed-hollow',
 }
 
 export function relationshipIcon(code: string): IconSpec {
@@ -328,6 +443,162 @@ function Glyph({ name }: { name: string }): ReactNode {
           <path d="M10.6 2.6v3h3" {...s} />
         </>
       )
+    // ── 扩充类型的专用字形：分类器 / 特征 / 部署 ──
+    case 'interface':
+      return (
+        <>
+          <path d="M2.6 8h5.4" {...s} />
+          <circle cx="10.6" cy="8" r="2.6" {...s} />
+        </>
+      )
+    case 'signal':
+      return <path d="M8 2.8L13.6 13.2H2.4z" {...s} />
+    case 'datatype':
+      return (
+        <>
+          <path d="M2.4 3h11.2v10H2.4z" {...s} />
+          <path d="M2.4 6.2h11.2M4.6 8.8h6.8M4.6 11h4" {...s} />
+        </>
+      )
+    case 'enum':
+      return (
+        <>
+          <path d="M2.4 3h11.2v10H2.4zM2.4 6.2h11.2" {...s} />
+          <circle cx="5" cy="8.6" r="0.95" fill="currentColor" />
+          <circle cx="8" cy="8.6" r="0.95" fill="currentColor" />
+          <circle cx="11" cy="8.6" r="0.95" fill="currentColor" />
+        </>
+      )
+    case 'enumlit':
+      return (
+        <>
+          <circle cx="4.6" cy="8" r="1.4" fill="currentColor" />
+          <path d="M7.2 8h6.2" {...s} />
+        </>
+      )
+    case 'component':
+      return (
+        <>
+          <path d="M4.6 3h9v10h-9z" {...s} />
+          <path d="M2.4 5.2h4.4v2.2H2.4zM2.4 8.6h4.4v2.2H2.4z" {...s} />
+        </>
+      )
+    case 'collab':
+      return <ellipse cx="8" cy="8" rx="6" ry="4.2" {...s} strokeDasharray="2.4 1.6" />
+    case 'info':
+      return (
+        <>
+          <path d="M2.4 3h11.2v10H2.4z" {...s} />
+          <circle cx="8" cy="8" r="1.9" {...s} />
+        </>
+      )
+    case 'instance':
+      return (
+        <>
+          <path d="M2.6 3.4h10.8v5.4H2.6z" {...s} />
+          <path d="M4.8 11.4h6.4" {...s} />
+        </>
+      )
+    case 'operation':
+      return <path d="M3 5h10M3 8h10M3 11h6" {...s} />
+    case 'parameter':
+      return (
+        <>
+          <path d="M2.6 8h4.8" {...s} />
+          <path d="M7.4 5.8L10 8l-2.6 2.2" {...s} />
+          <path d="M11.2 3.6v8.8" {...s} />
+        </>
+      )
+    case 'node':
+      return (
+        <>
+          <path d="M8 2.2l5.4 2.9v5.8L8 13.8l-5.4-2.9V5.1z" {...s} />
+          <path d="M2.6 5.1L8 8l5.4-2.9M8 8v5.8" {...s} />
+        </>
+      )
+    case 'artifact':
+      return (
+        <>
+          <path d="M3.2 2.4h6.2l3.4 3.4v7.8H3.2z" {...s} />
+          <path d="M9.4 2.4v3.4h3.4M5.4 9h5M5.4 11.2h3.4" {...s} />
+        </>
+      )
+    case 'view':
+      return (
+        <>
+          <path d="M1.8 8s2.6-3.8 6.2-3.8S14.2 8 14.2 8s-2.6 3.8-6.2 3.8S1.8 8 1.8 8z" {...s} />
+          <circle cx="8" cy="8" r="1.7" {...s} />
+        </>
+      )
+    case 'viewpoint':
+      return (
+        <>
+          <circle cx="8" cy="8" r="2.4" {...s} />
+          <path d="M8 1.9v1.7M8 12.4v1.7M1.9 8h1.7M12.4 8h1.7" {...s} />
+        </>
+      )
+    // ── 活动控制节点 ──
+    case 'initial':
+      return <circle cx="8" cy="8" r="3.7" fill="currentColor" />
+    case 'final':
+    case 'finalState':
+      return (
+        <>
+          <circle cx="8" cy="8" r="4.7" {...s} />
+          <circle cx="8" cy="8" r="2.4" fill="currentColor" />
+        </>
+      )
+    case 'flowfinal':
+      return (
+        <>
+          <circle cx="8" cy="8" r="4.7" {...s} />
+          <path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" {...s} />
+        </>
+      )
+    case 'decision':
+      return <path d="M8 2.6L13.2 8 8 13.4 2.8 8z" {...s} />
+    case 'merge':
+      return <path d="M8 3.4L12.4 8 8 12.6 3.6 8z" {...s} />
+    case 'fork':
+      return <path d="M2.6 6.3h10.8v3.4H2.6z" fill="currentColor" stroke="none" />
+    case 'structured':
+      return (
+        <>
+          <path d="M2.6 3h10.8v10H2.6zM2.6 6.1h10.8" {...s} strokeDasharray="2.4 1.6" />
+        </>
+      )
+    case 'pin':
+      return (
+        <>
+          <path d="M2.4 4.2h4.2v2.4H2.4zM2.4 9.4h4.2v2.4H2.4z" {...s} />
+          <path d="M6.6 5.4h5.6v5.2H6.6z" {...s} />
+        </>
+      )
+    // ── 交互 / 状态机细节 ──
+    case 'invariant':
+      return (
+        <>
+          <path d="M3 3.4h10v9.2H3z" {...s} />
+          <path d="M5.4 6.4h5.2M5.4 8.8h3.4" {...s} />
+        </>
+      )
+    case 'continuation':
+      return (
+        <>
+          <path d="M2.4 8h3.4" {...s} />
+          <circle cx="9" cy="8" r="2.8" {...s} />
+          <path d="M11.8 8h1.8" {...s} />
+        </>
+      )
+    case 'gate':
+      return (
+        <>
+          <path d="M2.4 8h3.6M10 8h3.6" {...s} />
+          <path d="M6 5.6h4v4.8H6z" {...s} />
+        </>
+      )
+    case 'execution':
+      return <path d="M6.6 3h2.8v10H6.6z" {...s} />
     case 'd-pkg':
       return (
         <>
@@ -432,6 +703,13 @@ function Glyph({ name }: { name: string }): ReactNode {
       return (
         <>
           <path d="M1.8 8h8.6" {...s} />
+          <path d="M10 4.9L14.2 8 10 11.1z" {...s} fill="#ffffff" />
+        </>
+      )
+    case 'rel-dashed-hollow':
+      return (
+        <>
+          <path d="M1.8 8h8.6" {...s} strokeDasharray="2.6 1.8" />
           <path d="M10 4.9L14.2 8 10 11.1z" {...s} fill="#ffffff" />
         </>
       )

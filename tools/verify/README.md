@@ -13,6 +13,27 @@
 | `tree-extensions-relations-e2e.mjs` | 模型树两项改造：扩展包开关默认隐藏 / 显示 / 刷新后持久化，静态目录独立下发、项目元素计数排除扩展包、虚拟分组可逐级展开且不与项目树混行；关系不再全局平铺，单向关系只挂源端、双向 `association` 在两端各挂一次（写入后 `DELETE_RELATIONSHIP` 清理并校验无残留）、虚拟节点可折叠、关系行可点选进属性窗口 |
 | `shell-ux-e2e.mjs` | 外壳与树形态：扩展包分组与项目根同缩进且不在根子树内、项目根可折叠并校验蓝色三角（`rgb(51,112,255)`）与 90° 旋转、两条分隔线用 CDP 真实鼠标事件拖宽并校验 localStorage 跨刷新保持、空间项目列表删除（主项目无删除按钮、删除当前项目自动切走、服务端目录无残留） |
 
+## 本地跑带子路径前缀的产物
+
+前端按 `SCOFEN_BASE=/scofen/modelerStudio/` 构建时，`index.html` 引用的是绝对路径
+`/scofen/modelerStudio/assets/*`，而本地 jar 开在根路径 → 直接访问会 404，E2E 连登录页都进不去。
+`local-prefix-proxy.mjs` 复刻线上 Nginx 的剥前缀转发（含 WebSocket 升级）：
+
+```bash
+# 终端 A：本地 jar（路由在前端构建前缀下）
+SCOFEN_AUTH_ADMIN_PASSWORD='<临时口令>' java -jar scofen-web/target/scofen-server.jar --server.port=18091
+
+# 终端 B：反代 18092 -> 18091
+node tools/verify/local-prefix-proxy.mjs
+
+# 终端 C：E2E 指到反代地址
+SCOFEN_PASSWORD='<临时口令>' \
+APP_URL='http://127.0.0.1:18092/scofen/modelerStudio/' \
+CDP_PORT=9444 node shell-ux-e2e.mjs
+```
+
+> 每个脚本要用**独立的 Chrome `--user-data-dir`**：上一次运行留下的登录态会让脚本找不到登录框。
+
 ## 运行
 
 Chrome 必须与 node 脚本在**同一次 Bash 调用**里启动：shell 调用一结束，

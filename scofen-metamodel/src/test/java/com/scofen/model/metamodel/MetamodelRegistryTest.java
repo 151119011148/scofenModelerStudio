@@ -95,6 +95,44 @@ class MetamodelRegistryTest {
                         .map(ExtensionLibrary.Definition::id).toList());
     }
 
+    /**
+     * 全量目录守卫：每个可建类型都必须同时具备「主图归属」「属性表」「挂载位置」。
+     *
+     * <p>新增类型时最容易漏的正是这三处——漏了主图归属，导入重排会丢元素；
+     * 漏了 ROOTS，属性面板空白；漏了包含规则，右键菜单建不出来。</p>
+     */
+    @Test
+    void everyElementTypeIsFullyRegistered() {
+        for (ElementType type : ElementType.values()) {
+            assertThat(MetamodelRegistry.primaryKind(type)).as("%s 缺少主图归属", type).isPresent();
+            assertThat(PropertyCatalog.forType(type)).as("%s 缺少属性表", type).isNotEmpty();
+            boolean placeable = ContainmentRules.isRootAllowed(type)
+                    || Arrays.stream(ElementType.values())
+                    .anyMatch(parent -> ContainmentRules.allows(parent, type));
+            assertThat(placeable).as("%s 没有可挂载的父类型", type).isTrue();
+        }
+    }
+
+    /** 每个规范元类都要么是顶层（Element），要么有父元类，不允许断链。 */
+    @Test
+    void everyMetaclassIsConnectedToTheHierarchy() {
+        for (UmlMetaclass metaclass : UmlMetaclass.values()) {
+            if (metaclass == UmlMetaclass.ELEMENT
+                    || metaclass == UmlMetaclass.SCOFEN_CORE
+                    || metaclass == UmlMetaclass.SCOFEN_RELATION) {
+                continue;
+            }
+            assertThat(metaclass.parents()).as("%s 缺少父元类", metaclass).isNotEmpty();
+        }
+        // 抽象性按规范显式标注：Class 有子类但可实例化，Action / ControlNode 才是抽象的。
+        assertThat(UmlMetaclass.ELEMENT.abstractMetaclass()).isTrue();
+        assertThat(UmlMetaclass.ACTION.abstractMetaclass()).isTrue();
+        assertThat(UmlMetaclass.CONTROL_NODE.abstractMetaclass()).isTrue();
+        assertThat(UmlMetaclass.CLASS.abstractMetaclass()).isFalse();
+        assertThat(UmlMetaclass.ENUMERATION.abstractMetaclass()).isFalse();
+        assertThat(UmlMetaclass.SCOFEN_CORE.abstractMetaclass()).isFalse();
+    }
+
     @Test
     void snapshotKeepsFourObjectSeparation() {
         ModelElement element = ModelElement.of("e-1", "Block", "A", null);

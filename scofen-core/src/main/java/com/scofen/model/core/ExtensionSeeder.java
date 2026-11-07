@@ -1,11 +1,14 @@
 package com.scofen.model.core;
 
 import com.scofen.model.metamodel.ExtensionLibrary;
+import com.scofen.model.metamodel.ModelElement;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 通用扩展包播种器：把 SysML / UML 的元类与构造型写进项目。
@@ -30,8 +33,39 @@ public final class ExtensionSeeder {
      * @param rootOwnerId  项目根元素 id
      */
     public static void seed(CommandExecutor executor, String rootOwnerId) {
+        executor.execute(SYSTEM_SESSION, Command.of("CREATE_ELEMENTS", executor.revision(),
+                "seed-extension-library", Map.of("elements", rows(rootOwnerId, Set.of()))));
+    }
+
+    /**
+     * 增量补齐：老快照里没有的元类 / 构造型 / 标准库补建一次。
+     *
+     * <p>扩展包随项目提供，但快照是版本相关的：升级后新增的元类、原始类型库、
+     * 单位量纲库不会自动出现在存量项目里。这里按 id 比对补建，
+     * 已存在的（包括用户改过名的）一律不动。</p>
+     *
+     * @return 是否真的补建了什么（调用方据此决定要不要重写快照）
+     */
+    public static boolean sync(CommandExecutor executor, String rootOwnerId) {
+        Set<String> existing = new HashSet<>();
+        for (ModelElement element : executor.snapshot().elements()) {
+            existing.add(element.id());
+        }
+        List<Map<String, Object>> missing = rows(rootOwnerId, existing);
+        if (missing.isEmpty()) {
+            return false;
+        }
+        executor.execute(SYSTEM_SESSION, Command.of("CREATE_ELEMENTS", executor.revision(),
+                "sync-extension-library", Map.of("elements", missing)));
+        return true;
+    }
+
+    private static List<Map<String, Object>> rows(String rootOwnerId, Set<String> skipIds) {
         List<Map<String, Object>> elements = new ArrayList<>();
         for (ExtensionLibrary.Definition definition : ExtensionLibrary.definitions(rootOwnerId)) {
+            if (skipIds.contains(definition.id())) {
+                continue;
+            }
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("id", definition.id());
             row.put("type", definition.type());
@@ -42,7 +76,6 @@ public final class ExtensionSeeder {
             row.put("properties", definition.properties());
             elements.add(row);
         }
-        executor.execute(SYSTEM_SESSION, Command.of("CREATE_ELEMENTS", executor.revision(),
-                "seed-extension-library", Map.of("elements", elements)));
+        return elements;
     }
 }

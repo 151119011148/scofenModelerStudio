@@ -114,6 +114,11 @@ public class ProjectRegistry {
                     persistence.save(repository.snapshot());
                     System.out.println("[scofen] 项目根已归一为 Package，project=" + projectId);
                 }
+                // 扩展包随版本演进：升级后新增的元类 / 构造型 / 标准库给存量项目补齐一次。
+                if (ExtensionSeeder.sync(executor, ProjectRoot.ID) && persistence.isEnabled()) {
+                    persistence.save(executor.snapshot());
+                    System.out.println("[scofen] 扩展包已补齐到当前版本，project=" + projectId);
+                }
                 executor.setPersistence(persistence);
                 return executor;
             }

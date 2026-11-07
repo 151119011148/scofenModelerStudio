@@ -591,11 +591,10 @@ public final class ValidationEngine {
      * 包内的元类、构造型仍可自行增删。</p>
      */
     private static void assertNotExtensionRoot(ModelElement element) {
-        if (ExtensionLibrary.SYSML_PROFILE_ID.equals(element.id())
-                || ExtensionLibrary.UML_PROFILE_ID.equals(element.id())) {
+        if (ExtensionLibrary.isRoot(element.id())) {
             throw new ValidationException(
-                    "通用扩展包不可删除：SysML / UML 的元类与构造型随项目提供，"
-                            + "如需裁剪请删除包内的具体元类或构造型。");
+                    "通用扩展包不可删除：SysML / UML 的元类、构造型与标准库随项目提供，"
+                            + "如需裁剪请删除包内的具体元类、构造型或类型。");
         }
     }
 

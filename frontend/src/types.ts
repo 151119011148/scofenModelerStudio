@@ -177,6 +177,11 @@ export interface ElementTypeInfo {
   label: string
   labelEn?: string
   stereotype: string
+  /**
+   * 类型档次：CORE 进工具箱主分组，ADVANCED（UML §16 具体动作）收在「更多规范类型」里。
+   * 缺省按 CORE 处理，兼容旧服务端。
+   */
+  tier?: 'CORE' | 'ADVANCED'
 }
 
 /** 通用扩展包：SysML / UML 的元类与构造型随每个项目提供。 */

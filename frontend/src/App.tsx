@@ -818,9 +818,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return map
   }, [extensionElements])
   const extensionRoots = useMemo(() => {
+    // 顶层扩展包与本标准库（原始类型 / 值类型 / 单位量纲 / 标准构造型）都是公共内容；
+    // 按「有没有父包」判断，不再只认 PROFILE——模型库同样是顶层节点。
     const rootIds = new Set(
       extensionPackages
-        .filter((item) => (item.kind ?? 'PROFILE') === 'PROFILE')
+        .filter((item) => !item.parentId)
         .map((item) => item.id),
     )
     return extensionElements.filter((element) => rootIds.has(element.id))
@@ -2810,16 +2812,40 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       .filter((item): item is ElementTypeInfo => item !== undefined),
     [activeSpec, typeInfo],
   )
+  /**
+   * 工具箱分组拆两层：核心类型直接铺开，规范全量类型（§16 具体动作）收进「更多」。
+   * 两档都由服务端下发 tier，前端不硬编码名单。
+   */
+  const corePalette = useMemo<ElementTypeInfo[]>(
+    () => paletteEntries.filter((item) => item.tier !== 'ADVANCED'),
+    [paletteEntries],
+  )
+  const advancedPalette = useMemo<ElementTypeInfo[]>(
+    () => paletteEntries.filter((item) => item.tier === 'ADVANCED'),
+    [paletteEntries],
+  )
   const elementGroups = useMemo(() => {
     const groups: { key: string; label: string; items: ElementTypeInfo[] }[] = []
     for (const family of FAMILIES) {
-      const items = paletteEntries.filter((item) => familyOfType(item.code) === family.key)
+      const items = corePalette.filter((item) => familyOfType(item.code) === family.key)
       if (items.length > 0) {
         groups.push({ key: family.key, label: pick(family.label, family.labelEn), items })
       }
     }
     return groups
-  }, [paletteEntries, locale])
+  }, [corePalette, locale])
+
+  /** 规范全量类型（UML §16 具体动作）：单独一组，默认收起。 */
+  const advancedGroups = useMemo(() => {
+    const groups: { key: string; label: string; items: ElementTypeInfo[] }[] = []
+    for (const family of FAMILIES) {
+      const items = advancedPalette.filter((item) => familyOfType(item.code) === family.key)
+      if (items.length > 0) {
+        groups.push({ key: family.key, label: pick(family.label, family.labelEn), items })
+      }
+    }
+    return groups
+  }, [advancedPalette, locale])
 
   const allRelations = useMemo(
     () => (relationCatalog.length > 0 ? relationCatalog : FALLBACK_RELATIONS),
@@ -4677,7 +4703,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   <button type="button" className="tb-group-head" onClick={() => toggleToolGroup('elements')}>
                     {activeDiagramKind && <DiagramIcon code={activeDiagramKind} size={16} />}
                     <span className="tb-group-label">{t('元素 · {label}', { label: activeSpec ? pick(activeSpec.label, activeSpec.labelEn) : t('当前图') })}</span>
-                    <span className="tb-count">{paletteEntries.length}</span>
+                    <span className="tb-count">{corePalette.length}</span>
                     <span className="tb-caret">{openToolGroups.has('elements') ? '⌄' : '›'}</span>
                   </button>
                   {openToolGroups.has('elements') && (
@@ -4708,10 +4734,56 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                           ))}
                         </div>
                       ))}
-                      <p className="tb-tip">{t('仅显示当前图允许的 {count} 类元素 · 点击 / 拖入画布', { count: paletteEntries.length })}</p>
+                      <p className="tb-tip">{t('仅显示当前图允许的 {count} 类元素 · 点击 / 拖入画布', { count: corePalette.length })}</p>
                     </div>
                   )}
                 </div>
+
+                {/*
+                  更多规范类型：UML 2.5.1 §16 有四十余个具体动作，全平铺会把工具箱淹掉。
+                  它们仍然可建、可校验、可导入导出，只是默认收起。
+                */}
+                {advancedGroups.length > 0 && (
+                  <div className={`tb-group ${openToolGroups.has('advanced') ? 'open' : ''}`}>
+                    <button type="button" className="tb-group-head" onClick={() => toggleToolGroup('advanced')}>
+                      <TypeIcon code="CALL_BEHAVIOR_ACTION" size={16} />
+                      <span className="tb-group-label">{t('更多规范类型')}</span>
+                      <span className="tb-count">{advancedPalette.length}</span>
+                      <span className="tb-caret">{openToolGroups.has('advanced') ? '⌄' : '›'}</span>
+                    </button>
+                    {openToolGroups.has('advanced') && (
+                      <div className="tb-items">
+                        {advancedGroups.map((group) => (
+                          <div className="tb-sect" key={`advanced:${group.key}`}>
+                            <div className="tb-sect-label">{group.label}</div>
+                            {group.items.map((type) => (
+                              <button
+                                key={type.code}
+                                type="button"
+                                className="tb-item"
+                                draggable={canEdit}
+                                disabled={busy}
+                                onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
+                                onClick={() =>
+                                  void createElementFromPalette(
+                                    type.code,
+                                    canvas.width / 2 - nodeSize.width / 2,
+                                    canvas.height / 2 - nodeSize.height / 2,
+                                  )
+                                }
+                                title={t('«{stereotype}» {label} · {uml}｜点击或拖入画布', { stereotype: type.stereotype, label: pick(type.label, type.labelEn), uml: type.uml })}
+                              >
+                                <TypeIcon code={type.code} size={16} />
+                                <span className="tb-item-label">{pick(type.label, type.labelEn)}</span>
+                              </button>
+                            ))}
+                          </div>
+                        ))}
+                        <p className="tb-tip">{t('UML 2.5.1 §16 具体动作：默认收起，避免撑爆工具箱')}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* 关系：当前图规范允许的关系组件，点选后在画布依次点击起点与终点 */}
                 <div className={`tb-group current ${openToolGroups.has('relations') ? 'open' : ''}`}>
