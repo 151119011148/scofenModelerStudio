@@ -208,8 +208,8 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
   '规范扩展属性': { zh: '规范扩展属性', en: 'Specification extensions' },
   '含派生只读属性': { zh: '含派生只读属性', en: 'Includes derived read-only' },
   '项目根节点 · 不可删除': { zh: '项目根节点 · 不可删除', en: 'Project root · cannot be deleted' },
-  '项目根节点模型不可删除': { zh: '项目根节点模型不可删除', en: 'The project root model cannot be deleted' },
-  '项目根节点模型，不可删除': { zh: '项目根节点模型，不可删除', en: 'Project root model, cannot be deleted' },
+  '项目根节点不可删除': { zh: '项目根节点不可删除', en: 'The project root cannot be deleted' },
+  '项目根节点，不可删除': { zh: '项目根节点，不可删除', en: 'Project root, cannot be deleted' },
   '通用扩展包 · 不可删除': { zh: '通用扩展包 · 不可删除', en: 'Generic extension package · cannot be deleted' },
 
   /* ── 新建 / 删除 ── */

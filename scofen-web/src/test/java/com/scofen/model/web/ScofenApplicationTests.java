@@ -30,10 +30,10 @@ class ScofenApplicationTests {
         assertThat(snapshot.elements()).extracting(ModelElement::id)
                 .contains("model-root", "pkg-1", "pkg-ctrl", "e-vcu", "part-vcu", "r-range", "life-user",
                         ExtensionLibrary.SYSML_PROFILE_ID, ExtensionLibrary.UML_PROFILE_ID);
-        // 项目根 Model 是唯一顶层节点，既有顶层包已 reparent 到它下面
+        // 项目根 Package 是唯一顶层节点，既有顶层包已 reparent 到它下面
         assertThat(snapshot.elements()).filteredOn(e -> e.id().equals("model-root"))
                 .singleElement().satisfies(root -> {
-                    assertThat(root.type()).isEqualTo("Model");
+                    assertThat(root.type()).isEqualTo("Package");
                     assertThat(root.ownerId()).isNull();
                 });
         assertThat(snapshot.elements()).filteredOn(e -> e.ownerId() == null)

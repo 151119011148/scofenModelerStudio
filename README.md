@@ -5,7 +5,7 @@
 轻量化 SysML 1.6 / UML 2.5.1 建模工具，对标 M-Design 与 MagicDraw / Cameo。
 模型优先、服务端权威：元素与关系是唯一事实源，图只是视图。
 
-**当前状态：M0 骨架 + 三件套已落地——MySQL 持久化、XMI 语义往返、RBAC 权限闭环，共 120 项用例（112 项运行通过，8 项 Testcontainers 因无 Docker 跳过），已上线 <http://47.117.110.143/scofen/modelerStudio/>；尚未进入 M1～M4 的完整产品实现。**
+**当前状态：M0 骨架 + 三件套已落地——MySQL 持久化、XMI 语义往返、RBAC 权限闭环，项目根固定为 Package，共 124 项用例（116 项运行通过，8 项 Testcontainers 因无 Docker 跳过），已上线 <http://47.117.110.143/scofen/modelerStudio/>；尚未进入 M1～M4 的完整产品实现。**
 方案全文见仓库上级目录的《产品方案与技术选型 v0.6》；首发完整范围约 21～25 周。
 
 ## 已实现（M0）
@@ -27,7 +27,7 @@
 | 图形拖拽 | 画布 shape 支持指针拖拽，坐标经 `MOVE_NOTATION` 写入服务端 `Notation` 对象并广播，越界或不在图内的元素被服务端拒绝 |
 | 建表脚本 | `MysqlSchema.ensure()` 幂等建六张表（项目、快照、用户、角色、用户角色、角色权限），MySQL 8.4 / InnoDB / utf8mb4 |
 | 登录与会话 | JWT(HS256) + PBKDF2 口令哈希，两个超管账号（`scofen` / `gaofeng`）共用口令；`/api/**` 与 WebSocket 握手都校验登录态，401 自动回登录页 |
-| 打开项目 | 顶栏项目选择器点击即打开、新建后自动打开；每个项目分配独立内存态模型运行时（唯一根 Model + 九图），统计 / revision / 撤销栈互不串写 |
+| 打开项目 | 顶栏项目选择器点击即打开、新建后自动打开；每个项目分配独立内存态模型运行时（唯一项目根 Package + 九图），统计 / revision / 撤销栈互不串写 |
 | 规范属性窗口 | 按 UML 2.5.1 元类继承链 + SysML 1.6 构造型展开每种元素类型的元属性（标准 / 专家 / 全部三档）；文本、布尔、枚举、数值、列表均可编辑，走通用 `UPDATE_PROPERTY` 命令（校验 + 乐观锁 + 撤销）；计算属性与派生属性（`id` / `qualifiedName` / 各类统计量）只读并由前端实时求值 |
 | 拖放加入图 | 模型树中把元素拖到「图」节点即把该元素加入该图并生成记法（自动排布落点、单条 `ADD_TO_DIAGRAM`、可撤销）；图只是视图，不复制、不拥有模型元素 |
 | MySQL 持久化 | 切 `scofen.persistence.mode=mysql` 后按项目隔离落库：项目目录、整包 JSON 快照（按 revision 留存最近 100 版）、用户与角色表；内存态仍是默认值，重启即复位 |
@@ -67,6 +67,18 @@
 未登录访问任何 `/api/**`（`/api/health` 与 `/api/auth/login` 除外）返回 401 JSON；
 WebSocket 握手通过 `?token=<JWT>` 校验。所有 `/api/**` 请求带 `X-Scofen-Project: <projectId>`
 指定当前打开的项目，带 `X-Scofen-Session` 指定撤销栈。
+
+## 项目根固定为 Package
+
+每个项目初始化时自动创建一个项目根（id `model-root`，类型 `Package`），它是**项目容器**而不是模型本身。
+UML/SysML 里 Model 是 Package 的一种，模型节点应建在项目根下，一个项目可以组织多个 Model。
+若根本身就是 Model，旧版「一个项目只能有一个根 Model」的限制会占住名额，用户就无法再创建模型节点。
+
+- 项目根不可删除、不可拖拽；顶层 Model 一律拒绝，避免冒出第二个「看起来像项目根」的节点。
+- 存量项目（老版本的根是 Model）在快照回载时**幂等归一**为 Package：只改类型与「扩展的元类」引用，
+  不推进 revision、不广播 Patch，名称 / 文档 / 标签值一律保留。
+- 导入外部 XMI 同样归一：外部根常是 `uml:Model`，导入后统一成 Package 项目根。
+  导出的根标签按实际类型输出（Package → `uml:Package`），导入同时识别 `uml:Model` 与 `uml:Package`。
 
 ## MySQL 落库
 
@@ -137,7 +149,7 @@ SCOFEN_BASE=/scofen/modelerStudio/ ./build.sh
 只跑测试：
 
 ```bash
-./mvnw -B -ntp test          # 120 个用例：metamodel 13 / core 46 / xmi 12 / web 49（其中 8 项 Testcontainers 因无 Docker 跳过）
+./mvnw -B -ntp test          # 124 个用例：metamodel 13 / core 50 / xmi 12 / web 49（其中 8 项 Testcontainers 因无 Docker 跳过）
 ```
 
 ## 主要 API

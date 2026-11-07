@@ -580,17 +580,20 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return nodes
   }, [rootElements, diagramsByOwner])
 
-  // 项目根：顶层且类型为 Model 的唯一节点。所有「新建」入口默认落到它下面，
-  // 避免出现第二个顶层节点；删除由服务端 ValidationEngine 兜底拒绝。
+  // 项目根：id 固定为 model-root 的顶层元素，类型是 Package。按位置 + id 判定，
+  // 不按类型，这样存量项目里曾作为根的 Model 也能正确识别；兜底取第一个顶层元素，
+  // 兼容外部 XMI 带来的多个顶层包。所有「新建」入口默认落到它下面。
   const projectRoot = useMemo(
-    () => rootElements.find((element) => codeOf(element.type) === 'MODEL') ?? null,
-    [rootElements, codeOf],
+    () => rootElements.find((element) => !element.ownerId && element.id === 'model-root')
+      ?? rootElements.find((element) => !element.ownerId)
+      ?? null,
+    [rootElements],
   )
   const projectRootId = projectRoot?.id ?? null
   const isProjectRoot = useCallback(
     (element: ModelElement | null) =>
-      !!element && !element.ownerId && codeOf(element.type) === 'MODEL',
-    [codeOf],
+      !!element && !element.ownerId && element.id === 'model-root',
+    [],
   )
 
   // 扩展包元素 id 集合：模型树默认不展开它们，避免上百个元类淹没用户模型。
@@ -1015,7 +1018,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         case 'targetId':
           return endpoint(target, selectedRelation.targetId)
         case 'ownerId':
-          return selectedRelation.ownerId ?? projectRoot?.name ?? t('模型根')
+          return selectedRelation.ownerId ?? projectRoot?.name ?? t('项目根')
         case 'qualifiedName':
           return `${source?.name ?? '?'} ⇒ ${target?.name ?? '?'}`
         case 'relatedElement':
@@ -1676,12 +1679,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     })
   }
 
-  // 空白处的「新建」一律落到项目根 Model 下，保证模型树始终只有一个根。
+  // 空白处的「新建」一律落到项目根 Package 下，保证模型树始终只有一个根。
   const openCreate = (ownerId: string | null) => {
     const effective = ownerId ?? projectRootId
     const owner = effective
       ? model.elements.find((element) => element.id === effective)?.name ?? effective
-      : t('模型根')
+      : t('项目根')
     setCreateDialog({ ownerId: effective, ownerName: owner })
     setCreateType('')
     setCreateName('')
@@ -1694,7 +1697,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const effective = ownerId ?? projectRootId
     const owner = effective
       ? model.elements.find((element) => element.id === effective)?.name ?? effective
-      : t('模型根')
+      : t('项目根')
     setDiagramDialog({
       ownerId: effective,
       ownerName: owner,
@@ -2619,7 +2622,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <TypeIcon code={codeOf(element!.type)} size={16} title={typeLabel(element!.type)} />
               <span className="tree-label">{element!.name}</span>
               {isRoot ? (
-                <span className="root-tag" title={t('项目根节点模型，不可删除')}>{t('项目根')}</span>
+                <span className="root-tag" title={t('项目根节点，不可删除')}>{t('项目根')}</span>
               ) : isExtensionRoot ? (
                 <span
                   className="root-tag extension-tag"
@@ -2818,7 +2821,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const deleteSelection = () => {
     if (selected) {
       if (isProjectRoot(selected)) {
-        say('项目根节点模型不可删除')
+        say('项目根节点不可删除')
         return
       }
       if (extensionRootIds.has(selected.id)) {
@@ -3091,7 +3094,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           >
             <span className="pp-space">{currentSpaceLabel}</span>
             <span className="crumb-sep">/</span>
-            <TypeIcon code="MODEL" size={14} />
+            <TypeIcon code="PACKAGE" size={14} />
             <strong>{workspace?.currentProjectName ?? projectRoot?.name ?? t('未命名项目')}</strong>
             <span className="crumb-tag">{t('当前项目')}</span>
             <span className="pp-caret">▾</span>
@@ -3128,7 +3131,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                         onClick={() => openProject(project)}
                         title={`${project.name} · ${project.description || project.status}`}
                       >
-                        <TypeIcon code="MODEL" size={15} />
+                        <TypeIcon code="PACKAGE" size={15} />
                         <span className="pp-project-body">
                           <span className="pp-project-name">{project.name}</span>
                           <span className="pp-project-meta">
@@ -3488,7 +3491,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                     onBlur={(event) => handleRenameDiagram(selectedDiagram.id, event.target.value)}
                   />
                 </label>
-                <div className="kv"><span>{t('所有者')}</span><code>{selectedDiagram.ownerId || projectRoot?.name || t('模型根')}</code></div>
+                <div className="kv"><span>{t('所有者')}</span><code>{selectedDiagram.ownerId || projectRoot?.name || t('项目根')}</code></div>
                 <div className="kv"><span>{t('元素数')}</span><code>{t('{count} 个', { count: selectedDiagram.elementIds.length })}</code></div>
                 <div className="kv"><span>ID</span><code>{selectedDiagram.id}</code></div>
               </>
@@ -4192,8 +4195,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           <div className="menu-title">
             {menuDiagram && <DiagramIcon code={menuDiagram.kind} size={16} />}
             {menuElement && <TypeIcon code={codeOf(menuElement.type)} size={16} />}
-            {menuTarget?.kind === 'root' && projectRoot && <TypeIcon code="MODEL" size={16} />}
-            <span>{menuDiagram ? menuDiagram.name : menuElement ? menuElement.name : t('模型根')}</span>
+            {menuTarget?.kind === 'root' && projectRoot && <TypeIcon code={codeOf(projectRoot.type)} size={16} />}
+            <span>{menuDiagram ? menuDiagram.name : menuElement ? menuElement.name : t('项目根')}</span>
           </div>
           {menuTarget?.kind === 'element' && (
             <>
@@ -4214,7 +4217,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 <button type="button" onClick={() => locateInDiagram(menuElement!.id)}>{t('在图中定位')}</button>
               )}
               {isProjectRoot(menuElement) ? (
-                <button type="button" className="disabled-hint" disabled title={t('项目根节点模型不可删除')}>
+                <button type="button" className="disabled-hint" disabled title={t('项目根节点不可删除')}>
                   {t('项目根节点 · 不可删除')}
                 </button>
               ) : extensionRootIds.has(menuElement!.id) ? (
@@ -4302,7 +4305,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         <div className="modal-overlay" onPointerDown={() => setNewProjectDialog(false)}>
           <div className="modal" onPointerDown={(event) => event.stopPropagation()}>
             <h2 className="modal-title">
-              <TypeIcon code="MODEL" size={18} />
+              <TypeIcon code="PACKAGE" size={18} />
               {t('新建项目')}
             </h2>
             <p className="modal-sub">{t('在指定空间下创建并立即打开项目')}</p>

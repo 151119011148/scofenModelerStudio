@@ -134,7 +134,7 @@ public final class ValidationEngine {
                         .orElseThrow(() -> new ValidationException("Unknown element: " + cmd.str("id")));
                 if (isProjectRoot(target)) {
                     throw new ValidationException(
-                            "项目根节点模型不可删除：Model 是模型树的唯一项目根；"
+                            "项目根节点不可删除：项目根 Package 是模型树的唯一顶层节点；"
                                     + "如需清空项目请删除其下的子元素。");
                 }
                 assertNotExtensionRoot(target);
@@ -147,6 +147,10 @@ public final class ValidationEngine {
                 for (String id : ids) {
                     ModelElement target = repository.findElement(id)
                             .orElseThrow(() -> new ValidationException("Unknown element: " + id));
+                    // 与单条 DELETE_ELEMENT 保持同一套保护，避免批量通道绕过拒删根。
+                    if (isProjectRoot(target)) {
+                        throw new ValidationException("项目根节点不可删除");
+                    }
                     assertNotExtensionRoot(target);
                 }
             }
@@ -446,11 +450,11 @@ public final class ValidationEngine {
                 throw new ValidationException("Root element must be one of "
                         + ContainmentRules.ROOT_TYPES + "; got " + child);
             }
-            // 单项目单根：项目根 Model 是模型树的唯一顶层节点，不允许再建第二个顶层 Model。
-            if (child == ElementType.MODEL
-                    && (repository.elements().stream().anyMatch(ValidationEngine::isProjectRoot)
-                        || pending.values().stream().anyMatch(ValidationEngine::isProjectRoot))) {
-                throw new ValidationException("一个项目只能有一个根 Model；请在已有项目根下新建子元素");
+            // 项目根固定是 Package：Model 必须作为子元素建在根下，不能另起一个顶层节点，
+            // 否则模型树会冒出第二个「看起来像项目根」的 Model。
+            if (child == ElementType.MODEL) {
+                throw new ValidationException(
+                        "Model 必须建在项目根 Package 下，不能作为顶层元素");
             }
             return;
         }
@@ -475,12 +479,16 @@ public final class ValidationEngine {
         }
     }
 
-    /** 项目根判定：顶层（ownerId 为空）且类型为 Model。供「唯一根」与「根不可删除」共用。 */
+    /**
+     * 项目根判定：id 固定为 {@code model-root} 的顶层元素。
+     *
+     * <p>按 id 而不是「所有顶层元素」判定：外部 XMI 常带多个顶层 Package，
+     * 它们不该被当成项目根，否则拒删保护与单根语义会误伤合法模型。
+     * 项目根的类型固定是 Package（见 {@link ProjectRoot}），存量快照里曾是 Model，
+     * 回载时由 {@code ProjectRoot.normalize} 归一。</p>
+     */
     private static boolean isProjectRoot(ModelElement element) {
-        return (element.ownerId() == null || element.ownerId().isBlank())
-                && ElementType.fromAny(element.type())
-                        .filter(type -> type == ElementType.MODEL)
-                        .isPresent();
+        return ProjectRoot.isRoot(element) && ProjectRoot.ID.equals(element.id());
     }
 
     /**
@@ -496,24 +504,12 @@ public final class ValidationEngine {
                 throw new ValidationException("Root element must be one of "
                         + ContainmentRules.ROOT_TYPES + "; got " + child);
             }
-            // 单项目单根：判断的是「替换后的世界」——本批 + 保留的扩展包。
-            // 库里那些即将被清掉的旧元素（含旧项目根）不算数。
-            // selfId 是当前元素本身，统计根数时要把自己排除。
+            // 项目根固定是 Package：导入文件里的顶层 Model 一律不收。
+            // 外部 XMI 的单一根会先被 ProjectRoot.normalize 归一成 Package，
+            // 能走到这里的说明是额外的顶层 Model，收进来会破坏单根语义。
             if (child == ElementType.MODEL) {
-                int roots = 0;
-                for (ModelElement element : pending.values()) {
-                    if (!Objects.equals(element.id(), selfId) && isProjectRoot(element)) {
-                        roots++;
-                    }
-                }
-                for (ModelElement element : repository.elements()) {
-                    if (keepIds.contains(element.id()) && isProjectRoot(element)) {
-                        roots++;
-                    }
-                }
-                if (roots >= 1) {
-                    throw new ValidationException("一个项目只能有一个根 Model；请在已有项目根下新建子元素");
-                }
+                throw new ValidationException(
+                        "Model 必须建在项目根 Package 下，不能作为顶层元素");
             }
             return;
         }

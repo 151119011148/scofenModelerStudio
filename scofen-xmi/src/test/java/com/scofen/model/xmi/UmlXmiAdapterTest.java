@@ -25,7 +25,7 @@ class UmlXmiAdapterTest {
     private final UmlXmiAdapter adapter = new UmlXmiAdapter();
 
     private ModelSnapshot sample() {
-        ModelElement root = new ModelElement("model-root", "Model", "车载动力系统工程模型",
+        ModelElement root = new ModelElement("model-root", "Package", "车载动力系统工程模型",
                 List.of("model"), "", "顶层模型", Map.of(), "xmi-root", Map.of());
         ModelElement pkg = new ModelElement("pkg-1", "Package", "车载动力系统",
                 List.of("package"), "model-root", "", Map.of(), null,
@@ -54,7 +54,7 @@ class UmlXmiAdapterTest {
     void exportProducesWellFormedUmlXmi() {
         ExchangeBundle bundle = adapter.exportModel(sample());
         assertThat(bundle.format()).isEqualTo(ExchangeFormat.XMI_251);
-        assertThat(bundle.semantic()).contains("xmi:XMI").contains("uml:Model").contains("uml:Association");
+        assertThat(bundle.semantic()).contains("xmi:XMI").contains("uml:Package").contains("uml:Association");
         assertThat(bundle.semantic()).contains("scofen:type=\"Block\"");
         assertThat(bundle.semantic()).contains("scofen:relationType=\"satisfy\"");
         assertThat(bundle.diagramKinds()).contains(DiagramKind.PKG);

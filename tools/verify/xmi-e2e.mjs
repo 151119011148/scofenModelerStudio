@@ -118,7 +118,7 @@ console.log('[1] 登录')
 await waitFor(page, `!!document.querySelector('input[name="scofen-admin-username"]')`)
 await page.evaluate(`(()=>{const set=(el,v)=>{const s=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value').set;s.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}))};
  set(document.querySelector('input[name="scofen-admin-username"]'),'scofen');
- set(document.querySelector('input[name="scofen-admin-password"]'),ADMIN_PASSWORD);
+ set(document.querySelector('input[name="scofen-admin-password"]'),${JSON.stringify(ADMIN_PASSWORD)});
  [...document.querySelectorAll('button')].find(b=>/登录/.test(b.textContent)).click();return 1})()`)
 const loggedIn = await waitFor(page, `!!document.querySelector('.props-dock')`, 120, 250)
 check('登录成功进入工作台', loggedIn)
@@ -150,7 +150,7 @@ const apiGet = async (p) => await page.evaluate(`(async()=>{
 const xmiRes = await apiGet('api/exchange/xmi')
 check('GET /api/exchange/xmi 200', xmiRes.status === 200, String(xmiRes.status))
 check('导出含标准 XMI 根元素', xmiRes.text.includes('xmi:XMI'))
-check('导出含 uml:Model', xmiRes.text.includes('uml:Model'))
+check('导出含 uml:Package 项目根', xmiRes.text.includes('uml:Package'))
 check('导出含 scofen 扩展命名空间', xmiRes.text.includes('scofen:'))
 
 const sidecarRes = await apiGet('api/exchange/xmi.di.json')

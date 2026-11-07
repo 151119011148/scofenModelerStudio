@@ -73,7 +73,7 @@ public final class UmlXmiAdapter implements IModelAdapter {
             xmi.setAttributeNS(NS_XMI, "xmi:timestamp", "2026-01-01T00:00:00");
             document.appendChild(xmi);
 
-            // 元素树：按 ownerId 建索引，根元素（ownerId 为空）挂到 uml:Model 下。
+            // 元素树：按 ownerId 建索引，根元素（ownerId 为空）挂到 UML 容器下。
             Map<String, ModelElement> byId = new LinkedHashMap<>();
             Map<String, List<ModelElement>> children = new LinkedHashMap<>();
             ModelElement root = null;
@@ -88,7 +88,10 @@ public final class UmlXmiAdapter implements IModelAdapter {
                 children.computeIfAbsent(element.ownerId(), key -> new ArrayList<>()).add(element);
             }
 
-            Element model = document.createElementNS(NS_UML, "uml:Model");
+            // 根标签按实际类型写：项目根是 Package 就是 uml:Package，Model 子节点才是 uml:Model。
+            // 固定写 uml:Model 会让外部工具把项目容器误读成一个 SysML 模型。
+            Element model = document.createElementNS(NS_UML,
+                    root == null ? "uml:Model" : umlTypeOf(root.type()));
             model.setAttributeNS(NS_XMI, "xmi:id", root == null ? "model-root" : root.id());
             model.setAttribute("name", root == null ? "Model" : root.name());
             if (root != null) {
@@ -257,10 +260,15 @@ public final class UmlXmiAdapter implements IModelAdapter {
         List<ModelElement> elements = new ArrayList<>();
         List<Relationship> relationships = new ArrayList<>();
 
+        // 项目根可能是 uml:Model（外部工具 / 老版本导出），也可能是 uml:Package
+        // （本产品当前导出，项目根固定为 Package）。两种都要认，否则导入会整个丢根。
         Element model = firstElement(document, NS_UML, "Model");
+        if (model == null) {
+            model = firstElement(document, NS_UML, "Package");
+        }
         Element container = model == null ? document.getDocumentElement() : model;
 
-        // 元素树：uml:Model 自身就是根元素，不在它的子节点里，必须单独收。
+        // 元素树：UML 容器自身就是根元素，不在它的子节点里，必须单独收。
         if (model != null) {
             addElement(model, "", elements);
             collectElements(model, attribute(model, NS_XMI, "id"), elements, relationships);

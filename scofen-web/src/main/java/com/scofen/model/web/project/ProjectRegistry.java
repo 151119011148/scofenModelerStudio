@@ -6,10 +6,10 @@ import com.scofen.model.core.ExtensionSeeder;
 import com.scofen.model.core.InMemoryModelRepository;
 import com.scofen.model.core.NoopPersistenceService;
 import com.scofen.model.core.PersistenceService;
+import com.scofen.model.core.ProjectRoot;
 import com.scofen.model.core.UndoStack;
 import com.scofen.model.core.ValidationEngine;
 import com.scofen.model.metamodel.DiagramKind;
-import com.scofen.model.metamodel.ElementType;
 import com.scofen.model.metamodel.ExtensionLibrary;
 import com.scofen.model.metamodel.ModelSnapshot;
 import com.scofen.model.metamodel.PropertyCatalog;
@@ -29,7 +29,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * <p>每个项目拥有独立的 Repository / CommandExecutor / 撤销栈，因此 revision、
  * 元素、图、撤销历史都互不干扰；打开项目只是把请求路由到对应 executor。
  * 主示例项目沿用 Spring 的单例 CommandExecutor（带种子数据），其它项目在
- * 首次打开时懒初始化：唯一项目根 Model + 九张空图，随后即可正常编辑。</p>
+ * 首次打开时懒初始化：唯一项目根 Package + 九张空图，随后即可正常编辑。</p>
  *
  * <p>所有项目共用同一个 PatchBroker，因此跨项目的 WS 广播只会让跟随者
  * 重新拉取自己项目的快照，不会造成数据串写。M0 不落库，重启后回到基线。</p>
@@ -87,6 +87,11 @@ public class ProjectRegistry {
             Optional<ModelSnapshot> latest = persistence.loadLatest();
             if (latest.isPresent()) {
                 repository.load(latest.get());
+                // 存量项目（老版本的根是 Model）就地归一为 Package，并重写一次当前快照。
+                if (persistence.isEnabled() && ProjectRoot.normalize(repository)) {
+                    persistence.save(repository.snapshot());
+                    System.out.println("[scofen] 项目根已归一为 Package，project=" + projectId);
+                }
                 executor.setPersistence(persistence);
                 return executor;
             }
@@ -96,18 +101,18 @@ public class ProjectRegistry {
                 .map(WorkspaceDirectory.Project::name)
                 .orElse("新建项目");
         run(executor, "CREATE_ELEMENT", Map.of(
-                "id", "model-root", "type", "Model", "name", name, "ownerId", ""));
+                "id", ProjectRoot.ID, "type", ProjectRoot.TYPE_CODE, "name", name, "ownerId", ""));
         // 通用扩展包随项目一起提供：SysML / UML 的元类与构造型。
-        ExtensionSeeder.seed(executor, "model-root");
+        ExtensionSeeder.seed(executor, ProjectRoot.ID);
         run(executor, "UPDATE_PROPERTY", Map.of(
-                "id", "model-root", "key", "extendsMetaclass",
-                "value", ExtensionLibrary.metaclassId(PropertyCatalog.rootMetaclass(ElementType.MODEL))));
+                "id", ProjectRoot.ID, "key", "extendsMetaclass",
+                "value", ExtensionLibrary.metaclassId(PropertyCatalog.rootMetaclass(ProjectRoot.TYPE))));
         for (DiagramKind kind : DiagramKind.values()) {
             run(executor, "CREATE_DIAGRAM", Map.of(
                     "id", "d-" + kind.code(),
                     "kind", kind.code(),
                     "name", kind.label() + "示例",
-                    "ownerId", "model-root",
+                    "ownerId", ProjectRoot.ID,
                     "elementIds", List.of()));
         }
         // 种子完成才挂上持久化并整包落库一次。

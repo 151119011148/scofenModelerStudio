@@ -144,20 +144,27 @@ class ModelEditingTest {
     }
 
     @Test
-    void projectRootModelIsUniqueAndCannotBeDeleted() {
-        cmd("CREATE_ELEMENT", Map.of("id", "root", "type", "Model", "name", "项目模型", "ownerId", ""));
-        cmd("CREATE_ELEMENT", Map.of("id", "pkg", "type", "Package", "name", "系统", "ownerId", "root"));
+    void packageProjectRootAllowsMultipleModelChildrenAndCannotBeDeleted() {
+        cmd("CREATE_ELEMENT", Map.of("id", "model-root", "type", "Package", "name", "项目根", "ownerId", ""));
+        // 把项目根改成 Package 的目的：Model 是 Package 的一种，根下可以组织多个模型节点。
+        cmd("CREATE_ELEMENT", Map.of("id", "m-1", "type", "Model", "name", "系统模型", "ownerId", "model-root"));
+        cmd("CREATE_ELEMENT", Map.of("id", "m-2", "type", "Model", "name", "需求模型", "ownerId", "model-root"));
+        assertThat(executor.snapshot().elements()).filteredOn(e -> "Model".equals(e.type()))
+                .extracting(ModelElement::id).containsExactly("m-1", "m-2");
 
+        // 顶层 Model 一律拒绝：项目根固定是 Package，Model 只能作为子元素。
         assertThatThrownBy(() -> cmd("CREATE_ELEMENT",
-                Map.of("id", "root2", "type", "Model", "name", "第二个根", "ownerId", "")))
+                Map.of("id", "top-model", "type", "Model", "name", "顶层模型", "ownerId", "")))
                 .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("一个项目只能有一个根 Model");
-        assertThatThrownBy(() -> cmd("DELETE_ELEMENT", Map.of("id", "root")))
-                .isInstanceOf(ValidationException.class)
-                .hasMessageContaining("项目根节点模型不可删除");
+                .hasMessageContaining("Model 必须建在项目根 Package 下");
 
-        cmd("DELETE_ELEMENT", Map.of("id", "pkg"));
-        assertThat(executor.snapshot().elements()).extracting(ModelElement::id).containsExactly("root");
+        // 项目根（id 固定 model-root）不可删除，但根下的 Model 可以正常删除。
+        assertThatThrownBy(() -> cmd("DELETE_ELEMENT", Map.of("id", "model-root")))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("项目根节点不可删除");
+        cmd("DELETE_ELEMENT", Map.of("id", "m-2"));
+        assertThat(executor.snapshot().elements()).extracting(ModelElement::id)
+                .contains("model-root", "m-1").doesNotContain("m-2");
     }
 
     @Test

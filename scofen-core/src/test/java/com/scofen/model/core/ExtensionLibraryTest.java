@@ -33,7 +33,7 @@ class ExtensionLibraryTest {
         counter = 0;
         executor = new CommandExecutor(new InMemoryModelRepository(), new ValidationEngine(), sink);
         executor.execute(SESSION, Command.of("CREATE_ELEMENT", executor.revision(), "root",
-                Map.of("id", "model-root", "type", "Model", "name", "示例项目", "ownerId", "")));
+                Map.of("id", "model-root", "type", "Package", "name", "示例项目", "ownerId", "")));
     }
 
     private Patch cmd(String type, Map<String, Object> payload) {

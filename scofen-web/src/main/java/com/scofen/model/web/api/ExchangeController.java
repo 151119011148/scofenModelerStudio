@@ -3,6 +3,7 @@ package com.scofen.model.web.api;
 import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.core.Patch;
+import com.scofen.model.core.ProjectRoot;
 import com.scofen.model.metamodel.Diagram;
 import com.scofen.model.metamodel.DiagramKind;
 import com.scofen.model.metamodel.ModelElement;
@@ -141,7 +142,11 @@ public class ExchangeController {
         //    扩展包挂在本地根下，根 id 不统一就会把扩展包变成孤儿。
         imported = remapRoot(imported, localRootId(currentSnapshot));
 
-        // ③ 没有布局侧车时只吃语义：服务端按元素的主图归属重排九图，
+        // ③ 项目根类型归一：外部 XMI 的根常是 uml:Model，本产品约定项目根是 Package，
+        //    导入后统一成 Package，避免「项目根固定为 Package」这个不变量被外部文件破坏。
+        imported = ProjectRoot.normalize(imported);
+
+        // ④ 没有布局侧车时只吃语义：服务端按元素的主图归属重排九图，
         //    否则用户导入后看到的是九个空图，等于导入失败。
         if (imported.diagrams().isEmpty()) {
             imported = ServerRelayout.relayout(imported);
@@ -182,14 +187,13 @@ public class ExchangeController {
         return new ModelSnapshot(snapshot.revision(), elements, relationships, diagrams, notations);
     }
 
-    /** 本地项目根元素 id：没有 ownerId 且类型为 Model 的那个元素。 */
+    /** 本地项目根元素 id：顶层（ownerId 为空）的那个元素，按位置判定以兼容存量数据。 */
     private String localRootId(ModelSnapshot snapshot) {
         return snapshot.elements().stream()
-                .filter(element -> (element.ownerId() == null || element.ownerId().isBlank())
-                        && "Model".equalsIgnoreCase(element.type()))
+                .filter(ProjectRoot::isRoot)
                 .map(ModelElement::id)
                 .findFirst()
-                .orElse("model-root");
+                .orElse(ProjectRoot.ID);
     }
 
     /**
@@ -200,8 +204,7 @@ public class ExchangeController {
      */
     private ModelSnapshot remapRoot(ModelSnapshot snapshot, String localRootId) {
         String importedRootId = snapshot.elements().stream()
-                .filter(element -> (element.ownerId() == null || element.ownerId().isBlank())
-                        && "Model".equalsIgnoreCase(element.type()))
+                .filter(ProjectRoot::isRoot)
                 .map(ModelElement::id)
                 .findFirst()
                 .orElse(null);

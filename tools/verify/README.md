@@ -2,10 +2,12 @@
 
 用 headless Chrome + CDP 直驱真实 UI 做端到端验证，不依赖 puppeteer/playwright。
 
-## xmi-e2e.mjs —— XMI 导入导出
+## 脚本
 
-覆盖：登录 → 「文件」菜单四个入口 → 导出三种格式 → 导入对话框 → 选文件 → 导入
-→ 撤销 → 无侧车导入（服务端重排九图）。
+| 脚本 | 覆盖 |
+| --- | --- |
+| `xmi-e2e.mjs` | XMI 导入导出：登录 → 「文件」菜单四个入口 → 导出三种格式 → 导入对话框 → 选文件 → 导入 → 撤销 → 无侧车导入（服务端重排九图）。末尾会自动撤销，把线上项目恢复干净 |
+| `root-package-e2e.mjs` | 项目根 Package + 可创建 Model 节点：登录 → 检查模型树根 → 「模型」菜单新建对话框 → 类型下拉选 MODEL → 创建 → 树上出现新节点 → 撤销恢复 → XMI 根标签为 `uml:Package` |
 
 ## 运行
 
@@ -24,6 +26,11 @@ sleep 4
 SCOFEN_PASSWORD='<超管口令>' \
 APP_URL='http://127.0.0.1:18080/' \
 CDP_PORT=9444 node xmi-e2e.mjs
+
+# 项目根 / 新建 Model 节点
+SCOFEN_PASSWORD='<超管口令>' \
+APP_URL='http://<IP>/scofen/modelerStudio/' \
+CDP_PORT=9444 node root-package-e2e.mjs
 ```
 
 ## 参数

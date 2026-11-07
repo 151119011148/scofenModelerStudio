@@ -39,12 +39,14 @@ class ProjectRegistryTest {
     }
 
     @Test
-    void openingOtherProjectSeedsRootModelAndNineEmptyDiagrams() {
+    void openingOtherProjectSeedsPackageRootAndNineEmptyDiagrams() {
         CommandExecutor opened = registry.resolve("project-req");
         assertThat(opened).isNotSameAs(primary);
         // 项目根 + 通用扩展包（SysML / UML 的元类与构造型）
         assertThat(opened.snapshot().elements()).hasSize(1 + ExtensionLibrary.size());
         assertThat(opened.snapshot().elements().get(0).name()).isEqualTo("需求工程样例");
+        assertThat(opened.snapshot().elements().get(0).type()).isEqualTo("Package");
+        assertThat(opened.snapshot().elements().get(0).ownerId()).isNull();
         assertThat(opened.snapshot().elements()).extracting(ModelElement::id)
                 .contains(ExtensionLibrary.SYSML_PROFILE_ID, ExtensionLibrary.UML_PROFILE_ID);
         assertThat(opened.snapshot().diagrams()).hasSize(9);

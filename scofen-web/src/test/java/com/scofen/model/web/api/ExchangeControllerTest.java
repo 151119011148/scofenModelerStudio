@@ -39,8 +39,8 @@ class ExchangeControllerTest {
         controller = new ExchangeController(executor);
 
         // 播种一个最小项目：项目根 + 通用扩展包 + 一个包 + 一个块 + 一张图。
-        run("CREATE_ELEMENT", Map.of("id", "model-root", "type", "Model", "name", "示例项目",
-                "ownerId", "", "stereotypes", List.of("model")));
+        run("CREATE_ELEMENT", Map.of("id", "model-root", "type", "Package", "name", "示例项目",
+                "ownerId", "", "stereotypes", List.of("package")));
         ExtensionSeeder.seed(executor, "model-root");
         run("CREATE_ELEMENT", Map.of("id", "pkg-1", "type", "Package", "name", "动力系统",
                 "ownerId", "model-root", "stereotypes", List.of("package")));
@@ -73,7 +73,7 @@ class ExchangeControllerTest {
     void exportXmiReturnsStandardUmlDocument() {
         ResponseEntity<String> response = exportXmi();
         assertThat(response.getStatusCode().value()).isEqualTo(200);
-        assertThat(response.getBody()).contains("xmi:XMI").contains("uml:Model").contains("scofen:type=\"Block\"");
+        assertThat(response.getBody()).contains("xmi:XMI").contains("uml:Package").contains("scofen:type=\"Block\"");
         assertThat(response.getHeaders().getFirst("Content-Disposition")).contains("model.xmi");
     }
 
@@ -226,6 +226,9 @@ class ExchangeControllerTest {
 
         assertThat(executor.snapshot().elements()).extracting(ModelElement::id)
                 .contains("model-root", "pkg-x");
+        // 外部 XMI 的根是 uml:Model，导入后按本产品约定归一成 Package 项目根。
+        assertThat(executor.snapshot().elements()).filteredOn(e -> e.id().equals("model-root"))
+                .singleElement().satisfies(root -> assertThat(root.type()).isEqualTo("Package"));
         // 本地扩展包仍挂在本地根下，没有变成孤儿。
         ModelElement sysml = executor.snapshot().elements().stream()
                 .filter(element -> element.id().equals(ExtensionLibrary.SYSML_PROFILE_ID))

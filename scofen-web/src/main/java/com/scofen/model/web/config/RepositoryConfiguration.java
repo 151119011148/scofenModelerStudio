@@ -6,6 +6,7 @@ import com.scofen.model.core.ExtensionSeeder;
 import com.scofen.model.core.InMemoryModelRepository;
 import com.scofen.model.core.NoopPersistenceService;
 import com.scofen.model.core.PersistenceService;
+import com.scofen.model.core.ProjectRoot;
 import com.scofen.model.core.UndoStack;
 import com.scofen.model.core.ValidationEngine;
 import com.scofen.model.metamodel.DiagramKind;
@@ -58,7 +59,7 @@ public class RepositoryConfiguration {
     }
 
     /**
-     * 示例项目：唯一的项目根 Model → 三层父子模型树 + 覆盖九大图，
+     * 示例项目：唯一的项目根 Package → 三层父子模型树 + 覆盖九大图，
      * 且每张图只引用自身允许的元素类型。
      * 所有写入仍走 CommandExecutor，保证种子数据与用户编辑同一条协议。
      */
@@ -73,22 +74,28 @@ public class RepositoryConfiguration {
                     System.out.println("[scofen] 已从 MySQL 回载模型快照，revision=" + snapshot.revision());
                 });
                 if (executor.repository().revision() > 0) {
+                    // 存量项目（老版本的根是 Model）就地归一为 Package，并重写一次当前快照。
+                    if (ProjectRoot.normalize(executor.repository())) {
+                        persistence.save(executor.repository().snapshot());
+                        System.out.println("[scofen] 项目根已归一为 Package，project="
+                                + WorkspaceDirectory.CURRENT_PROJECT_ID);
+                    }
                     return;
                 }
                 // 播种期间先摘掉持久化，避免每条种子命令都写一份整包快照。
                 executor.setPersistence(new NoopPersistenceService(WorkspaceDirectory.CURRENT_PROJECT_ID));
             }
-            // 项目根：SysML 的 Model 是模型树的唯一顶层节点，所有包/图都归其所有（直接或间接）。
-            element(executor, "model-root", "Model", "车载动力系统工程模型", "", false);
+            // 项目根：Package 作为项目容器，其下可组织一个或多个 Model（模型节点）。
+            element(executor, ProjectRoot.ID, ProjectRoot.TYPE_CODE, "车载动力系统工程模型", "", false);
 
             // 通用扩展包：SysML / UML 的元类与构造型随项目提供，
             // 属性面板里的「扩展的元类」「构造型」因此可以右键在模型树上定位。
             ExtensionSeeder.seed(executor, "model-root");
 
-            // 项目根也是 Model 元类的实例，此时扩展包已就位，可以补上这条引用。
+            // 项目根也是 Package 元类的实例，此时扩展包已就位，可以补上这条引用。
             run(executor, "UPDATE_PROPERTY", Map.of(
-                    "id", "model-root", "key", "extendsMetaclass",
-                    "value", ExtensionLibrary.metaclassId(PropertyCatalog.rootMetaclass(ElementType.MODEL))));
+                    "id", ProjectRoot.ID, "key", "extendsMetaclass",
+                    "value", ExtensionLibrary.metaclassId(PropertyCatalog.rootMetaclass(ProjectRoot.TYPE))));
 
             element(executor, "pkg-1", "Package", "车载动力系统", "model-root");
             element(executor, "pkg-ctrl", "Package", "控制域", "pkg-1");

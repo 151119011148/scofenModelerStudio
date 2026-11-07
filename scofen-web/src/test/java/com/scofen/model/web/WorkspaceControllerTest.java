@@ -56,7 +56,7 @@ class WorkspaceControllerTest {
     @Test
     void currentProjectStatisticsComeFromLiveModelSnapshot() {
         executor.execute("test", Command.of("CREATE_ELEMENT", 0L, "c-1",
-                Map.of("id", "model-root", "type", "Model", "name", "实时项目", "ownerId", "")));
+                Map.of("id", "model-root", "type", "Package", "name", "实时项目", "ownerId", "")));
         executor.execute("test", Command.of("CREATE_DIAGRAM", 1L, "c-2",
                 Map.of("id", "d-pkg", "kind", "pkg", "name", "包图", "elementIds", List.of())));
 
