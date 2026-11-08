@@ -124,7 +124,7 @@ FAIL ENUMERATION_LITERAL    owner=Block        → Containment rule violation（
 直接挂到模型树顶层（截图里项目根下一排小写名的「构造型」就是这批东西）。
 
 `sync()` 因此同时做两件事：删掉「落在扩展域 id 命名空间、但目录已不定义」的元素，再补齐缺失。
-`ExtensionLibrary.ownsId()` 用保留前缀（`ext-` / `mc-` / `st-` / `prim-` / `val-` / `unit-` /
+`ExtensionLibrary.ownsId()` 用保留前缀（`ext-` / `mc-` / `st-` / `rel-` / `prim-` / `val-` / `unit-` /
 `dim-` / `std-`）判定扩展域，用户元素 id 形如 `e-xxx`，不会被误删。
 
 前端另加一层兜底：`projectElements` 除了「目录里没有」还要「不是扩展域 id」才进树。
@@ -143,17 +143,40 @@ FAIL ENUMERATION_LITERAL    owner=Block        → Containment rule violation（
 每条关系既是画布连线，也是**模型对象**：带 name / documentation / stereotypes / properties，
 属性表由 `RELATION_CHAINS` 显式链下发（37 类全部有链），前端属性面板与元素共用同一分支。
 
+### 6.1 关系模型进扩展包（关系不再只有属性表）
+
+上一轮补齐了关系的属性链，但扩展包里仍然只有元素类型的元类与构造型：`satisfy` / `deriveReqt` /
+`association` 这些关系在模型树上**没有任何条目**，等于「元模型有元素、没有关系」。本轮补齐两层：
+
+1. **关系 → 规范元类**：`RelationshipType` 新增 `metaclass()` / `spec()` / `stereotypeRelationship()`，
+   37 类全部映射（`satisfy` / `verify` / `refine` / `deriveReqt` / `copy` / `trace` → `Dependency`，
+   `allocate` → `Abstraction`，`itemFlow` → `InformationFlow`，`binding` / `delegation` → `Connector`，
+   `association` / `generalization` / `transition` 等本身就是元类）。守卫测试
+   `everyRelationshipHasANormativeMetaclass` 逐项断言「有元类 + 有出处 + 属性链含该元类」。
+2. **关系 → 扩展包条目**：两个 Profile 下各新增「关系」子包（`ext-sysml-rel` / `ext-uml-rel`），
+   37 种关系逐个物化为模型元素：规范里是元类的建 `METACLASS`，是构造型的建 `STEREOTYPE`
+   （`«satisfy»` 带 `stereotypes=["stereotype"]`），id 前缀 `rel-`，`extendsMetaclass` 指回
+   `mc-*` 元类元素。SysML 侧 9 条（满足 / 验证 / 精化 / 派生需求 / 复制 / 追溯 / 分配 / 项流 / 约束参数），
+   UML 侧 28 条。`rel-` 同时进 `ownsId()` 保留前缀与前端扩展域前缀表，存量项目由 `sync()` 增量补建。
+
+`/api/metamodel/relationships` 也补上 `metaclass` / `metaclassName` / `spec` / `stereotypeRelationship`，
+界面据此显示「这条关系在规范里归属哪个元类」，而不是只有一个中文名。
+
+顺带修正两处链与元类不一致：`CONTAINMENT` 的链补 `Element`（包含关系也有 ownedComment / owner），
+`ITEM_FLOW` 的链补 `InformationFlow`（ItemFlow 本就是 InformationFlow 的构造型）。
+
 ---
 
 ## 7. 验证
 
 | 层 | 手段 | 结果 |
 | --- | --- | --- |
-| 单元测试 | `./mvnw -B -ntp test` | **137 项、129 通过**（metamodel 17 / core 53 / xmi 12 / web 55；8 项 Testcontainers 无 Docker 跳过），BUILD SUCCESS |
+| 单元测试 | `./mvnw -B -ntp test` | **144 项、136 通过**（metamodel 19 / core 57 / xmi 12 / web 56；8 项 Testcontainers 无 Docker 跳过），BUILD SUCCESS |
 | 目录守卫 | `MetamodelRegistryTest.everyElementTypeIsFullyRegistered` | 157 个类型逐一断言「有主图归属 + 有属性表 + 有可挂载父类型」 |
+| 关系守卫 | `everyRelationshipHasANormativeMetaclass`、`extensionLibraryMaterialisesEveryRelationshipType` | 37 种关系逐一断言「有规范元类 + 属性链含该元类 + 扩展包有对应条目 + 条目类型与 extendsMetaclass 正确」 |
 | 层级守卫 | `everyMetaclassIsConnectedToTheHierarchy` | 281 个元类不断链；抽象性按规范显式标注 |
 | 接口实测 | 真实命令写入 / 删除（本地实例） | 21 个新增类型全部可建，错误父级一律 400 `validation_rule violation`，无残留 |
-| 浏览器 E2E | headless Chrome + CDP | 外壳 30 / 模型树与关系 37 / 属性栏 41，共 **108 项全通过** |
+| 浏览器 E2E | headless Chrome + CDP | 外壳 30 / 模型树与关系 37 / 属性栏 41，共 **108 项全通过**；本轮另测扩展包「关系」子包展开与 `satisfy` 选中（9 项） |
 
 顺带修掉一个真实缺陷：`POST /api/commands` 载荷缺字段时 `Map.copyOf(null)` 抛 NPE 报 500，
 现在归一为空载荷走校验失败（400 `validation_failed`），并加单测锁定。

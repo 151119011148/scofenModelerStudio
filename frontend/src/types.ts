@@ -169,6 +169,13 @@ export interface RelationshipTypeInfo {
    * false = 双向 / 无向（两端元素都挂）。由服务端元模型目录权威下发。
    */
   directed?: boolean
+  /** 规范元类（如 DEPENDENCY）：关系在 UML / SysML 里的归属，扩展包「关系」子包据此可定位。 */
+  metaclass?: string
+  metaclassName?: string
+  /** 规范出处（章节号）。 */
+  spec?: string
+  /** true = 规范里以构造型表达（«satisfy» «trace» …）；false = 本身就是元类。 */
+  stereotypeRelationship?: boolean
 }
 
 export interface ElementTypeInfo {
@@ -196,6 +203,8 @@ export interface ExtensionPackageInfo {
   labelEn?: string
   metaclassCount: number
   stereotypeCount: number
+  /** 关系子包里的关系类型条目数（元类关系 + 构造型关系）。 */
+  relationshipCount?: number
 }
 
 export interface ExtensionCatalog {

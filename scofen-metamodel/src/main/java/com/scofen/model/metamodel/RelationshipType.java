@@ -1,8 +1,12 @@
 package com.scofen.model.metamodel;
 
 import java.util.Arrays;
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * SysML 1.6 / UML 2.5.1 关系类型目录。
@@ -64,6 +68,77 @@ public enum RelationshipType {
     INCLUDE("include", "包含用例", "Include", "usecase"),
     EXTEND("extend", "扩展用例", "Extend", "usecase");
 
+    /**
+     * 每种关系在 UML / SysML 规范里的元类。
+     *
+     * <p>关系不是「画布上的一条线」就完事：它在规范里有确定的元类归属，
+     * 属性面板的元类分组、扩展包里的元类 / 构造型条目、以及「扩展的元类」引用
+     * 都由这张表推导。此前关系只有属性链、没有元类归属，扩展包里也就看不到关系模型。</p>
+     */
+    private static final Map<RelationshipType, UmlMetaclass> METACLASSES =
+            new EnumMap<>(RelationshipType.class);
+
+    /**
+     * 规范里以构造型（{@code «satisfy»}、{@code «access»} …）表达的关系。
+     *
+     * <p>其余关系本身就是 UML 元类（Association、Dependency、Generalization…）。
+     * 扩展包据此决定条目建为 Stereotype 还是 Metaclass——不是所有关系都是构造型。</p>
+     */
+    private static final Set<RelationshipType> STEREOTYPED =
+            EnumSet.noneOf(RelationshipType.class);
+
+    static {
+        // ── UML 元类关系：规范里本身就是元类 ──
+        metaclass(CONTAINMENT, UmlMetaclass.ELEMENT);
+        metaclass(IMPORT, UmlMetaclass.PACKAGE_IMPORT);
+        metaclass(PACKAGE_MERGE, UmlMetaclass.PACKAGE_MERGE);
+        metaclass(PROFILE_APPLICATION, UmlMetaclass.PROFILE_APPLICATION);
+        metaclass(GENERALIZATION, UmlMetaclass.GENERALIZATION);
+        metaclass(ASSOCIATION, UmlMetaclass.ASSOCIATION);
+        metaclass(DEPENDENCY, UmlMetaclass.DEPENDENCY);
+        metaclass(ABSTRACTION, UmlMetaclass.ABSTRACTION);
+        metaclass(REALIZATION, UmlMetaclass.REALIZATION);
+        metaclass(INTERFACE_REALIZATION, UmlMetaclass.INTERFACE_REALIZATION);
+        metaclass(SUBSTITUTION, UmlMetaclass.SUBSTITUTION);
+        metaclass(USAGE, UmlMetaclass.USAGE);
+        metaclass(INFORMATION_FLOW, UmlMetaclass.INFORMATION_FLOW);
+        metaclass(MANIFESTATION, UmlMetaclass.MANIFESTATION);
+        metaclass(CONNECTOR, UmlMetaclass.CONNECTOR);
+        metaclass(CONTROL_FLOW, UmlMetaclass.CONTROL_FLOW);
+        metaclass(OBJECT_FLOW, UmlMetaclass.OBJECT_FLOW);
+        metaclass(PARTITION, UmlMetaclass.ACTIVITY_PARTITION);
+        metaclass(MESSAGE, UmlMetaclass.MESSAGE);
+        metaclass(GUARD, UmlMetaclass.CONSTRAINT);
+        metaclass(TRANSITION, UmlMetaclass.TRANSITION);
+        metaclass(REGION, UmlMetaclass.REGION);
+        metaclass(INCLUDE, UmlMetaclass.INCLUDE);
+        metaclass(EXTEND, UmlMetaclass.EXTEND);
+        metaclass(ORDERED_FRAGMENT, UmlMetaclass.COMBINED_FRAGMENT);
+
+        // ── 构造型关系：规范里是扩展自元类的 «stereotype» ──
+        stereotyped(ACCESS, UmlMetaclass.PACKAGE_IMPORT);
+        stereotyped(SATISFY, UmlMetaclass.DEPENDENCY);
+        stereotyped(VERIFY, UmlMetaclass.DEPENDENCY);
+        stereotyped(REFINE, UmlMetaclass.DEPENDENCY);
+        stereotyped(DERIVE_REQT, UmlMetaclass.DEPENDENCY);
+        stereotyped(COPY, UmlMetaclass.DEPENDENCY);
+        stereotyped(TRACE, UmlMetaclass.DEPENDENCY);
+        stereotyped(ALLOCATE, UmlMetaclass.ABSTRACTION);
+        stereotyped(ITEM_FLOW, UmlMetaclass.INFORMATION_FLOW);
+        stereotyped(BINDING, UmlMetaclass.CONNECTOR);
+        stereotyped(DELEGATION, UmlMetaclass.CONNECTOR);
+        stereotyped(CONSTRAINT_PARAMETER, UmlMetaclass.SYSML_CONSTRAINT_PARAMETER);
+    }
+
+    private static void metaclass(RelationshipType type, UmlMetaclass metaclass) {
+        METACLASSES.put(type, metaclass);
+    }
+
+    private static void stereotyped(RelationshipType type, UmlMetaclass metaclass) {
+        METACLASSES.put(type, metaclass);
+        STEREOTYPED.add(type);
+    }
+
     private final String code;
     private final String label;
     private final String labelEn;
@@ -111,6 +186,32 @@ public enum RelationshipType {
      */
     public boolean directed() {
         return directed;
+    }
+
+    /**
+     * 该关系在规范里的元类（扩展包里 {@code mc-*} 元素的来源）。
+     *
+     * <p>37 种关系全部有确定归属，{@code MetamodelRegistryTest} 会逐项兜底检查，
+     * 新增关系类型忘记映射会直接失败。</p>
+     */
+    public UmlMetaclass metaclass() {
+        return METACLASSES.get(this);
+    }
+
+    /** 规范出处，沿用元类的章节号。 */
+    public String spec() {
+        UmlMetaclass metaclass = metaclass();
+        return metaclass == null ? "" : metaclass.spec();
+    }
+
+    /**
+     * 规范里是否以构造型表达这条关系。
+     *
+     * <p>{@code true} → 扩展包里建为 Stereotype（«satisfy» «trace» «allocate» …）；
+     * {@code false} → 本身就是元类（Association、Dependency、Transition …）。</p>
+     */
+    public boolean stereotypeRelationship() {
+        return STEREOTYPED.contains(this);
     }
 
     /** 忽略大小写与连字符/下划线，兼容 deriveReqt / derive_reqt / derive-reqt 等写法。 */

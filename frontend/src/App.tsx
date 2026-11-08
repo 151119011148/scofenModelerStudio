@@ -95,7 +95,7 @@ const PROPS_FALLBACK = 320
  * 当成项目元素、又因为它的父包被隔离而变成孤儿挂到根上。前缀判据是兜底：
  * 用户元素的 id 形如 {@code e-xxx}，不会误伤。</p>
  */
-const EXTENSION_ID_PREFIXES = ['ext-', 'mc-', 'st-', 'prim-', 'val-', 'unit-', 'dim-', 'std-']
+const EXTENSION_ID_PREFIXES = ['ext-', 'mc-', 'st-', 'rel-', 'prim-', 'val-', 'unit-', 'dim-', 'std-']
 const isExtensionId = (id: string) => EXTENSION_ID_PREFIXES.some((prefix) => id.startsWith(prefix))
 
 /**
@@ -1166,12 +1166,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return [...map.entries()]
   }, [model.diagrams])
 
-  /** 模型库视图：通用扩展包（SysML / UML）及其元类、构造型数量。 */
+  /** 模型库视图：通用扩展包（SysML / UML）及其元类、构造型、关系数量。 */
   const libraryPackages = useMemo(() => {
     const roots = extensionPackages.filter((item) => (item.kind ?? 'PROFILE') === 'PROFILE')
     return roots.map((pkg) => {
       let metaclasses = 0
       let stereotypes = 0
+      let relationships = 0
       for (const element of extensionElements) {
         let cursor: ModelElement | undefined = element
         let inside = false
@@ -1185,6 +1186,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         if (!inside) {
           continue
         }
+        // 关系子包里的条目本身也是 METACLASS / STEREOTYPE，先按扩展域 id 分出关系，
+        // 否则同一批元素会被元类、构造型、关系三处重复计数。
+        if (element.id.startsWith('rel-')) {
+          relationships += 1
+          continue
+        }
         const code = codeOf(element.type)
         if (code === 'METACLASS') {
           metaclasses += 1
@@ -1192,7 +1199,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           stereotypes += 1
         }
       }
-      return { pkg, metaclasses, stereotypes }
+      return { pkg, metaclasses, stereotypes, relationships }
     })
   }, [extensionPackages, extensionElements, extensionElementById, codeOf])
 
@@ -4299,7 +4306,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             <div className="panel-title">
               {leftTab === 'charts'
                 ? t('按图类型分组 · 共 {count} 张', { count: model.diagrams.length })
-                : t('通用扩展包 · 元类与构造型')}
+                : t('通用扩展包 · 元类 / 构造型 / 关系')}
             </div>
           )}
           <div className="browser" onContextMenu={(event) => openMenu(event, { kind: 'root', id: null })}>
@@ -4335,7 +4342,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               </>
             ) : leftTab === 'library' ? (
               <>
-                {libraryPackages.map(({ pkg, metaclasses, stereotypes }) => (
+                {libraryPackages.map(({ pkg, metaclasses, stereotypes, relationships }) => (
                   <section className="chart-group" key={pkg.id}>
                     <button
                       type="button"
@@ -4348,16 +4355,17 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                     >
                       <TypeIcon code="PACKAGE" size={14} />
                       <span className="chart-row-name">{pkg.name}</span>
-                      <span className="chart-row-count">{metaclasses} / {stereotypes}</span>
+                      <span className="chart-row-count">{metaclasses} / {stereotypes} / {relationships}</span>
                     </button>
                     <p className="chart-group-note">
-                      {t('元类 {metaclasses} · 构造型 {stereotypes}', { metaclasses, stereotypes })}
+                      {t('元类 {metaclasses} · 构造型 {stereotypes} · 关系 {relationships}',
+                        { metaclasses, stereotypes, relationships })}
                     </p>
                   </section>
                 ))}
                 {libraryPackages.length === 0 && <p className="hint">{t('扩展包清单加载中…')}</p>}
                 <p className="browser-note">
-                  {t('扩展包随项目提供、整体不可删；包内元类与构造型可增删。')}
+                  {t('扩展包随项目提供、整体不可删；包内元类、构造型与关系可增删。')}
                 </p>
               </>
             ) : (

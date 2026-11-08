@@ -18,10 +18,12 @@ import java.util.Set;
  * 示例项目（Package）
  * ├── SysML 扩展包            （Profile）
  * │   ├── 元类               （Package）
- * │   └── 构造型             （Package）
+ * │   ├── 构造型             （Package）
+ * │   └── 关系               （Package）«satisfy» «verify» «deriveReqt» «itemFlow» …
  * ├── UML 扩展包              （Profile）
  * │   ├── 元类               （Package）
- * │   └── 构造型             （Package）
+ * │   ├── 构造型             （Package）
+ * │   └── 关系               （Package）Association / Dependency / Generalization …
  * ├── UML 原始类型库          （ModelLibrary）Boolean / Integer / Real / String / UnlimitedNatural
  * ├── SysML 值类型库          （ModelLibrary）ValueType × 6 + 枚举 × 3
  * ├── 单位与量纲库            （ModelLibrary）基本单位 / 基本量纲 / 导出单位
@@ -31,6 +33,10 @@ import java.util.Set;
  * <p>这样做的意义在于：元模型不再是界面里的静态说明，而是模型里可被引用、
  * 可在模型树上定位的对象。属性面板里的「类型」因此能真正指向 {@code String}、
  * {@code Real}、{@code metre}——而不是要求用户自己先造一个同名元素。</p>
+ *
+ * <p>关系同样是一等模型对象：{@link RelationshipType} 的 37 种关系在「关系」子包里各有
+ * 一个条目，规范里是元类的建为 Metaclass、是构造型的建为 Stereotype，二者都通过
+ * 「扩展的元类」指回元类子包——关系的属性面板与模型树定位由此可用。</p>
  */
 public final class ExtensionLibrary {
 
@@ -51,21 +57,25 @@ public final class ExtensionLibrary {
     public static final String METACLASS_PACKAGE_SUFFIX = "-mc";
     /** 构造型子包 id 后缀。 */
     public static final String STEREOTYPE_PACKAGE_SUFFIX = "-st";
+    /** 关系子包 id 后缀。 */
+    public static final String RELATIONSHIP_PACKAGE_SUFFIX = "-rel";
 
     /** 元类元素的 id 前缀。 */
     public static final String METACLASS_ID_PREFIX = "mc-";
     /** 构造型元素的 id 前缀。 */
     public static final String STEREOTYPE_ID_PREFIX = "st-";
+    /** 关系类型元素的 id 前缀。 */
+    public static final String RELATIONSHIP_ID_PREFIX = "rel-";
 
     /**
-     * 扩展域保留的 id 前缀：原始类型 / 值类型 / 单位 / 量纲 / 标准构造型。
+     * 扩展域保留的 id 前缀：原始类型 / 值类型 / 单位 / 量纲 / 标准构造型 / 关系类型。
      *
      * <p>用户的元素 id 由前端生成为 {@code e-<base36>-<rand>}，永远不会落进这些前缀，
      * 因此可以安全地用作「这是系统内容」的判据——即使目录下发与快照短暂不一致，
      * 扩展内容也不会漏进项目树（历史上就是据此把 {@code st-package} 之类漏出去的）。</p>
      */
     private static final List<String> RESERVED_ID_PREFIXES = List.of(
-            "ext-", METACLASS_ID_PREFIX, STEREOTYPE_ID_PREFIX,
+            "ext-", METACLASS_ID_PREFIX, STEREOTYPE_ID_PREFIX, RELATIONSHIP_ID_PREFIX,
             "prim-", "val-", "unit-", "dim-", "std-");
 
     /** 该 id 是否落在扩展域的保留命名空间里。 */
@@ -304,6 +314,24 @@ public final class ExtensionLibrary {
         return SYSML_EXTRA_STEREOTYPES.size();
     }
 
+    /**
+     * 归入 SysML 扩展包「关系」子包的关系类型。
+     *
+     * <p>SysML 1.6 在这些关系上定义了自己的构造型（«satisfy» «verify» «refine»
+     * «deriveReqt» «copy» «trace» «allocate» «itemFlow»）；其余关系是 UML 原生元类
+     * 或 UML 标准构造型（«access» «binding» «delegate»），归入 UML 扩展包。</p>
+     */
+    private static final Set<RelationshipType> SYSML_SIDE_RELATIONSHIPS = EnumSet.of(
+            RelationshipType.SATISFY, RelationshipType.VERIFY, RelationshipType.REFINE,
+            RelationshipType.DERIVE_REQT, RelationshipType.COPY, RelationshipType.TRACE,
+            RelationshipType.ALLOCATE, RelationshipType.ITEM_FLOW,
+            RelationshipType.CONSTRAINT_PARAMETER);
+
+    /** 关系类型元素的 id：由关系 code 派生，与 {@link #RELATIONSHIP_ID_PREFIX} 同域。 */
+    public static String relationshipId(String code) {
+        return RELATIONSHIP_ID_PREFIX + code;
+    }
+
     /** 元类元素的 id：由元类枚举名派生，全局唯一且可读。 */
     public static String metaclassId(UmlMetaclass metaclass) {
         return METACLASS_ID_PREFIX + metaclass.name();
@@ -398,6 +426,33 @@ public final class ExtensionLibrary {
             properties.put("isAbstract", metaclass.abstractMetaclass());
             result.add(definition(metaclassId(metaclass), "METACLASS", metaclass.umlName(), owner,
                     metaclass.spec(), List.of(), properties));
+        }
+
+        // 关系子包：关系的元类已在「元类」子包，这里再给出一份「关系模型」目录，
+        // 让关联 / 依赖 / 泛化 / 满足 / 追溯这些图上真能画出的关系在扩展包里可浏览、可定位。
+        result.add(definition(SYSML_PROFILE_ID + RELATIONSHIP_PACKAGE_SUFFIX, "PACKAGE", "关系",
+                SYSML_PROFILE_ID,
+                "SysML 1.6 关系模型：满足 / 验证 / 精化 / 派生需求 / 复制 / 追溯 / 分配 / 项流 / 约束参数。",
+                List.of("package"), Map.of()));
+        result.add(definition(UML_PROFILE_ID + RELATIONSHIP_PACKAGE_SUFFIX, "PACKAGE", "关系",
+                UML_PROFILE_ID,
+                "UML 2.5.1 关系模型：包含 / 导入 / 关联 / 依赖 / 泛化 / 实现 / 连接器 / 控制流 / 状态迁移 / 用例包含。",
+                List.of("package"), Map.of()));
+        for (RelationshipType type : RelationshipType.values()) {
+            boolean sysml = SYSML_SIDE_RELATIONSHIPS.contains(type);
+            String owner = (sysml ? SYSML_PROFILE_ID : UML_PROFILE_ID) + RELATIONSHIP_PACKAGE_SUFFIX;
+            UmlMetaclass metaclass = type.metaclass();
+            Map<String, Object> properties = new LinkedHashMap<>();
+            // 「扩展的元类」指回元类子包：属性面板可跳转，模型树可高亮。
+            properties.put("extendsMetaclass", metaclassId(metaclass));
+            String kind = type.stereotypeRelationship() ? "构造型" : "元类";
+            result.add(definition(relationshipId(type.code()),
+                    type.stereotypeRelationship() ? "STEREOTYPE" : "METACLASS",
+                    type.code(), owner,
+                    type.label() + "（" + type.labelEn() + "）——规范" + kind + "，元类 "
+                            + metaclass.umlName() + "（" + type.spec() + "）。",
+                    type.stereotypeRelationship() ? List.of("stereotype") : List.of(),
+                    properties));
         }
 
         // 构造型：只收规范里真实存在的构造型，界面关键词不再冒充构造型
@@ -542,27 +597,30 @@ public final class ExtensionLibrary {
                               String label,
                               String labelEn,
                               int metaclassCount,
-                              int stereotypeCount) {
+                              int stereotypeCount,
+                              int relationshipCount) {
     }
 
     /**
-     * 通用扩展包的清单：六个顶层库 + 两个 Profile 下的「元类 / 构造型」子包。
+     * 通用扩展包的清单：六个顶层库 + 两个 Profile 下的「元类 / 构造型 / 关系」子包。
      */
     public static List<PackageInfo> packages() {
         List<PackageInfo> result = new ArrayList<>();
         for (String id : ROOT_IDS) {
             result.add(new PackageInfo(id, null, kindOf(id), nameOf(id), nameOf(id), labelEnOf(id),
-                    countUnder(id, "METACLASS"), countUnder(id, "STEREOTYPE")));
+                    countUnder(id, "METACLASS"), countUnder(id, "STEREOTYPE"), countRelationships(id)));
             if (SYSML_PROFILE_ID.equals(id) || UML_PROFILE_ID.equals(id)) {
-                for (String suffix : List.of(METACLASS_PACKAGE_SUFFIX, STEREOTYPE_PACKAGE_SUFFIX)) {
+                for (String suffix : List.of(METACLASS_PACKAGE_SUFFIX, STEREOTYPE_PACKAGE_SUFFIX,
+                        RELATIONSHIP_PACKAGE_SUFFIX)) {
                     String childId = id + suffix;
                     boolean metaclasses = METACLASS_PACKAGE_SUFFIX.equals(suffix);
-                    result.add(new PackageInfo(childId, id, "PACKAGE",
-                            metaclasses ? "元类" : "构造型",
-                            metaclasses ? "元类" : "构造型",
-                            metaclasses ? "Metaclasses" : "Stereotypes",
+                    boolean relationships = RELATIONSHIP_PACKAGE_SUFFIX.equals(suffix);
+                    String name = relationships ? "关系" : metaclasses ? "元类" : "构造型";
+                    result.add(new PackageInfo(childId, id, "PACKAGE", name, name,
+                            relationships ? "Relationships" : metaclasses ? "Metaclasses" : "Stereotypes",
                             metaclasses ? countUnder(childId, "METACLASS") : 0,
-                            metaclasses ? 0 : countUnder(childId, "STEREOTYPE")));
+                            metaclasses || relationships ? 0 : countUnder(childId, "STEREOTYPE"),
+                            relationships ? countRelationships(childId) : 0));
                 }
             }
         }
@@ -609,6 +667,23 @@ public final class ExtensionLibrary {
             }
         }
         return count;
+    }
+
+    /** 直接挂在某个包下的关系类型条目数量（关系子包与顶层 Profile 用）。 */
+    private static int countRelationships(String ownerId) {
+        int count = 0;
+        for (Definition definition : definitions("model-root")) {
+            if (ownerId.equals(definition.ownerId())
+                    && definition.id().startsWith(RELATIONSHIP_ID_PREFIX)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /** 扩展包里收录的关系类型总数（= {@link RelationshipType} 全量）。 */
+    public static int relationshipTypeCount() {
+        return RelationshipType.values().length;
     }
 
     /** 元类是否属于 SysML 1.6 规范层。 */

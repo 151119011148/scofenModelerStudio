@@ -4,6 +4,7 @@ import com.scofen.model.metamodel.ElementType;
 import com.scofen.model.metamodel.ExtensionLibrary;
 import com.scofen.model.metamodel.ModelElement;
 import com.scofen.model.metamodel.ModelSnapshot;
+import com.scofen.model.metamodel.RelationshipType;
 import com.scofen.model.metamodel.UmlMetaclass;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -79,19 +80,27 @@ class ExtensionLibraryTest {
                 .filter(item -> "STEREOTYPE".equals(item.type()))
                 .count();
 
-        // 每个规范元类（除实现层系统属性外）都有对应的元类元素
+        // 每个规范元类（除实现层系统属性外）都有对应的元类元素；
+        // 关系子包里规范上是元类的那部分同样建为 METACLASS。
         long expected = java.util.Arrays.stream(UmlMetaclass.values())
                 .filter(mc -> mc != UmlMetaclass.SCOFEN_CORE && mc != UmlMetaclass.SCOFEN_RELATION)
+                .count()
+                + java.util.Arrays.stream(RelationshipType.values())
+                .filter(type -> !type.stereotypeRelationship())
                 .count();
         assertThat(metaclassCount).isEqualTo(expected);
-        // 构造型只收规范里真实存在的那些，界面关键词（package / comment / controlNode…）不算
+        // 构造型只收规范里真实存在的那些，界面关键词（package / comment / controlNode…）不算；
+        // 关系子包里规范上是构造型的部分（«satisfy» «trace» «allocate» …）同样是 STEREOTYPE。
         long expectedStereotypes = java.util.Arrays.stream(ElementType.values())
                 .filter(ElementType::specStereotype)
                 .count();
         assertThat(stereotypeCount)
                 .isEqualTo(expectedStereotypes
                         + ExtensionLibrary.sysmlExtraStereotypeCount()
-                        + ExtensionLibrary.standardStereotypeCount());
+                        + ExtensionLibrary.standardStereotypeCount()
+                        + java.util.Arrays.stream(RelationshipType.values())
+                        .filter(RelationshipType::stereotypeRelationship)
+                        .count());
     }
 
     /** 「String 值类型」是用户明确指出的缺口：原始类型库必须真的给出可引用的元素。 */
@@ -179,6 +188,66 @@ class ExtensionLibraryTest {
         ModelElement requirementStereotype = element(ExtensionLibrary.stereotypeId("requirement"));
         assertThat(String.valueOf(requirementStereotype.properties().get("extendsMetaclass")))
                 .isEqualTo(ExtensionLibrary.metaclassId(UmlMetaclass.SYSML_REQUIREMENT));
+    }
+
+    /**
+     * 关系也是模型对象：37 种关系在「关系」子包里各有条目，规范元类已存在且可引用。
+     *
+     * <p>此前扩展包只物化元素类型的元类与构造型，关系只有属性表、没有模型条目，
+     * 在树上根本看不到「关系模型」。</p>
+     */
+    @Test
+    void relationshipCatalogIsMaterialisedUnderProfileRelationshipPackage() {
+        ExtensionSeeder.seed(executor, "model-root");
+
+        String sysmlRelations = ExtensionLibrary.SYSML_PROFILE_ID
+                + ExtensionLibrary.RELATIONSHIP_PACKAGE_SUFFIX;
+        String umlRelations = ExtensionLibrary.UML_PROFILE_ID
+                + ExtensionLibrary.RELATIONSHIP_PACKAGE_SUFFIX;
+        assertThat(element(sysmlRelations).name()).isEqualTo("关系");
+        assertThat(element(umlRelations).name()).isEqualTo("关系");
+
+        for (RelationshipType type : RelationshipType.values()) {
+            ModelElement relation = element(ExtensionLibrary.relationshipId(type.code()));
+            assertThat(relation.ownerId()).as("%s 的关系子包归属", type)
+                    .isIn(sysmlRelations, umlRelations);
+            assertThat(relation.type()).as("%s 的条目类型", type)
+                    .isEqualTo(type.stereotypeRelationship() ? "STEREOTYPE" : "METACLASS");
+            // 「扩展的元类」必须指回扩展包里的元类元素，否则属性面板跳不过去
+            assertThat(element(String.valueOf(relation.properties().get("extendsMetaclass"))).type())
+                    .as("%s 的规范元类", type)
+                    .isEqualTo("METACLASS");
+        }
+        // 归属规则：SysML 关系构造型进 SysML 包，UML 原生关系进 UML 包
+        assertThat(element(ExtensionLibrary.relationshipId("satisfy")).ownerId())
+                .isEqualTo(sysmlRelations);
+        assertThat(element(ExtensionLibrary.relationshipId("association")).ownerId())
+                .isEqualTo(umlRelations);
+
+        // 清单里的关系计数与物化结果一致
+        ExtensionLibrary.PackageInfo info = ExtensionLibrary.packages().stream()
+                .filter(item -> sysmlRelations.equals(item.id())).findFirst().orElseThrow();
+        long sysmlCount = java.util.Arrays.stream(RelationshipType.values())
+                .filter(type -> sysmlRelations.equals(
+                        element(ExtensionLibrary.relationshipId(type.code())).ownerId()))
+                .count();
+        assertThat(info.relationshipCount()).isEqualTo((int) sysmlCount);
+        assertThat(info.metaclassCount()).isZero();
+        assertThat(info.stereotypeCount()).isZero();
+    }
+
+    /** 存量项目升级：关系目录缺失的条目由 sync 补齐（老快照没有 rel-* 元素）。 */
+    @Test
+    void syncBackfillsRelationshipCatalogForExistingProjects() {
+        ExtensionSeeder.seed(executor, "model-root");
+        String relationId = ExtensionLibrary.relationshipId(RelationshipType.DERIVE_REQT.code());
+        cmd("DELETE_ELEMENT", Map.of("id", relationId));
+
+        assertThat(ExtensionSeeder.sync(executor, "model-root")).isTrue();
+        ModelElement back = element(relationId);
+        assertThat(back.type()).isEqualTo("STEREOTYPE");
+        assertThat(back.ownerId()).isEqualTo(ExtensionLibrary.SYSML_PROFILE_ID
+                + ExtensionLibrary.RELATIONSHIP_PACKAGE_SUFFIX);
     }
 
     @Test
@@ -293,8 +362,8 @@ class ExtensionLibraryTest {
     @Test
     void packageCatalogDescribesTheWholeExtensionSubtree() {        List<ExtensionLibrary.PackageInfo> packages = ExtensionLibrary.packages();
 
-        // 六个顶层扩展包 / 库 + 两个 Profile 下的「元类」「构造型」子包
-        assertThat(packages).hasSize(10);
+        // 六个顶层扩展包 / 库 + 两个 Profile 下的「元类」「构造型」「关系」子包
+        assertThat(packages).hasSize(12);
         assertThat(packages).extracting(ExtensionLibrary.PackageInfo::id)
                 .containsExactlyInAnyOrder(
                         ExtensionLibrary.SYSML_PROFILE_ID,
@@ -305,8 +374,10 @@ class ExtensionLibraryTest {
                         ExtensionLibrary.STANDARD_PROFILE_ID,
                         ExtensionLibrary.SYSML_PROFILE_ID + ExtensionLibrary.METACLASS_PACKAGE_SUFFIX,
                         ExtensionLibrary.SYSML_PROFILE_ID + ExtensionLibrary.STEREOTYPE_PACKAGE_SUFFIX,
+                        ExtensionLibrary.SYSML_PROFILE_ID + ExtensionLibrary.RELATIONSHIP_PACKAGE_SUFFIX,
                         ExtensionLibrary.UML_PROFILE_ID + ExtensionLibrary.METACLASS_PACKAGE_SUFFIX,
-                        ExtensionLibrary.UML_PROFILE_ID + ExtensionLibrary.STEREOTYPE_PACKAGE_SUFFIX);
+                        ExtensionLibrary.UML_PROFILE_ID + ExtensionLibrary.STEREOTYPE_PACKAGE_SUFFIX,
+                        ExtensionLibrary.UML_PROFILE_ID + ExtensionLibrary.RELATIONSHIP_PACKAGE_SUFFIX);
 
         // 顶层扩展包没有父，子包挂在各自的扩展包下
         ExtensionLibrary.PackageInfo sysml = packages.stream()

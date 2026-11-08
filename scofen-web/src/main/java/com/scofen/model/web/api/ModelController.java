@@ -126,7 +126,12 @@ public class ModelController {
                     "labelEn", type.labelEn(),
                     "stereotype", type.stereotype(),
                     "family", type.family(),
-                    "directed", type.directed()));
+                    "directed", type.directed(),
+                    // 规范元类与出处：关系不只是画布上的一条线，界面上可显示它归属于哪个元类。
+                    "metaclass", type.metaclass().name(),
+                    "metaclassName", type.metaclass().umlName(),
+                    "spec", type.spec(),
+                    "stereotypeRelationship", type.stereotypeRelationship()));
         }
         return result;
     }
@@ -162,7 +167,8 @@ public class ModelController {
                     "label", info.label(),
                     "labelEn", info.labelEn(),
                     "metaclassCount", info.metaclassCount(),
-                    "stereotypeCount", info.stereotypeCount()));
+                    "stereotypeCount", info.stereotypeCount(),
+                    "relationshipCount", info.relationshipCount()));
         }
         // 静态只读定义：与项目快照隔离，界面据此内嵌渲染扩展包树。
         List<Map<String, Object>> elements = new ArrayList<>();

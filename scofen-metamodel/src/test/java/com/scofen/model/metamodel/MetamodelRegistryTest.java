@@ -96,6 +96,54 @@ class MetamodelRegistryTest {
     }
 
     /**
+     * 关系模型守卫：每种关系都必须有规范元类归属。
+     *
+     * <p>缺了归属，关系在扩展包里就没有条目、属性面板也无从按元类分组——
+     * 这正是「元模型只有元素、没有关系」的缺口。</p>
+     */
+    @Test
+    void everyRelationshipHasANormativeMetaclass() {
+        for (RelationshipType type : RelationshipType.values()) {
+            assertThat(type.metaclass()).as("%s 缺少规范元类", type).isNotNull();
+            assertThat(type.spec()).as("%s 缺少规范出处", type).isNotBlank();
+            assertThat(PropertyCatalog.metaclassesOf(type))
+                    .as("%s 属性链缺少规范元类", type)
+                    .contains(type.metaclass());
+        }
+        // 规范事实抽查：满足/验证是 Dependency 的构造型，关联本身就是元类。
+        assertThat(RelationshipType.SATISFY.metaclass()).isEqualTo(UmlMetaclass.DEPENDENCY);
+        assertThat(RelationshipType.SATISFY.stereotypeRelationship()).isTrue();
+        assertThat(RelationshipType.TRACE.stereotypeRelationship()).isTrue();
+        assertThat(RelationshipType.ASSOCIATION.metaclass()).isEqualTo(UmlMetaclass.ASSOCIATION);
+        assertThat(RelationshipType.ASSOCIATION.stereotypeRelationship()).isFalse();
+    }
+
+    /** 扩展包必须收录全部关系类型：关系模型与元素模型在扩展包里同等可见。 */
+    @Test
+    void extensionLibraryMaterialisesEveryRelationshipType() {
+        java.util.Map<String, ExtensionLibrary.Definition> byId =
+                ExtensionLibrary.definitions("model-root").stream()
+                        .collect(java.util.stream.Collectors.toMap(
+                                ExtensionLibrary.Definition::id, def -> def, (a, b) -> a));
+        for (RelationshipType type : RelationshipType.values()) {
+            ExtensionLibrary.Definition definition =
+                    byId.get(ExtensionLibrary.relationshipId(type.code()));
+            assertThat(definition).as("%s 未进扩展包", type).isNotNull();
+            assertThat(definition.type())
+                    .as("%s 的扩展包条目类型", type)
+                    .isEqualTo(type.stereotypeRelationship() ? "STEREOTYPE" : "METACLASS");
+            assertThat(definition.properties().get("extendsMetaclass"))
+                    .as("%s 的规范元类引用", type)
+                    .isEqualTo(ExtensionLibrary.metaclassId(type.metaclass()));
+        }
+        // 关系条目分散在 SysML / UML 两个「关系」子包，且都挂在对应 Profile 下
+        assertThat(byId.get(ExtensionLibrary.relationshipId(RelationshipType.SATISFY.code())).ownerId())
+                .isEqualTo(ExtensionLibrary.SYSML_PROFILE_ID + ExtensionLibrary.RELATIONSHIP_PACKAGE_SUFFIX);
+        assertThat(byId.get(ExtensionLibrary.relationshipId(RelationshipType.ASSOCIATION.code())).ownerId())
+                .isEqualTo(ExtensionLibrary.UML_PROFILE_ID + ExtensionLibrary.RELATIONSHIP_PACKAGE_SUFFIX);
+    }
+
+    /**
      * 全量目录守卫：每个可建类型都必须同时具备「主图归属」「属性表」「挂载位置」。
      *
      * <p>新增类型时最容易漏的正是这三处——漏了主图归属，导入重排会丢元素；

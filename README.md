@@ -16,6 +16,7 @@
 | 九图注册表 | 表驱动的 9 种图规格、元素集合、校验分组；序列图指向专用 `Java SequenceLayout` |
 | 元模型覆盖 | 可建类型 **157**（核心 89 / 规范扩展 68，后者默认收在工具箱「更多规范类型」里）、元类 **281**、元属性定义 **593**、关系类型 **37**。UML 2.5.1 的 §7 模板、§8 观察与区间约束、§9/§11 关联类与接口实现、§13 事件、§14 协议状态机、§15 控制节点族与区域、§16 四十余个具体动作、§17 交互片段、§19 部署类全部有可建入口；SysML 1.6 剖面 **49** 个构造型 |
 | 扩展包六库 | 项目自带 6 个顶层扩展根：SysML / UML 两个 Profile，加 **UML 原始类型库**（Boolean / Integer / Real / String / UnlimitedNatural）、**SysML 值类型库**（含 ControlValueKind / VerdictKind / FeatureDirectionKind 三个枚举）、**ISO 80000 / QUDV 单位量纲库**（7 量纲 + 7 基本单位 + 22 派生单位）、**UML 标准构造型库 L2/L3**（36 个）。值属性的 `type` 可直接指向 `prim-String`，`unit` 可指向 `unit-kilogram`；存量项目首次打开时按 id 差集增量补齐 |
+| 关系模型 | 两个 Profile 下各带一个**「关系」子包**：37 种关系类型逐个物化为模型条目——规范里是元类的建为 Metaclass（Association / Dependency / Generalization / Connector / Transition…），是构造型的建为 Stereotype（«satisfy» «verify» «deriveReqt» «allocate» «itemFlow»…），两者都用「扩展的元类」指回元类子包，属性面板可跳转、模型树可高亮。关系目录 `/api/metamodel/relationships` 同步下发 `metaclass` / `metaclassName` / `spec` / `stereotypeRelationship` |
 | Command 协议 | `type / payload / baseRevision / clientCmdId` → 服务端校验 → 原子写 → `revision` / `seq` 递增 |
 | 乐观锁与幂等 | 过期 `baseRevision` 返回 409；重复 `clientCmdId` 不重复执行 |
 | Patch 广播 | `affectedIds` / `changes` / `inverse` / `validationDelta`，经 WebSocket 推给所有只读会话 |
@@ -24,7 +25,7 @@
 | 交换契约 | 语义层 / 图层分离；`.xmi` 标准 UML 2.5.1 + `.di.json` 布局侧车 + `.scofen.json` 无损自有格式，导出导入双向可用 |
 | B/S 界面 | Vite + React + TS strict 三列工作区（模型树+属性 / 组件工具箱 / 画布），顶栏项目选择器、登录页、改名、新建、撤销、WS 实时同步 |
 | 层级模型树 | 按 `ownerId` 递归的父子结构，展开/折叠（飞书同款蓝色三角）、选中同步到属性面板与画布；项目根节点同样可折叠，不再是常驻展开；九图示例数据覆盖各图合法类型 |
-| 扩展包隔离与内嵌 | 模型搜索栏右侧的开关控制 UML / SysML 扩展包在模型树里的显示 / 隐藏（偏好存 localStorage）。扩展包定义由 `/api/metamodel/extension` 从静态元模型目录下发，与项目快照 / revision 隔离：不计入项目元素数、不参与项目筛选与命令、XMI 导入导出自动剔除；开启时以内嵌「扩展包」虚拟分组只读展示，**层级与项目根一致**（是根的同级节点，而不是根的子节点），可逐级展开元类与构造型用于引用定位 |
+| 扩展包隔离与内嵌 | 模型搜索栏右侧的开关控制 UML / SysML 扩展包在模型树里的显示 / 隐藏（偏好存 localStorage）。扩展包定义由 `/api/metamodel/extension` 从静态元模型目录下发，与项目快照 / revision 隔离：不计入项目元素数、不参与项目筛选与命令、XMI 导入导出自动剔除；开启时以内嵌「扩展包」虚拟分组只读展示，**层级与项目根一致**（是根的同级节点，而不是根的子节点），可逐级展开元类、构造型与关系用于引用定位 |
 | 关系虚拟节点 | 关系不再全局平铺：每个参与关系的元素下生成「关系」虚拟节点，父 id 即端点元素 id。方向由服务端关系目录 `directed` 字段权威下发——单向关系只挂源端一方，双向 / 无向关系（关联 / 连接器 / 绑定）在两端各挂一次；两端都失效时兜底到项目根 / 顶层分组。关系行可点选进属性窗口、可折叠、显示对端名称与方向 |
 | 规范约束的增删改 | 服务端 `ContainmentRules` 表驱动所有权规则（如 Port 只能属于 Block / PartProperty）、根类型限制、命名格式与同命名空间唯一性、图类型约束；前端右键菜单只列出规范允许的子类型 |
 | 右键菜单 | 新建子元素 / 重命名 / 加入当前图 / 在图中定位 / 删除；删除父节点级联整棵子树、关系与记法，单条原子命令且可撤销恢复 |
@@ -170,7 +171,8 @@ SCOFEN_BASE=/scofen/modelerStudio/ ./build.sh
 | GET | `/api/metamodel/diagrams` | 九图规格与该图允许的元素类型 (`allowedTypes`) |
 | GET | `/api/metamodel/containment` | 元素类型中文标签/构造型、父子包含规则、根类型、画布边界 |
 | GET | `/api/metamodel/properties` | UML 2.5.1 + SysML 1.6 元属性全集：元类继承链、每种元素类型的属性表、标准/专家/全部三档计数 |
-| GET | `/api/metamodel/extension` | 通用扩展包目录（SysML/UML 元类清单，供构造型与引用型属性指向） |
+| GET | `/api/metamodel/extension` | 通用扩展包目录（SysML/UML 的元类、构造型、关系清单，供引用型属性与模型树浏览） |
+| GET | `/api/metamodel/relationships` | 37 种关系类型目录：标签、构造型、族、方向，以及规范元类 / 出处 / 是否构造型 |
 | GET | `/api/workspaces` | 空间与项目目录 |
 | POST | `/api/commands` | 唯一写入口；请求头 `X-Scofen-Session` 指定撤销栈 |
 | POST | `/api/commands/undo` | 按 session 撤销上一步 |

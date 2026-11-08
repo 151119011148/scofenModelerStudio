@@ -686,14 +686,22 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
     zh: '通用扩展包 · 元类与构造型',
     en: 'Common extension packages · metaclasses and stereotypes',
   },
+  '通用扩展包 · 元类 / 构造型 / 关系': {
+    zh: '通用扩展包 · 元类 / 构造型 / 关系',
+    en: 'Common extension packages · metaclasses / stereotypes / relationships',
+  },
   '元类 {metaclasses} · 构造型 {stereotypes}': {
     zh: '元类 {metaclasses} · 构造型 {stereotypes}',
     en: '{metaclasses} metaclasses · {stereotypes} stereotypes',
   },
+  '元类 {metaclasses} · 构造型 {stereotypes} · 关系 {relationships}': {
+    zh: '元类 {metaclasses} · 构造型 {stereotypes} · 关系 {relationships}',
+    en: '{metaclasses} metaclasses · {stereotypes} stereotypes · {relationships} relationships',
+  },
   '扩展包清单加载中…': { zh: '扩展包清单加载中…', en: 'Loading extension packages…' },
   '扩展包随项目提供、整体不可删；包内元类与构造型可增删。': {
-    zh: '扩展包随项目提供、整体不可删；包内元类与构造型可增删。',
-    en: 'Extension packages ship with the project and cannot be deleted as a whole; the metaclasses and stereotypes inside can be edited.',
+    zh: '扩展包随项目提供、整体不可删；包内元类、构造型与关系可增删。',
+    en: 'Extension packages ship with the project and cannot be deleted as a whole; the metaclasses, stereotypes and relationships inside can be edited.',
   },
   '没有匹配「{keyword}」的元素或图': {
     zh: '没有匹配「{keyword}」的元素或图',

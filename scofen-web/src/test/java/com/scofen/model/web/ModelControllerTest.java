@@ -7,6 +7,7 @@ import com.scofen.model.core.Patch;
 import com.scofen.model.core.RevisionConflictException;
 import com.scofen.model.core.ValidationEngine;
 import com.scofen.model.core.ValidationException;
+import com.scofen.model.metamodel.ExtensionLibrary;
 import com.scofen.model.metamodel.MetamodelRegistry;
 import com.scofen.model.web.api.ApiExceptionHandler;
 import com.scofen.model.web.api.CommandRequest;
@@ -112,7 +113,38 @@ class ModelControllerTest {
         assertThat(catalog).allSatisfy(item -> {
             assertThat(item.get("stereotype")).isNotNull();
             assertThat(item.get("family")).isNotNull();
+            // 关系目录必须带上规范元类：界面据此显示归属，扩展包「关系」子包据此可定位。
+            assertThat(item.get("metaclass")).isNotNull();
+            assertThat(item.get("spec")).isNotNull();
+            assertThat(item.get("stereotypeRelationship")).isInstanceOf(Boolean.class);
         });
+
+        Map<String, Object> satisfy = catalog.stream()
+                .filter(item -> "satisfy".equals(item.get("code"))).findFirst().orElseThrow();
+        assertThat(satisfy.get("metaclass")).isEqualTo("DEPENDENCY");
+        assertThat(satisfy.get("stereotypeRelationship")).isEqualTo(Boolean.TRUE);
+    }
+
+    @Test
+    void extensionEndpointPublishesRelationshipPackages() {
+        Map<String, Object> payload = controller.extension();
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> packages = (List<Map<String, Object>>) payload.get("packages");
+        assertThat(packages).extracting(item -> item.get("id")).contains(
+                ExtensionLibrary.SYSML_PROFILE_ID + ExtensionLibrary.RELATIONSHIP_PACKAGE_SUFFIX,
+                ExtensionLibrary.UML_PROFILE_ID + ExtensionLibrary.RELATIONSHIP_PACKAGE_SUFFIX);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> elements = (List<Map<String, Object>>) payload.get("elements");
+        assertThat(elements).extracting(item -> item.get("id")).contains(
+                ExtensionLibrary.relationshipId("satisfy"),
+                ExtensionLibrary.relationshipId("association"));
+        Map<String, Object> satisfy = elements.stream()
+                .filter(item -> ExtensionLibrary.relationshipId("satisfy").equals(item.get("id")))
+                .findFirst().orElseThrow();
+        assertThat(satisfy.get("type")).isEqualTo("STEREOTYPE");
+        assertThat(satisfy.get("stereotypes")).isEqualTo(List.of("stereotype"));
     }
 
     @Test

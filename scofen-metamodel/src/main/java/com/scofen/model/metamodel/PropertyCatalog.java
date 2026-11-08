@@ -1183,7 +1183,7 @@ public final class PropertyCatalog {
         roots(ElementType.GENERAL_ORDERING, UmlMetaclass.GENERAL_ORDERING);
 
         /* ── RelationshipType → 元类链：关系与元素一样按规范铺开属性 ── */
-        relationChain(RelationshipType.CONTAINMENT, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.CONTAINMENT, UmlMetaclass.ELEMENT, UmlMetaclass.NAMED_ELEMENT);
         relationChain(RelationshipType.IMPORT, UmlMetaclass.PACKAGE_IMPORT, UmlMetaclass.NAMED_ELEMENT);
         relationChain(RelationshipType.ACCESS, UmlMetaclass.PACKAGE_IMPORT, UmlMetaclass.NAMED_ELEMENT);
         relationChain(RelationshipType.GENERALIZATION, UmlMetaclass.GENERALIZATION, UmlMetaclass.NAMED_ELEMENT);
@@ -1198,7 +1198,8 @@ public final class PropertyCatalog {
         relationChain(RelationshipType.ALLOCATE, UmlMetaclass.SYSML_ALLOCATE,
                 UmlMetaclass.ABSTRACTION, UmlMetaclass.DEPENDENCY, UmlMetaclass.NAMED_ELEMENT);
         relationChain(RelationshipType.CONNECTOR, UmlMetaclass.CONNECTOR, UmlMetaclass.NAMED_ELEMENT);
-        relationChain(RelationshipType.ITEM_FLOW, UmlMetaclass.SYSML_ITEM_FLOW, UmlMetaclass.NAMED_ELEMENT);
+        relationChain(RelationshipType.ITEM_FLOW, UmlMetaclass.SYSML_ITEM_FLOW,
+                UmlMetaclass.INFORMATION_FLOW, UmlMetaclass.NAMED_ELEMENT);
         relationChain(RelationshipType.BINDING, UmlMetaclass.CONNECTOR, UmlMetaclass.NAMED_ELEMENT);
         relationChain(RelationshipType.DELEGATION, UmlMetaclass.CONNECTOR, UmlMetaclass.NAMED_ELEMENT);
         relationChain(RelationshipType.CONSTRAINT_PARAMETER,
