@@ -15,9 +15,11 @@
 | 元属性定义 | 451 | **593** | `properties.totalDefinitions` |
 | 关系类型 `RelationshipType` | 28 | **37** | `relationships[]` |
 | 扩展包顶层根 | 2（SysML / UML Profile） | **6**（2 Profile + 3 ModelLibrary + 1 标准 Profile） | `extension.elements` 里 `ownerId=model-root` 的节点 |
-| 扩展包元素 | 197 | **436** | `extension.elements` 长度 |
+| 扩展包内子包 | 0 | **6**（两个 Profile 各带「元类」「构造型」「关系」） | `packages[]` 里带 `parentId` 的项 |
+| 扩展包元素 | 197 | **475** | `extension.elements` 长度 |
 | └ 元类元素 | 158 | **279** | 按 `type=METACLASS` 计数 |
 | └ 构造型元素 | 33 | **88**（SysML 49 + UML 3 + 标准库 36） | 按 `type=STEREOTYPE` 计数 |
+| └ 关系条目 | 0 | **37**（SysML 9 + UML 28，id 前缀 `rel-`） | `extension.elements` 里 `id^=rel-` |
 | └ 值类型 / 原始类型 / 枚举 | 0 | **42 / 5 / 3**（+ 9 个枚举字面量） | 值类型库、原始类型库、QUDV 库 |
 | 有入口的元类 | 54 | **279**（除 2 个实现层分组外全部可达） | `properties.types[]` 的 `metaclasses` 去重 |
 | 可建类型的属性链 | 33 | **157**（每个类型都有 `ROOTS`） | `properties.types` 键数 |
@@ -176,7 +178,7 @@ FAIL ENUMERATION_LITERAL    owner=Block        → Containment rule violation（
 | 关系守卫 | `everyRelationshipHasANormativeMetaclass`、`extensionLibraryMaterialisesEveryRelationshipType` | 37 种关系逐一断言「有规范元类 + 属性链含该元类 + 扩展包有对应条目 + 条目类型与 extendsMetaclass 正确」 |
 | 层级守卫 | `everyMetaclassIsConnectedToTheHierarchy` | 281 个元类不断链；抽象性按规范显式标注 |
 | 接口实测 | 真实命令写入 / 删除（本地实例） | 21 个新增类型全部可建，错误父级一律 400 `validation_rule violation`，无残留 |
-| 浏览器 E2E | headless Chrome + CDP | 外壳 30 / 模型树与关系 37 / 属性栏 41，共 **108 项全通过**；本轮另测扩展包「关系」子包展开与 `satisfy` 选中（9 项） |
+| 浏览器 E2E | headless Chrome + CDP | 外壳 30 / 模型树与关系 37 / 属性栏 41 / 面板尺寸 18 / 关系模型 20，共 **146 项全通过**（本地与线上各跑一遍） |
 
 顺带修掉一个真实缺陷：`POST /api/commands` 载荷缺字段时 `Map.copyOf(null)` 抛 NPE 报 500，
 现在归一为空载荷走校验失败（400 `validation_failed`），并加单测锁定。
