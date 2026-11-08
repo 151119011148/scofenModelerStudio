@@ -510,7 +510,7 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
 .props-dock {
   flex: 0 0 auto;
   max-height: 52%;
-  min-height: 226px;
+  min-height: 180px;
   overflow-y: auto;
   background: var(--surface);
   border-top: 1px solid var(--line-2);
@@ -520,15 +520,35 @@ button.primary.danger { background: var(--danger); border-color: var(--danger); 
   flex-direction: column;
 }
 
-/* 顶部分隔把手：提示这是一块可停靠面板，而非悬浮卡片 */
+/* 顶部分隔把手：既提示这是可停靠面板，也是上下拖拽的抓手（双击恢复默认高度） */
 .props-grip {
+  position: relative;
   height: 5px;
   flex: none;
   margin: 0 -14px 0;
   background:
     linear-gradient(var(--line-2), var(--line-2)) center / 34px 1px no-repeat,
     var(--surface-2);
+  cursor: row-resize;
+  touch-action: none;
 }
+/* 5px 的把手压起来太费劲，命中区上下各扩 3px（用伪元素，不占布局高度） */
+.props-grip::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -3px;
+  bottom: -3px;
+}
+.props-grip:hover,
+.props-grip.dragging {
+  background:
+    linear-gradient(var(--accent), var(--accent)) center / 46px 2px no-repeat,
+    var(--surface-2);
+}
+body.row-resizing { cursor: row-resize; user-select: none; }
+body.row-resizing * { cursor: row-resize !important; }
 
 /* 面板标题栏：仿 EA / StarUML 的「属性 / 标签」页签 */
 .props-head {

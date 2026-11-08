@@ -57,6 +57,30 @@ public final class ExtensionLibrary {
     /** 构造型元素的 id 前缀。 */
     public static final String STEREOTYPE_ID_PREFIX = "st-";
 
+    /**
+     * 扩展域保留的 id 前缀：原始类型 / 值类型 / 单位 / 量纲 / 标准构造型。
+     *
+     * <p>用户的元素 id 由前端生成为 {@code e-<base36>-<rand>}，永远不会落进这些前缀，
+     * 因此可以安全地用作「这是系统内容」的判据——即使目录下发与快照短暂不一致，
+     * 扩展内容也不会漏进项目树（历史上就是据此把 {@code st-package} 之类漏出去的）。</p>
+     */
+    private static final List<String> RESERVED_ID_PREFIXES = List.of(
+            "ext-", METACLASS_ID_PREFIX, STEREOTYPE_ID_PREFIX,
+            "prim-", "val-", "unit-", "dim-", "std-");
+
+    /** 该 id 是否落在扩展域的保留命名空间里。 */
+    public static boolean ownsId(String id) {
+        if (id == null || id.isBlank()) {
+            return false;
+        }
+        for (String prefix : RESERVED_ID_PREFIXES) {
+            if (id.startsWith(prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /** 六个顶层扩展包 / 库，按界面展示顺序排列。 */
     public static final List<String> ROOT_IDS = List.of(
             SYSML_PROFILE_ID, UML_PROFILE_ID, PRIMITIVE_LIBRARY_ID,

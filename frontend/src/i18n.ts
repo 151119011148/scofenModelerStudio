@@ -908,6 +908,11 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
   '删除项目失败：{error}': { zh: '删除项目失败：{error}', en: 'Failed to delete project: {error}' },
   '拖动调整模型树宽度': { zh: '拖动调整模型树宽度', en: 'Drag to resize the model tree' },
   '拖动调整工具箱宽度': { zh: '拖动调整工具箱宽度', en: 'Drag to resize the toolbox' },
+  '拖动调整属性窗口高度': { zh: '拖动调整属性窗口高度', en: 'Drag to resize the property panel' },
+  '上下拖动调整属性窗口高度，双击恢复默认': {
+    zh: '上下拖动调整属性窗口高度，双击恢复默认',
+    en: 'Drag up or down to resize the property panel; double-click to reset',
+  },
 }
 
 /** 语言包缺失时回退到中文原文，保证界面永远可读。 */

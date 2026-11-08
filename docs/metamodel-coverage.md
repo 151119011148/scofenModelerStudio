@@ -116,6 +116,21 @@ FAIL ENUMERATION_LITERAL    owner=Block        → Containment rule violation（
 `RepositoryConfiguration.sampleModel()`，其它项目在 `ProjectRegistry.create()`；
 漏掉前者时线上主项目升级后仍然看不到 `String`（本报告最初就踩了这个坑，
 线上快照 218 元素 → 补齐后 **479** 元素，`prim-String` / `unit-kilogram` / `st-proxyPort` 均已在库）。
+
+### 5.1 反方向：清理旧版本冒充构造型的「界面关键词」
+
+`specStereotype()` 收紧后，新版本不再生成 `st-package` / `st-port` / `st-activity` 这类元素，
+但**存量快照里它们仍在**。它们既不在扩展目录里、父包又被前端隔离，于是被当作「孤儿」
+直接挂到模型树顶层（截图里项目根下一排小写名的「构造型」就是这批东西）。
+
+`sync()` 因此同时做两件事：删掉「落在扩展域 id 命名空间、但目录已不定义」的元素，再补齐缺失。
+`ExtensionLibrary.ownsId()` 用保留前缀（`ext-` / `mc-` / `st-` / `prim-` / `val-` / `unit-` /
+`dim-` / `std-`）判定扩展域，用户元素 id 形如 `e-xxx`，不会被误删。
+
+前端另加一层兜底：`projectElements` 除了「目录里没有」还要「不是扩展域 id」才进树。
+即使服务端目录与快照暂时不同步，扩展内容也不会漏进项目树。
+线上实测 479 → **457** 元素（删的 22 个全是 `action` / `activity` / `comment` / `package` /
+`port` / `state` / `transition` / `useCase` 这类界面关键词），构造型回到 **88**（SysML 49 + UML 3 + 标准 36）。
 单测 `openingLegacyProjectBackfillsLibrariesAddedByNewerVersions` 锁定该行为。
 
 ---

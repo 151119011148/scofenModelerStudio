@@ -254,9 +254,44 @@ class ExtensionLibraryTest {
         assertThat(element(ExtensionLibrary.primitiveId("String")).type()).isEqualTo("PRIMITIVE_TYPE");
     }
 
+    /**
+     * 旧版本把 ElementType 的「界面关键词」（package / port / activity…）当成构造型物化了，
+     * 快照里留下 st-package 之类的元素。新目录不再生成它们，若只补不删，这些元素会因为
+     * 父包被隔离而变成孤儿、直接挂到模型树顶层——必须清掉；用户自建元素一律不动。
+     */
     @Test
-    void packageCatalogDescribesTheWholeExtensionSubtree() {
-        List<ExtensionLibrary.PackageInfo> packages = ExtensionLibrary.packages();
+    void syncPrunesKeywordStereotypesLeftByOlderVersions() {
+        ExtensionSeeder.seed(executor, "model-root");
+        String stereotypeOwner = ExtensionLibrary.SYSML_PROFILE_ID
+                + ExtensionLibrary.STEREOTYPE_PACKAGE_SUFFIX;
+        cmd("CREATE_ELEMENT", Map.of("id", "st-package", "type", "STEREOTYPE", "name", "package",
+                "ownerId", stereotypeOwner));
+        cmd("CREATE_ELEMENT", Map.of("id", "e-user-1", "type", "Package", "name", "用户包",
+                "ownerId", "model-root"));
+        int before = executor.snapshot().elements().size();
+
+        assertThat(ExtensionSeeder.sync(executor, "model-root")).isTrue();
+
+        assertThat(elementOrNull("st-package")).as("旧版关键词构造型应被清理").isNull();
+        assertThat(element("e-user-1").name()).as("用户元素不在扩展域命名空间").isEqualTo("用户包");
+        assertThat(executor.snapshot().elements()).hasSize(before - 1);
+    }
+
+    @Test
+    void extensionDomainIsRecognizedByIdPrefix() {
+        // 与前端 isExtensionId() 同一套前缀约定；用户元素 id 形如 e-xxx，不会误判。
+        assertThat(ExtensionLibrary.ownsId("ext-sysml")).isTrue();
+        assertThat(ExtensionLibrary.ownsId("mc-PACKAGE")).isTrue();
+        assertThat(ExtensionLibrary.ownsId("st-package")).isTrue();
+        assertThat(ExtensionLibrary.ownsId("prim-String")).isTrue();
+        assertThat(ExtensionLibrary.ownsId("unit-kilogram")).isTrue();
+        assertThat(ExtensionLibrary.ownsId("e-lx2k9a-4f8d1")).isFalse();
+        assertThat(ExtensionLibrary.ownsId("model-root")).isFalse();
+        assertThat(ExtensionLibrary.ownsId(null)).isFalse();
+    }
+
+    @Test
+    void packageCatalogDescribesTheWholeExtensionSubtree() {        List<ExtensionLibrary.PackageInfo> packages = ExtensionLibrary.packages();
 
         // 六个顶层扩展包 / 库 + 两个 Profile 下的「元类」「构造型」子包
         assertThat(packages).hasSize(10);

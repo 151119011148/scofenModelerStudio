@@ -81,6 +81,24 @@ const DOCK_TOOL_MAX = 360
 const DOCK_TOOL_COLLAPSED = 46
 
 /**
+ * 属性面板上下拖拽的高度边界：低于这个高度连「属性 / 标签」页签都放不下，
+ * 高于上限则模型树只剩一两行、失去导航意义。
+ */
+const PROPS_MIN = 180
+const PROPS_FALLBACK = 320
+
+/**
+ * 扩展域保留 id 前缀（与服务端 {@code ExtensionLibrary.ownsId} 同一套约定）。
+ *
+ * <p>项目树的数据源是快照，而扩展内容的数据源是元模型目录；两者版本不一致时
+ * （旧快照里残留了已被删除的构造型），只按「目录里有没有这个 id」过滤会把残留
+ * 当成项目元素、又因为它的父包被隔离而变成孤儿挂到根上。前缀判据是兜底：
+ * 用户元素的 id 形如 {@code e-xxx}，不会误伤。</p>
+ */
+const EXTENSION_ID_PREFIXES = ['ext-', 'mc-', 'st-', 'prim-', 'val-', 'unit-', 'dim-', 'std-']
+const isExtensionId = (id: string) => EXTENSION_ID_PREFIXES.some((prefix) => id.startsWith(prefix))
+
+/**
  * 模型树的折叠三角：飞书文档那种蓝色实心三角，展开时顺时针转 90°。
  *
  * <p>不用 ▸/▾ 文本字符：不同字体下大小与基线都不一致，行高会跟着抖；
@@ -431,7 +449,19 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   })
   /** 正在拖拽的分隔条（null 表示未拖拽）。 */
-  const [dockDrag, setDockDrag] = useState<'left' | 'tool' | null>(null)
+  const [dockDrag, setDockDrag] = useState<'left' | 'tool' | 'props' | null>(null)
+  /**
+   * 属性面板高度（px）。null 表示未自定义，走样式表默认（高度上限 52%）。
+   * 拖拽上下分隔条后固定为像素值，刷新后恢复。
+   */
+  const [propsHeight, setPropsHeight] = useState<number | null>(() => {
+    try {
+      const parsed = Number.parseFloat(localStorage.getItem('scofen.modeler.dock.props') ?? '')
+      return Number.isFinite(parsed) ? Math.max(PROPS_MIN, parsed) : null
+    } catch {
+      return null
+    }
+  })
   /** 待删除项目：确认后调用删除接口。 */
   const [deleteProjectTarget, setDeleteProjectTarget] = useState<WorkspaceProject | null>(null)
   /** 当前展开的顶级菜单名（null 表示全部收起）。 */
@@ -446,6 +476,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
   const svgRef = useRef<SVGSVGElement | null>(null)
   const workspaceRef = useRef<HTMLDivElement | null>(null)
+  /** 左栏容器：属性面板上下拖拽时以它为高度基准（底边固定）。 */
+  const leftDockRef = useRef<HTMLDivElement | null>(null)
   const menubarRef = useRef<HTMLElement | null>(null)
   // 命令的 baseRevision 必须取「最新已知 revision」而非渲染闭包里的 model.revision：
   // 同一次事件里连续发两条命令时，state 尚未更新，旧值会触发 409 乐观锁冲突。
@@ -496,7 +528,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }, [showExtensions])
 
-  /** 两栏宽度落 localStorage：刷新后保持上次拖到的位置。 */
+  /** 左栏宽度落 localStorage：刷新后保持上次拖到的位置。 */
   useEffect(() => {
     try {
       window.localStorage.setItem('scofen.modeler.dock.left', String(Math.round(dockWidths.left)))
@@ -506,18 +538,68 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }, [dockWidths])
 
+  /** 属性面板高度同样落 localStorage；恢复默认（null）时清掉键。 */
+  useEffect(() => {
+    try {
+      if (propsHeight == null) {
+        window.localStorage.removeItem('scofen.modeler.dock.props')
+      } else {
+        window.localStorage.setItem('scofen.modeler.dock.props', String(Math.round(propsHeight)))
+      }
+    } catch {
+      // 隐私模式 / 禁用存储时忽略。
+    }
+  }, [propsHeight])
+
   /**
-   * 拖拽分隔条调整列宽。
+   * 窗口变矮时把自定义高度收进可用范围：否则模型树会被挤到 0 高，
+   * 用户看到的是「树没了」，而不是「面板太高」。
+   */
+  const propsHeightFixed = propsHeight != null
+  useEffect(() => {
+    if (!propsHeightFixed) {
+      return
+    }
+    const onResize = () => {
+      const rect = leftDockRef.current?.getBoundingClientRect()
+      if (!rect) {
+        return
+      }
+      const max = Math.max(PROPS_MIN, rect.height - 132)
+      setPropsHeight((current) => (current == null
+        ? null
+        : Math.min(max, Math.max(PROPS_MIN, current))))
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [propsHeightFixed])
+
+  /**
+   * 拖拽分隔条调整列宽 / 属性面板高度。
    *
    * <p>用 window 级 pointermove / pointerup 而不是给手柄加 pointer capture：
    * 指针一旦移出手柄（7px 宽）就会丢失事件，拖拽会卡住。</p>
+   *
+   * <p>纵向吸附与横向不同：属性面板高度 = 容器底边到指针的垂直距离，
+   * 这样按下瞬间不会因为「指针不在手柄正中」而跳一下。上限给模型树留 132px，
+   * 保证树至少还能显示几行。</p>
    */
   useEffect(() => {
     if (!dockDrag) {
       return
     }
-    document.body.classList.add('col-resizing')
+    const vertical = dockDrag === 'props'
+    document.body.classList.add(vertical ? 'row-resizing' : 'col-resizing')
     const onMove = (event: PointerEvent) => {
+      if (vertical) {
+        const rect = leftDockRef.current?.getBoundingClientRect()
+        if (!rect) {
+          return
+        }
+        const max = Math.max(PROPS_MIN, rect.height - 132)
+        setPropsHeight(Math.min(max, Math.max(PROPS_MIN, rect.bottom - event.clientY)))
+        return
+      }
       const originX = workspaceRef.current?.getBoundingClientRect().left ?? 0
       const pointer = event.clientX - originX
       if (dockDrag === 'left') {
@@ -538,7 +620,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     window.addEventListener('pointerup', onUp)
     window.addEventListener('pointercancel', onUp)
     return () => {
-      document.body.classList.remove('col-resizing')
+      document.body.classList.remove('row-resizing', 'col-resizing')
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onUp)
@@ -800,7 +882,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     [extensionElements],
   )
   const projectElements = useMemo(
-    () => model.elements.filter((element) => !extensionElementIds.has(element.id)),
+    () => model.elements.filter(
+      (element) => !extensionElementIds.has(element.id) && !isExtensionId(element.id),
+    ),
     [model.elements, extensionElementIds],
   )
   const extensionElementById = useMemo(
@@ -4158,7 +4242,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           </>
         )}
 
-        <div className="left-dock">
+        <div className="left-dock" ref={leftDockRef}>
         <aside className="tree">
           <div className="tree-head" role="tablist">
             <button
@@ -4304,8 +4388,27 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
         </aside>
 
-        <aside className="props-dock" aria-label={t('属性窗口（常驻左下角）')}>
-          <div className="props-grip" aria-hidden="true" />
+        <aside
+          className="props-dock"
+          aria-label={t('属性窗口（常驻左下角）')}
+          style={propsHeight == null
+            ? undefined
+            : { height: `${Math.round(propsHeight)}px`, maxHeight: 'none' }}
+        >
+          {/* 上下分隔把手：拖拽调整属性窗口高度，双击恢复默认 */}
+          <div
+            className={`props-grip${dockDrag === 'props' ? ' dragging' : ''}`}
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label={t('拖动调整属性窗口高度')}
+            title={t('上下拖动调整属性窗口高度，双击恢复默认')}
+            data-dock-resizer="props"
+            onPointerDown={(event) => {
+              event.preventDefault()
+              setDockDrag('props')
+            }}
+            onDoubleClick={() => setPropsHeight(null)}
+          />
           <div className="props-head">
             {([
               ['attrs', '属性'],

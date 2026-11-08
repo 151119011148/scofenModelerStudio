@@ -38,26 +38,52 @@ public final class ExtensionSeeder {
     }
 
     /**
-     * 增量补齐：老快照里没有的元类 / 构造型 / 标准库补建一次。
+     * 增量同步：先清掉目录里已不存在的扩展内容，再补建新增的元类 / 构造型 / 标准库。
      *
      * <p>扩展包随项目提供，但快照是版本相关的：升级后新增的元类、原始类型库、
-     * 单位量纲库不会自动出现在存量项目里。这里按 id 比对补建，
-     * 已存在的（包括用户改过名的）一律不动。</p>
+     * 单位量纲库不会自动出现在存量项目里，因此按 id 比对补建，已存在的（包括用户改过名的）
+     * 一律不动。</p>
      *
-     * @return 是否真的补建了什么（调用方据此决定要不要重写快照）
+     * <p>反方向同样要处理：旧版本曾把 ElementType 的「界面关键词」（{@code package}、
+     * {@code port}、{@code activity}…）物化成构造型，这些元素在快照里留下 {@code st-package}
+     * 之类的 id，而新目录已不再生成它们。它们既不在扩展目录里，也不是项目元素，
+     * 最终会以「孤儿」身份漏进模型树顶层——所以按「扩展域 id 但目录未定义」清理一次。
+     * 用户自建元素的 id 形如 {@code e-xxx}，不会落入扩展域命名空间。</p>
+     *
+     * @return 是否真的改动过（调用方据此决定要不要重写快照）
      */
     public static boolean sync(CommandExecutor executor, String rootOwnerId) {
         Set<String> existing = new HashSet<>();
         for (ModelElement element : executor.snapshot().elements()) {
             existing.add(element.id());
         }
-        List<Map<String, Object>> missing = rows(rootOwnerId, existing);
-        if (missing.isEmpty()) {
-            return false;
+
+        Set<String> defined = new HashSet<>();
+        for (ExtensionLibrary.Definition definition : ExtensionLibrary.definitions(rootOwnerId)) {
+            defined.add(definition.id());
         }
-        executor.execute(SYSTEM_SESSION, Command.of("CREATE_ELEMENTS", executor.revision(),
-                "sync-extension-library", Map.of("elements", missing)));
-        return true;
+
+        boolean changed = false;
+        List<String> retired = new ArrayList<>();
+        for (String id : existing) {
+            if (!defined.contains(id) && ExtensionLibrary.ownsId(id)) {
+                retired.add(id);
+            }
+        }
+        if (!retired.isEmpty()) {
+            executor.execute(SYSTEM_SESSION, Command.of("DELETE_ELEMENTS", executor.revision(),
+                    "prune-extension-library", Map.of("ids", retired)));
+            existing.removeAll(retired);
+            changed = true;
+        }
+
+        List<Map<String, Object>> missing = rows(rootOwnerId, existing);
+        if (!missing.isEmpty()) {
+            executor.execute(SYSTEM_SESSION, Command.of("CREATE_ELEMENTS", executor.revision(),
+                    "sync-extension-library", Map.of("elements", missing)));
+            changed = true;
+        }
+        return changed;
     }
 
     private static List<Map<String, Object>> rows(String rootOwnerId, Set<String> skipIds) {
