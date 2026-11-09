@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
 import {
   clearSession,
@@ -62,6 +62,15 @@ const EMPTY_MODEL: ModelSnapshot = {
 const FALLBACK_CANVAS = { maxX: 480, maxY: 340, width: 640, height: 420 }
 const FALLBACK_NODE = { width: 168, height: 84 }
 const ROOT_KEY = '__root__'
+/**
+ * 没有打开任何图时，画布把整个模型铺开成一张总览。一个元素约 6 个 SVG 节点，
+ * 5159 个（含标准库）就是 2.8 万节点，左侧任意一次折叠/选中都要为它重排一轮布局
+ * （实测单次交互 440ms，去掉这块画布后 30ms）。超过上限只留提示不再铺开；
+ * 上限取 1200 是为了让他手工建的参照案例（482 元素 + 标准库）总览照旧显示。
+ */
+const CANVAS_OVERVIEW_MAX = 1200
+/** 模型树首次进入时的自动展开上限：不超过这个元素数就照旧一次铺满，超过只铺到「章 / 包」一级。 */
+const TREE_FULL_EXPAND_MAX = 800
 /** 画布缩放边界：低于 40% 看不清记法、高于 250% 只为对位，两侧都不需要。 */
 /** 属性面板排序：规范目录顺序 / 按属性 key 升序 / 降序。 */
 type PropertySort = 'CATALOG' | 'KEY_ASC' | 'KEY_DESC'
@@ -133,6 +142,325 @@ function TreeTwisty({
     </button>
   )
 }
+
+/**
+ * 模型树的共享只读数据。
+ *
+ * <p>身份只在模型快照 / 目录变化时才更换：行组件靠它取名称与类型，
+ * 折叠、选中这类交互不换它的身份，memo 才有机会把无关行全部拦住。</p>
+ */
+interface TreeData {
+  elementById: Map<string, ModelElement>
+  diagramById: Map<string, Diagram>
+  relationById: Map<string, Relationship>
+  extensionElementById: Map<string, ModelElement>
+  codeOf: (type: string) => string
+  typeLabel: (type: string) => string
+  diagramLabel: (kind: string) => string
+  relationLabel: (code: string) => string
+  rootId: string | null
+  extensionRootIds: Set<string>
+  canEdit: boolean
+}
+
+/** 模型树行的动作：对象身份固定，内部转调当次渲染的最新实现。 */
+interface TreeActions {
+  toggleExpanded: (id: string) => void
+  toggleRelationGroup: (id: string) => void
+  selectElement: (id: string) => void
+  selectExtensionElement: (id: string) => void
+  selectRelation: (id: string) => void
+  activateDiagram: (id: string, withTab: boolean) => void
+  addElementToDiagram: (diagramId: string, elementId: string) => void
+  setDropTarget: (id: string | null) => void
+  openMenu: (event: ReactMouseEvent, target: MenuTarget) => void
+}
+
+const TreeDataContext = createContext<TreeData | null>(null)
+const TreeActionsContext = createContext<TreeActions | null>(null)
+
+/** {@link TreeRow} 的 props：全部是可浅比较的原语，显示文案交给行组件自己现取。 */
+interface TreeRowProps {
+  kind: 'element' | 'diagram' | 'extensionGroup' | 'extensionElement' | 'relationGroup' | 'relation'
+  id: string
+  depth: number
+  childCount: number
+  isOpen: boolean
+  isSelected: boolean
+  isLocated: boolean
+  isDropTarget: boolean
+  /** 关系行专属：挂载点元素 id、方向与对端元素 id。 */
+  ownerId?: string
+  direction?: 'in' | 'out' | 'both'
+  peerId?: string
+}
+
+/**
+ * 模型树的一行。
+ *
+ * <p>整棵树是一个扁平数组（见 {@code visibleRows}），行与行之间不再是嵌套 DOM，
+ * 所以缩进继续用 paddingLeft 表达。行组件必须只依赖自己的 props：
+ * 一次折叠只让变化的那几行重渲染，其余几千行直接跳过。</p>
+ */
+const TreeRow = memo(function TreeRow(props: TreeRowProps) {
+  const { kind, id, depth, childCount, isOpen, isSelected, isLocated, isDropTarget } = props
+  const data = useContext(TreeDataContext)!
+  const actions = useContext(TreeActionsContext)!
+  const indent: CSSProperties = { paddingLeft: 6 + depth * 15 }
+  const hasChildren = childCount > 0
+
+  if (kind === 'extensionGroup') {
+    return (
+      <div
+        className="tree-row virtual-group extension-group"
+        data-tree-kind="extension-group"
+        style={indent}
+        role="button"
+        tabIndex={0}
+        title={t('UML / SysML 扩展包与项目模型隔离，由系统内嵌提供，仅用于浏览与引用定位')}
+        onClick={() => actions.toggleExpanded(EXTENSION_GROUP_ID)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            actions.toggleExpanded(EXTENSION_GROUP_ID)
+          }
+        }}
+      >
+        <TreeTwisty
+          open={isOpen}
+          label={isOpen ? t('折叠') : t('展开')}
+          onToggle={() => actions.toggleExpanded(EXTENSION_GROUP_ID)}
+        />
+        <TypeIcon code="PROFILE" size={16} title={t('扩展包')} />
+        <span className="tree-label">{t('扩展包')}</span>
+        <span className="virtual-tag" title={t('系统内容，不计入项目元素数，也不参与项目命令')}>{t('系统 · 隔离')}</span>
+        <span className="child-count">{childCount}</span>
+      </div>
+    )
+  }
+
+  if (kind === 'extensionElement') {
+    const element = data.extensionElementById.get(id)
+    if (!element) {
+      return null
+    }
+    return (
+      <div
+        className="tree-row virtual-group extension-element"
+        data-tree-kind="extension-element"
+        data-element-id={element.id}
+        style={indent}
+        role="button"
+        tabIndex={0}
+        title={t('{name} · 扩展包只读定义（与项目模型隔离）', { name: element.name })}
+        onClick={() => {
+          actions.selectExtensionElement(element.id)
+          if (hasChildren) {
+            actions.toggleExpanded(element.id)
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            actions.selectExtensionElement(element.id)
+          }
+        }}
+      >
+        <TreeTwisty
+          open={isOpen}
+          leaf={!hasChildren}
+          label={isOpen ? t('折叠') : t('展开')}
+          onToggle={() => actions.toggleExpanded(element.id)}
+        />
+        <TypeIcon code={data.codeOf(element.type)} size={16} title={data.typeLabel(element.type)} />
+        <span className="tree-label">{element.name}</span>
+        <span className="tree-type">{data.typeLabel(element.type)}</span>
+      </div>
+    )
+  }
+
+  if (kind === 'relationGroup') {
+    const groupId = relationGroupId(props.ownerId ?? '')
+    return (
+      <div
+        className="tree-row virtual-group relation-group"
+        data-tree-kind="relation-group"
+        data-owner-id={props.ownerId}
+        style={indent}
+        role="button"
+        tabIndex={0}
+        title={t('单向关系只挂到源端一方，双向关系同时挂到两端元素')}
+        onClick={() => actions.toggleRelationGroup(groupId)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            actions.toggleRelationGroup(groupId)
+          }
+        }}
+      >
+        <TreeTwisty open={isOpen} label={isOpen ? t('折叠') : t('展开')} onToggle={() => actions.toggleRelationGroup(groupId)} />
+        <RelationIcon code="trace" size={15} />
+        <span className="tree-label">{t('关系')}</span>
+        <span className="child-count">{childCount}</span>
+      </div>
+    )
+  }
+
+  if (kind === 'relation') {
+    const relation = data.relationById.get(id)
+    if (!relation) {
+      return null
+    }
+    const source = data.elementById.get(relation.sourceId)
+    const target = data.elementById.get(relation.targetId)
+    const peer = data.elementById.get(props.peerId ?? '') ?? data.extensionElementById.get(props.peerId ?? '')
+    const arrow = props.direction === 'both' ? '⇄' : props.direction === 'in' ? '←' : '→'
+    return (
+      <div
+        className={`tree-row relation virtual-group${isSelected ? ' selected' : ''}`}
+        data-tree-kind="relation"
+        data-relation-id={relation.id}
+        data-owner-id={props.ownerId}
+        data-direction={props.direction}
+        style={indent}
+        role="button"
+        tabIndex={0}
+        title={t('{relation}：{source} → {target}｜点击查看 / 编辑关系属性', {
+          relation: data.relationLabel(relation.type),
+          source: source?.name ?? relation.sourceId,
+          target: target?.name ?? relation.targetId,
+        })}
+        onClick={() => actions.selectRelation(relation.id)}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault()
+            actions.selectRelation(relation.id)
+          }
+        }}
+      >
+        <TreeTwisty open={false} leaf label={t('关系')} onToggle={() => undefined} />
+        <RelationIcon code={relation.type} size={15} />
+        <span className="tree-label">{relation.name?.trim() || data.relationLabel(relation.type)}</span>
+        <span className="tree-type" title={t('关系另一端')}>
+          <span className="rel-direction" title={t('单向关系只挂到源端一方，双向关系同时挂到两端元素')}>{arrow}</span>
+          <span className="peer-name">{peer?.name ?? props.peerId}</span>
+        </span>
+      </div>
+    )
+  }
+
+  if (kind === 'diagram') {
+    const diagram = data.diagramById.get(id)
+    if (!diagram) {
+      return null
+    }
+    return (
+      <div
+        className={`tree-row diagram${isSelected ? ' selected' : ''}${isDropTarget ? ' drop-target' : ''}${isLocated ? ' located' : ''}`}
+        data-tree-id={diagram.id}
+        style={indent}
+        title={t('图 · 点击切换 · 可接收拖入的元素')}
+        onClick={() => actions.activateDiagram(diagram.id, true)}
+        onContextMenu={(event) => actions.openMenu(event, { kind: 'diagram', id: diagram.id })}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            actions.activateDiagram(diagram.id, false)
+          }
+        }}
+        onDragOver={(event) => {
+          if (!event.dataTransfer.types.includes('text/scofen-element')) {
+            return
+          }
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'link'
+          if (isDropTarget !== true) {
+            actions.setDropTarget(diagram.id)
+          }
+        }}
+        onDragLeave={() => {
+          if (isDropTarget) {
+            actions.setDropTarget(null)
+          }
+        }}
+        onDrop={(event) => {
+          event.preventDefault()
+          actions.setDropTarget(null)
+          const droppedId = event.dataTransfer.getData('text/scofen-element')
+          if (droppedId) {
+            void actions.addElementToDiagram(diagram.id, droppedId)
+          }
+        }}
+      >
+        <TreeTwisty
+          open={isOpen}
+          leaf={!hasChildren}
+          label={isOpen ? t('折叠') : t('展开')}
+          onToggle={() => actions.toggleExpanded(diagram.id)}
+        />
+        <DiagramIcon code={diagram.kind} size={16} title={data.diagramLabel(diagram.kind)} />
+        <span className="tree-label">{diagram.name}</span>
+        <span className="child-count">{diagram.elementIds.length}</span>
+      </div>
+    )
+  }
+
+  const element = data.elementById.get(id)
+  if (!element) {
+    return null
+  }
+  const isRoot = id === data.rootId
+  const draggable = data.canEdit && !isRoot
+  const info = data.typeLabel(element.type)
+  return (
+    <div
+      className={`tree-row element${isSelected ? ' selected' : ''}${isRoot ? ' root-node' : ''}${isLocated ? ' located' : ''}`}
+      data-tree-id={element.id}
+      style={indent}
+      draggable={draggable}
+      onDragStart={(event) => {
+        if (!draggable) {
+          event.preventDefault()
+          return
+        }
+        event.dataTransfer.setData('text/scofen-element', element.id)
+        event.dataTransfer.effectAllowed = 'link'
+      }}
+      title={t('{label} · 可拖入画布或图节点', { label: info })}
+      onClick={() => actions.selectElement(element.id)}
+      onContextMenu={(event) => actions.openMenu(event, { kind: 'element', id: element.id })}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          actions.selectElement(element.id)
+        }
+      }}
+    >
+      <TreeTwisty
+        open={isOpen}
+        leaf={!hasChildren}
+        label={isOpen ? t('折叠') : t('展开')}
+        onToggle={() => actions.toggleExpanded(element.id)}
+      />
+      <TypeIcon code={data.codeOf(element.type)} size={16} title={info} />
+      <span className="tree-label">{element.name}</span>
+      {isRoot ? (
+        <span className="root-tag" title={t('项目根节点，不可删除')}>{t('项目根')}</span>
+      ) : data.extensionRootIds.has(element.id) ? (
+        <span
+          className="root-tag extension-tag"
+          title={t('通用扩展包：SysML / UML 的元类与构造型随项目提供')}
+        >
+          {t('通用')}
+        </span>
+      ) : (
+        <span className="tree-type">{info}</span>
+      )}
+    </div>
+  )
+})
 
 type MenuTarget =
   | { kind: 'element'; id: string }
@@ -844,14 +1172,31 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     [model.diagrams],
   )
 
+  /**
+   * 类型码索引：`code` 与 `uml` 的小写形式都映到规范 code。
+   *
+   * <p>这里必须是查表而不是 {@code types.find(...)}：模型树每行都要取类型码，
+   * 几千行的树上一次折叠会调上万次，线性扫描 157 个类型 + 每次两次 toLowerCase
+   * 就是实测里那几百毫秒 JS 的主要来源。</p>
+   */
+  const typeCodeIndex = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const item of containment?.types ?? []) {
+      const codeKey = item.code.toLowerCase()
+      if (!map.has(codeKey)) {
+        map.set(codeKey, item.code)
+      }
+      const umlKey = item.uml?.toLowerCase()
+      if (umlKey && !map.has(umlKey)) {
+        map.set(umlKey, item.code)
+      }
+    }
+    return map
+  }, [containment])
+
   const codeOf = useCallback(
-    (type: string) =>
-      (containment?.types ?? []).find(
-        (item) =>
-          item.code.toLowerCase() === type.toLowerCase() ||
-          item.uml.toLowerCase() === type.toLowerCase(),
-      )?.code ?? type,
-    [containment],
+    (type: string) => typeCodeIndex.get(type.toLowerCase()) ?? type,
+    [typeCodeIndex],
   )
 
   /** 元模型目录的双语显示名：服务端同时下发 label（中文）与 labelEn（英文），按当前语言取。 */
@@ -1032,7 +1377,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   )
 
   /**
-   * 首次进入项目时把「有子节点的元素」全部展开一次。
+   * 首次进入项目时播种展开状态：小模型一次铺满，大模型只铺到「章 / 包」一级。
    *
    * <p>用 ref 记「已播种」而不是判断 {@code previous.size > 0}：项目根现在也遵守折叠状态，
    * 用户把根连同下面全部收起后 size 会回到 0，靠 size 判断会立刻被重新展开。</p>
@@ -1040,19 +1385,39 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const expandedSeeded = useRef(false)
   useEffect(() => {
     // 元模型目录未就绪前不做自动展开：否则扩展包目录加载前后的树形态会跳变。
-    if (!extensionCatalogReady || expandedSeeded.current) {
+    // 快照也没落地时同样不能播种：两个请求并发返回，目录先到就会把「空模型」当成
+    // 已播种，之后再也无人展开——树只剩项目根一行，且刷新前不会自己恢复。
+    if (!extensionCatalogReady || expandedSeeded.current || model.elements.length === 0) {
       return
     }
     expandedSeeded.current = true
     const next = new Set<string>()
-    for (const element of projectElements) {
-      // 有子元素 / 图、或挂了「关系」虚拟分组的元素都要展开，否则按端点挂载的关系看不到。
-      if ((childrenByOwner.get(element.id) ?? []).length > 0 || relationsByOwner.has(element.id)) {
-        next.add(element.id)
+    /** 可展开 = 有子元素 / 有本节点下的图 / 挂了「关系」虚拟分组，否则折叠态看不到关系。 */
+    const openIfExpandable = (id: string) => {
+      if ((childrenByOwner.get(id) ?? []).length > 0
+        || (diagramsByOwner.get(id) ?? []).length > 0
+        || relationsByOwner.has(id)) {
+        next.add(id)
+      }
+    }
+    if (projectElements.length <= TREE_FULL_EXPAND_MAX) {
+      for (const element of projectElements) {
+        openIfExpandable(element.id)
+      }
+    } else {
+      // 只展开到「章 / 包」一级（顶层元素的下一层）。
+      //
+      // <p>知识库级模型（几千元素）一次铺满会把整棵树塞进 DOM，之后每次折叠都要重画全部行；
+      // 深层内容靠手动展开、「在模型树中定位」和筛选框进入。</p>
+      for (const top of rootElements) {
+        openIfExpandable(top.id)
+        for (const child of childrenByOwner.get(top.id) ?? []) {
+          openIfExpandable(child.id)
+        }
       }
     }
     setExpanded(next)
-  }, [childrenByOwner, projectElements, relationsByOwner, extensionCatalogReady])
+  }, [childrenByOwner, diagramsByOwner, model.elements, projectElements, rootElements, relationsByOwner, extensionCatalogReady])
 
   /**
    * 新出现的关系挂载点自动展开：否则给一个原本折叠的元素新建关系后，
@@ -1062,12 +1427,21 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
    * 让自动展开的 `size > 0` 短路，反而把其它包都折叠了。
    */
   const knownRelationOwners = useRef<Set<string>>(new Set())
+  const relationMountsSeeded = useRef(false)
   useEffect(() => {
-    // 与自动展开共用门卫：目录未就绪时不要抢先填 expanded。
-    if (!extensionCatalogReady) {
+    // 与自动展开共用门卫：目录或快照未就绪时不要抢先填 expanded，
+    // 也不要把「快照后到的全部关系」当成新增挂载点批量展开。
+    if (!extensionCatalogReady || model.elements.length === 0) {
       return
     }
     const next = new Set(relationsByOwner.keys())
+    if (!relationMountsSeeded.current) {
+      // 首次加载只登记挂载点、不批量展开：大模型的关系端点可能有几百个，
+      // 全部展开正是把树撑重的来源之一。
+      relationMountsSeeded.current = true
+      knownRelationOwners.current = next
+      return
+    }
     const added = [...next].filter((id) => !knownRelationOwners.current.has(id))
     knownRelationOwners.current = next
     if (added.length === 0) {
@@ -1080,7 +1454,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       }
       return result
     })
-  }, [relationsByOwner, extensionCatalogReady])
+  }, [relationsByOwner, model.elements, extensionCatalogReady])
 
   const descendants = useCallback(
     (id: string): string[] => {
@@ -1108,6 +1482,37 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     () => new Map(model.elements.map((element) => [element.id, element])),
     [model.elements],
   )
+
+  /** 树行的按 id 取数表：行组件只拿 id，名称与端点在行内现取，未命中的行不做任何拼接。 */
+  const diagramById = useMemo(
+    () => new Map(model.diagrams.map((diagram) => [diagram.id, diagram])),
+    [model.diagrams],
+  )
+  const relationById = useMemo(
+    () => new Map(model.relationships.map((relation) => [relation.id, relation])),
+    [model.relationships],
+  )
+
+  /**
+   * 图 → 画布成员元素。
+   *
+   * <p>旧实现是 `projectElements.filter(e => diagram.elementIds.includes(e.id))`，
+   * 每次渲染每个图节点都要扫一遍全部元素，元素数 × 图内元素数；这里一次建索引。</p>
+   */
+  const diagramMembersByDiagram = useMemo(() => {
+    const map = new Map<string, ModelElement[]>()
+    for (const diagram of model.diagrams) {
+      const list: ModelElement[] = []
+      for (const elementId of diagram.elementIds) {
+        const element = elementById.get(elementId)
+        if (element && !extensionElementIds.has(elementId)) {
+          list.push(element)
+        }
+      }
+      map.set(diagram.id, list)
+    }
+    return map
+  }, [model.diagrams, elementById, extensionElementIds])
 
   /**
    * 构造型名 → 构造型元素：通用扩展包把 SysML / UML 的构造型物化成模型元素，
@@ -2198,7 +2603,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
   const visibleElements = useMemo(() => {
     if (!activeDiagramObj) {
-      return model.elements
+      return model.elements.length <= CANVAS_OVERVIEW_MAX ? model.elements : []
     }
     const ids = new Set(activeDiagramObj.elementIds)
     return model.elements.filter((element) => ids.has(element.id))
@@ -2970,10 +3375,14 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return groups
   }, [relationEntries, locale])
   /** 关系类型显示名：服务端同时下发中英文，按当前语言取。 */
-  const relationLabel = (code: string) => {
-    const info = relationInfo.get(code)
-    return info ? pick(info.label, info.labelEn) : code
-  }
+  /** 关系族名的双语显示名。身份要稳定：模型树行组件靠它判断自己是否需要重渲染。 */
+  const relationLabel = useCallback(
+    (code: string) => {
+      const info = relationInfo.get(code)
+      return info ? pick(info.label, info.labelEn) : code
+    },
+    [relationInfo],
+  )
 
   const toggleToolGroup = (key: string) => {
     setOpenToolGroups((previous) => {
@@ -3137,6 +3546,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     setRelationSource(null)
     // 换项目后重新播种展开状态：否则新项目的树会沿用上一个项目的折叠集合。
     expandedSeeded.current = false
+    relationMountsSeeded.current = false
     setExpanded(new Set())
     setCollapsedRelationGroups(new Set())
     const spaceLabel = workspace?.spaces.find((space) => space.code === project.spaceCode)?.label ?? ''
@@ -3204,6 +3614,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           // 文档标签是按旧项目的图/元素打开的，换项目后一律清空。
           setTabs([])
           expandedSeeded.current = false
+          relationMountsSeeded.current = false
           setExpanded(new Set())
           say('已删除项目「{name}」，已切换到「{next}」', { name: target.name, next: fallback.name })
         } else {
@@ -3244,323 +3655,229 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     })
   }
 
-  const renderTreeNode = (node: TreeNode, depth: number): ReactNode => {
-    const nodeId = node.ref.id
-    const isVirtual = node.type === 'extensionGroup' || node.type === 'extensionElement'
-      || node.type === 'relationGroup' || node.type === 'relation'
-    // 筛选态下只渲染命中项与它们的祖先链；隔离 / 虚拟内容不参与项目模型筛选。
-    if (treeFilterHits && (isVirtual || !treeFilterHits.has(nodeId))) {
-      return null
-    }
-    const indent = { paddingLeft: 6 + depth * 15 }
+  /**
+   * 可见行序列：把「折叠状态 + 筛选 + 关系挂载」压成一个扁平数组。
+   *
+   * <p>顺序与旧的递归渲染一致（子元素 → 本节点下的图 → 「关系」虚拟分组），但 DOM
+   * 不再按层嵌套，缩进交给 paddingLeft。这样每次状态变化只重建这份描述符数组
+   * （每行几次查表、零 i18n、零 React 元素），真正要重渲染的行由 memo 挑出来：
+   * 折叠一个节点时其余几千行原样跳过。行数再大也不会像递归渲染那样整树重画。</p>
+   */
+  const visibleRows = useMemo<TreeRowProps[]>(() => {
+    const rows: TreeRowProps[] = []
+    const hits = treeFilterHits
+    // 筛选态强制全开：命中项的祖先链已在 hits 里，未命中的子树整棵剪掉。
+    const isOpen = (id: string) => (hits ? true : expanded.has(id))
+    const keep = (id: string) => !hits || hits.has(id)
 
-    // ── 虚拟分组：扩展包（与项目隔离，内嵌显示） ──
-    if (node.type === 'extensionGroup') {
-      const isOpen = expanded.has(EXTENSION_GROUP_ID)
-      return (
-        <div key={`extensionGroup:${nodeId}`}>
-          <div
-            className="tree-row virtual-group extension-group"
-            data-tree-kind="extension-group"
-            style={indent}
-            role="button"
-            tabIndex={0}
-            title={t('UML / SysML 扩展包与项目模型隔离，由系统内嵌提供，仅用于浏览与引用定位')}
-            onClick={() => toggleExpanded(EXTENSION_GROUP_ID)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                toggleExpanded(EXTENSION_GROUP_ID)
-              }
-            }}
-          >
-            <TreeTwisty
-              open={isOpen}
-              label={isOpen ? t('折叠') : t('展开')}
-              onToggle={() => toggleExpanded(EXTENSION_GROUP_ID)}
-            />
-            <TypeIcon code="PROFILE" size={16} title={t('扩展包')} />
-            <span className="tree-label">{t('扩展包')}</span>
-            <span className="virtual-tag" title={t('系统内容，不计入项目元素数，也不参与项目命令')}>{t('系统 · 隔离')}</span>
-            <span className="child-count">{extensionRoots.length}</span>
-          </div>
-          {isOpen && extensionRoots.map((ref) => renderTreeNode({ type: 'extensionElement', ref }, depth + 1))}
-        </div>
-      )
-    }
-    if (node.type === 'extensionElement') {
-      const element = node.ref
-      const children = extensionChildrenByOwner.get(element.id) ?? []
-      const isOpen = expanded.has(element.id)
-      return (
-        <div key={`extensionElement:${element.id}`}>
-          <div
-            className="tree-row virtual-group extension-element"
-            data-tree-kind="extension-element"
-            data-element-id={element.id}
-            style={indent}
-            role="button"
-            tabIndex={0}
-            title={t('{name} · 扩展包只读定义（与项目模型隔离）', { name: element.name })}
-            onClick={() => {
-              setSelectedId(element.id)
-              setSelectedDiagramId(null)
-              setSelectedRelationId(null)
-              if (children.length > 0) {
-                toggleExpanded(element.id)
-              }
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                setSelectedId(element.id)
-              }
-            }}
-          >
-            <TreeTwisty
-              open={isOpen}
-              leaf={children.length === 0}
-              label={isOpen ? t('折叠') : t('展开')}
-              onToggle={() => toggleExpanded(element.id)}
-            />
-            <TypeIcon code={codeOf(element.type)} size={16} title={typeLabel(element.type)} />
-            <span className="tree-label">{element.name}</span>
-            <span className="tree-type">{typeLabel(element.type)}</span>
-          </div>
-          {isOpen && children.map((ref) => renderTreeNode({ type: 'extensionElement', ref }, depth + 1))}
-        </div>
-      )
+    const pushRelationGroup = (ownerId: string, depth: number) => {
+      const items = relationsByOwner.get(ownerId)
+      if (!items || items.length === 0) {
+        return
+      }
+      const groupId = relationGroupId(ownerId)
+      const open = !collapsedRelationGroups.has(groupId)
+      rows.push({
+        kind: 'relationGroup', id: groupId, depth, childCount: items.length,
+        isOpen: open, isSelected: false, isLocated: false, isDropTarget: false, ownerId,
+      })
+      if (!open) {
+        return
+      }
+      for (const item of items) {
+        rows.push({
+          kind: 'relation', id: item.relation.id, depth: depth + 1, childCount: 0,
+          isOpen: false, isSelected: selectedRelationId === item.relation.id,
+          isLocated: false, isDropTarget: false,
+          ownerId, direction: item.direction, peerId: item.peerId,
+        })
+      }
     }
 
-    // ── 虚拟分组：关系（父 id 为关系端点的元素 id）──
-    if (node.type === 'relationGroup') {
-      const items = relationsByOwner.get(node.ownerId) ?? []
-      const isOpen = !collapsedRelationGroups.has(nodeId)
-      return (
-        <div key={`relationGroup:${nodeId}`}>
-          <div
-            className="tree-row virtual-group relation-group"
-            data-tree-kind="relation-group"
-            data-owner-id={node.ownerId}
-            style={indent}
-            role="button"
-            tabIndex={0}
-            title={t('单向关系只挂到源端一方，双向关系同时挂到两端元素')}
-            onClick={() => toggleRelationGroup(nodeId)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                toggleRelationGroup(nodeId)
-              }
-            }}
-          >
-            <TreeTwisty
-              open={isOpen}
-              label={isOpen ? t('折叠') : t('展开')}
-              onToggle={() => toggleRelationGroup(nodeId)}
-            />
-            <RelationIcon code="trace" size={15} />
-            <span className="tree-label">{t('关系')}</span>
-            <span className="child-count">{items.length}</span>
-          </div>
-          {isOpen && items.map((item) => renderTreeNode({
-            type: 'relation',
-            ref: item.relation,
-            ownerId: node.ownerId,
-            direction: item.direction,
-            peerId: item.peerId,
-          }, depth + 1))}
-        </div>
-      )
-    }
-    if (node.type === 'relation') {
-      const relation = node.ref
-      const source = elementById.get(relation.sourceId)
-      const target = elementById.get(relation.targetId)
-      const peer = elementById.get(node.peerId) ?? extensionElementById.get(node.peerId)
-      const active = selectedRelationId === relation.id
-      const arrow = node.direction === 'both' ? '⇄' : node.direction === 'in' ? '←' : '→'
-      return (
-        <div
-          className={`tree-row relation virtual-group${active ? ' selected' : ''}`}
-          key={`relation:${node.ownerId}:${relation.id}`}
-          data-tree-kind="relation"
-          data-relation-id={relation.id}
-          data-owner-id={node.ownerId}
-          data-direction={node.direction}
-          style={indent}
-          role="button"
-          tabIndex={0}
-          title={t('{relation}：{source} → {target}｜点击查看 / 编辑关系属性', {
-            relation: relationLabel(relation.type),
-            source: source?.name ?? relation.sourceId,
-            target: target?.name ?? relation.targetId,
-          })}
-          onClick={() => {
-            setSelectedRelationId(relation.id)
-            setSelectedId(null)
-            setSelectedDiagramId(null)
-          }}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              event.preventDefault()
-              setSelectedRelationId(relation.id)
-              setSelectedId(null)
-              setSelectedDiagramId(null)
-            }
-          }}
-        >
-          <TreeTwisty open={false} leaf label={t('关系')} onToggle={() => undefined} />
-          <RelationIcon code={relation.type} size={15} />
-          <span className="tree-label">{relation.name?.trim() || relationLabel(relation.type)}</span>
-          <span className="tree-type" title={t('关系另一端')}>
-            <span className="rel-direction" title={t('单向关系只挂到源端一方，双向关系同时挂到两端元素')}>{arrow}</span>
-            <span className="peer-name">{peer?.name ?? node.peerId}</span>
-          </span>
-        </div>
-      )
+    const pushExtensionElement = (element: ModelElement, depth: number) => {
+      const kids = extensionChildrenByOwner.get(element.id) ?? []
+      const open = expanded.has(element.id)
+      rows.push({
+        kind: 'extensionElement', id: element.id, depth, childCount: kids.length,
+        isOpen: open, isSelected: false, isLocated: false, isDropTarget: false,
+      })
+      if (!open) {
+        return
+      }
+      for (const kid of kids) {
+        pushExtensionElement(kid, depth + 1)
+      }
     }
 
-    // ── 项目元素 / 图：保持原有交互（拖放、双击、右键菜单） ──
-    const element = node.type === 'element' ? node.ref : null
-    const diagram = node.type === 'diagram' ? node.ref : null
-    const isElement = element !== null
-    const children: TreeNode[] = isElement
-      ? [
-          ...(childrenByOwner.get(element!.id) ?? []).map((ref) => ({ type: 'element', ref }) as TreeNode),
-          ...(diagramsByOwner.get(element!.id) ?? []).map((ref) => ({ type: 'diagram', ref }) as TreeNode),
-          // 关系虚拟节点：父 id 就是当前元素 id（关系端点）。
-          ...(relationsByOwner.has(element!.id)
-            ? [{ type: 'relationGroup', ref: { id: relationGroupId(element!.id) }, ownerId: element!.id } as TreeNode]
-            : []),
-        ]
-      : (projectElements
-          .filter((e) => diagram!.elementIds.includes(e.id))
-          .map((ref) => ({ type: 'element', ref }) as TreeNode))
-    // 项目根与普通元素一样遵守折叠状态（默认展开由自动展开 effect 负责）。
-    const isOpen = treeFilterHits ? true : expanded.has(node.ref.id)
-    const info = isElement ? typeInfo.get(codeOf(element!.type)) : null
-    const isRoot = isProjectRoot(element)
-    // 顶层扩展包：系统提供的公共内容，树上标「通用」以便与用户自己的模型区分。
-    const isExtensionRoot = isElement && extensionRootIds.has(element!.id)
-    const isSelected = isElement ? selectedId === element!.id : selectedDiagramId === diagram!.id
-    // 「树上高亮」的目标行：短暂高亮，便于用户在树上一眼看到定位结果。
-    const isLocated = treeLocateId === node.ref.id
-    return (
-      <div key={`${node.type}:${node.ref.id}`}>
-        <div
-          className={`tree-row ${node.type}${isSelected ? ' selected' : ''}${isRoot ? ' root-node' : ''}${!isElement && treeDropTarget === diagram!.id ? ' drop-target' : ''}${isLocated ? ' located' : ''}`}
-          data-tree-id={node.ref.id}
-          style={{ paddingLeft: 6 + depth * 15 }}
-          draggable={isElement && !isRoot && canEdit}
-          onDragStart={(event) => {
-            if (!isElement || isRoot) {
-              event.preventDefault()
-              return
-            }
-            event.dataTransfer.setData('text/scofen-element', element!.id)
-            event.dataTransfer.effectAllowed = 'link'
-          }}
-          onDragOver={(event) => {
-            // 图节点接收模型树里的元素：先建引用（记法），不复制模型元素。
-            if (isElement || !event.dataTransfer.types.includes('text/scofen-element')) {
-              return
-            }
-            event.preventDefault()
-            event.dataTransfer.dropEffect = 'link'
-            if (treeDropTarget !== diagram!.id) {
-              setTreeDropTarget(diagram!.id)
-            }
-          }}
-          onDragLeave={() => {
-            if (!isElement) {
-              setTreeDropTarget((current) => (current === diagram!.id ? null : current))
-            }
-          }}
-          onDrop={(event) => {
-            if (isElement) {
-              return
-            }
-            event.preventDefault()
-            setTreeDropTarget(null)
-            const droppedId = event.dataTransfer.getData('text/scofen-element')
-            if (droppedId) {
-              void addElementToDiagram(diagram!.id, droppedId)
-            }
-          }}
-          title={isElement ? t('{label} · 可拖入画布或图节点', { label: pick(info?.label, info?.labelEn) ?? element!.type }) : t('图 · 点击切换 · 可接收拖入的元素')}
-          onClick={() => {
-            if (isElement) {
-              setSelectedId(element!.id)
-              setSelectedDiagramId(null)
-            } else {
-              setActiveDiagramId(diagram!.id)
-              setSelectedDiagramId(diagram!.id)
-              setSelectedId(null)
-              openTab({ kind: 'diagram', id: diagram!.id })
-            }
-          }}
-          onDoubleClick={() => {
-            // 双击元素：选中它并在标签条里开一个对象页签，像桌面建模器那样双击进属性。
-            if (isElement) {
-              setSelectedId(element!.id)
-              setSelectedDiagramId(null)
-              openTab({ kind: 'element', id: element!.id })
-            }
-          }}
-          onContextMenu={(event) =>
-            openMenu(event, isElement ? { kind: 'element', id: element!.id } : { kind: 'diagram', id: diagram!.id })
-          }
-          role="button"
-          tabIndex={0}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-              if (isElement) {
-                setSelectedId(element!.id)
-              } else {
-                setActiveDiagramId(diagram!.id)
-                setSelectedDiagramId(diagram!.id)
-              }
-            }
-          }}
-        >
-          <TreeTwisty
-            open={isOpen}
-            leaf={children.length === 0}
-            label={isOpen ? t('折叠') : t('展开')}
-            onToggle={() => toggleExpanded(node.ref.id)}
-          />
-          {isElement ? (
-            <>
-              <TypeIcon code={codeOf(element!.type)} size={16} title={typeLabel(element!.type)} />
-              <span className="tree-label">{element!.name}</span>
-              {isRoot ? (
-                <span className="root-tag" title={t('项目根节点，不可删除')}>{t('项目根')}</span>
-              ) : isExtensionRoot ? (
-                <span
-                  className="root-tag extension-tag"
-                  title={t('通用扩展包：SysML / UML 的元类与构造型随项目提供')}
-                >
-                  {t('通用')}
-                </span>
-              ) : (
-                <span className="tree-type">{typeLabel(element!.type)}</span>
-              )}
-            </>
-          ) : (
-            <>
-              <DiagramIcon code={diagram!.kind} size={16} title={diagramLabel(diagram!.kind)} />
-              <span className="tree-label">{diagram!.name}</span>
-              <span className="child-count">{diagram!.elementIds.length}</span>
-            </>
-          )}
-        </div>
-        {isOpen &&
-          children.map((child) => renderTreeNode(child, depth + 1))}
-      </div>
-    )
+    const pushDiagram = (diagram: Diagram, depth: number) => {
+      if (!keep(diagram.id)) {
+        return
+      }
+      const members = diagramMembersByDiagram.get(diagram.id) ?? []
+      const open = isOpen(diagram.id)
+      rows.push({
+        kind: 'diagram', id: diagram.id, depth, childCount: members.length, isOpen: open,
+        isSelected: selectedDiagramId === diagram.id, isLocated: treeLocateId === diagram.id,
+        isDropTarget: treeDropTarget === diagram.id,
+      })
+      if (!open) {
+        return
+      }
+      for (const member of members) {
+        pushElement(member, depth + 1)
+      }
+    }
+
+    function pushElement(element: ModelElement, depth: number): void {
+      if (!keep(element.id)) {
+        return
+      }
+      const kids = childrenByOwner.get(element.id) ?? []
+      const diagrams = diagramsByOwner.get(element.id) ?? []
+      const relationItems = relationsByOwner.get(element.id)
+      const open = isOpen(element.id)
+      rows.push({
+        kind: 'element', id: element.id, depth,
+        childCount: kids.length + diagrams.length + (relationItems ? 1 : 0), isOpen: open,
+        isSelected: selectedId === element.id, isLocated: treeLocateId === element.id,
+        isDropTarget: false,
+      })
+      if (!open) {
+        return
+      }
+      for (const kid of kids) {
+        pushElement(kid, depth + 1)
+      }
+      for (const diagram of diagrams) {
+        pushDiagram(diagram, depth + 1)
+      }
+      // 关系分组是虚拟内容，不参与筛选命中。
+      if (relationItems && !hits) {
+        pushRelationGroup(element.id, depth + 1)
+      }
+    }
+
+    for (const node of rootNodes) {
+      // rootNodes 只可能是这两类；虚拟节点由下面的分组分支单独铺。
+      if (node.type === 'element') {
+        pushElement(node.ref, 0)
+      } else if (node.type === 'diagram') {
+        pushDiagram(node.ref, 0)
+      }
+    }
+    // 扩展包与项目根同级：它是系统提供的独立内容，不是项目根的子节点，也不参与筛选。
+    if (showExtensions && extensionRoots.length > 0 && !hits) {
+      const open = expanded.has(EXTENSION_GROUP_ID)
+      rows.push({
+        kind: 'extensionGroup', id: EXTENSION_GROUP_ID, depth: 0,
+        childCount: extensionRoots.length, isOpen: open, isSelected: false,
+        isLocated: false, isDropTarget: false,
+      })
+      if (open) {
+        for (const root of extensionRoots) {
+          pushExtensionElement(root, 1)
+        }
+      }
+    }
+    if (!hits) {
+      pushRelationGroup(ORPHAN_RELATION_OWNER, 0)
+    }
+    return rows
+  }, [
+    childrenByOwner, collapsedRelationGroups, diagramMembersByDiagram, diagramsByOwner, expanded,
+    extensionChildrenByOwner, extensionRoots, relationsByOwner, rootNodes, selectedDiagramId,
+    selectedId, selectedRelationId, showExtensions, treeDropTarget, treeFilterHits, treeLocateId,
+  ])
+
+  /**
+   * 树行的只读取数表。身份只在模型快照 / 目录 / 权限变化时更换，
+   * 折叠与选中这类纯交互不碰它，行组件的 memo 才拦得住无关行。
+   */
+  const treeData = useMemo<TreeData>(() => ({
+    elementById,
+    diagramById,
+    relationById,
+    extensionElementById,
+    codeOf,
+    typeLabel,
+    diagramLabel,
+    relationLabel,
+    rootId: projectRootId,
+    extensionRootIds,
+    canEdit,
+  }), [
+    elementById, diagramById, relationById, extensionElementById, codeOf, typeLabel,
+    diagramLabel, relationLabel, projectRootId, extensionRootIds, canEdit,
+  ])
+
+  const selectTreeElement = (elementId: string) => {
+    setSelectedId(elementId)
+    setSelectedDiagramId(null)
   }
 
+  const selectTreeExtensionElement = (elementId: string) => {
+    setSelectedId(elementId)
+    setSelectedDiagramId(null)
+    setSelectedRelationId(null)
+  }
+
+  const selectTreeRelation = (relationId: string) => {
+    setSelectedRelationId(relationId)
+    setSelectedId(null)
+    setSelectedDiagramId(null)
+  }
+
+  const activateTreeDiagram = (diagramId: string, withTab: boolean) => {
+    setActiveDiagramId(diagramId)
+    setSelectedDiagramId(diagramId)
+    setSelectedId(null)
+    if (withTab) {
+      openTab({ kind: 'diagram', id: diagramId })
+    }
+  }
+
+  /**
+   * 行组件的动作集合：对象身份一次生成后不再更换，实现函数每次渲染写回 ref。
+   *
+   * <p>这些实现要读当前模型、布局与草稿状态，直接放进 context 会让 context 每次渲染
+   * 换身份，从而把整棵树的行全部重渲染——正是这次要修的开销。</p>
+   */
+  const treeActionsImpl = useRef<TreeActions>({
+    toggleExpanded: () => undefined,
+    toggleRelationGroup: () => undefined,
+    selectElement: () => undefined,
+    selectExtensionElement: () => undefined,
+    selectRelation: () => undefined,
+    activateDiagram: () => undefined,
+    addElementToDiagram: () => undefined,
+    setDropTarget: () => undefined,
+    openMenu: () => undefined,
+  })
+  treeActionsImpl.current = {
+    toggleExpanded,
+    toggleRelationGroup,
+    selectElement: selectTreeElement,
+    selectExtensionElement: selectTreeExtensionElement,
+    selectRelation: selectTreeRelation,
+    activateDiagram: activateTreeDiagram,
+    addElementToDiagram: (diagramId, elementId) => {
+      void addElementToDiagram(diagramId, elementId)
+    },
+    setDropTarget: setTreeDropTarget,
+    openMenu,
+  }
+  const treeActions = useMemo<TreeActions>(() => ({
+    toggleExpanded: (id) => treeActionsImpl.current.toggleExpanded(id),
+    toggleRelationGroup: (id) => treeActionsImpl.current.toggleRelationGroup(id),
+    selectElement: (id) => treeActionsImpl.current.selectElement(id),
+    selectExtensionElement: (id) => treeActionsImpl.current.selectExtensionElement(id),
+    selectRelation: (id) => treeActionsImpl.current.selectRelation(id),
+    activateDiagram: (id, withTab) => treeActionsImpl.current.activateDiagram(id, withTab),
+    addElementToDiagram: (diagramId, elementId) =>
+      treeActionsImpl.current.addElementToDiagram(diagramId, elementId),
+    setDropTarget: (id) => treeActionsImpl.current.setDropTarget(id),
+    openMenu: (event, target) => treeActionsImpl.current.openMenu(event, target),
+  }), [])
   const menuTarget = menu?.target ?? null
   const menuElement =
     menuTarget?.kind === 'element'
@@ -4370,11 +4687,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               </>
             ) : (
               <>
-            {rootNodes.map((node) => renderTreeNode(node, 0))}
-            {/* 扩展包与项目根同级：它是系统提供的独立内容，不是项目根的子节点。 */}
-            {showExtensions && extensionRoots.length > 0 && !treeFilterHits && (
-              renderTreeNode({ type: 'extensionGroup', ref: { id: EXTENSION_GROUP_ID } }, 0)
-            )}
+            <TreeDataContext.Provider value={treeData}>
+              <TreeActionsContext.Provider value={treeActions}>
+                {visibleRows.map((row) => (
+                  <TreeRow key={`${row.kind}:${row.id}:${row.ownerId ?? ''}`} {...row} />
+                ))}
+              </TreeActionsContext.Provider>
+            </TreeDataContext.Provider>
             {rootNodes.length === 0 && <p className="hint">{t('暂无元素，右键空白处新建元素')}</p>}
             {treeFilterHits && treeFilterHits.size === 0 && (
               <p className="hint">{t('没有匹配「{keyword}」的元素或图', { keyword: treeFilter })}</p>
@@ -4383,13 +4702,6 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <span>{t('{elements} 元素 · {diagrams} 图', { elements: projectElements.length, diagrams: model.diagrams.length })}</span>
               <span>{t('{count} 关系', { count: model.relationships.length })}</span>
             </div>
-            {relationsByOwner.has(ORPHAN_RELATION_OWNER) && !treeFilterHits && (
-              renderTreeNode({
-                type: 'relationGroup',
-                ref: { id: relationGroupId(ORPHAN_RELATION_OWNER) },
-                ownerId: ORPHAN_RELATION_OWNER,
-              }, 0)
-            )}
               </>
             )}
           </div>
@@ -5126,7 +5438,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             {positions.map(({ element, x, y, w, h }) => renderNode(element, x, y, w, h))}
             {positions.length === 0 && (
               <text x={canvas.width / 2} y={canvas.height / 2} textAnchor="middle" className="empty">
-                {t('当前图暂无元素')}
+                {activeDiagramObj
+                  ? t('当前图暂无元素')
+                  : t('未打开图 · 项目共 {count} 个元素，规模过大不再铺开总览', { count: projectElements.length })}
               </text>
             )}
             {model.relationships.map((relation) => {

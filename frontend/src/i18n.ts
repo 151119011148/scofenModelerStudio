@@ -268,6 +268,10 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
   '暂无关系': { zh: '暂无关系', en: 'No relationships' },
   '暂无标签值': { zh: '暂无标签值', en: 'No tagged values' },
   '当前图暂无元素': { zh: '当前图暂无元素', en: 'No elements in the current diagram' },
+  '未打开图 · 项目共 {count} 个元素，规模过大不再铺开总览': {
+    zh: '未打开图 · 项目共 {count} 个元素，规模过大不再铺开总览',
+    en: 'No diagram open · {count} elements in this project; the overview is too large to lay out',
+  },
   '正在加载空间目录…': { zh: '正在加载空间目录…', en: 'Loading space directory…' },
   '空间目录加载中…': { zh: '空间目录加载中…', en: 'Loading space directory…' },
   '点击项目即可打开 · 新建后自动打开': {
