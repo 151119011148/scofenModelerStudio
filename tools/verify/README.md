@@ -14,6 +14,8 @@
 | `shell-ux-e2e.mjs` | 外壳与树形态：扩展包分组与项目根同缩进且不在根子树内、项目根可折叠并校验蓝色三角（`rgb(51,112,255)`）与 90° 旋转、两条分隔线用 CDP 真实鼠标事件拖宽并校验 localStorage 跨刷新保持、空间项目列表删除（主项目无删除按钮、删除当前项目自动切走、服务端目录无残留） |
 | `property-dock-resize-e2e.mjs` | 属性面板尺寸与扩展域隔离：项目树不出现扩展域 id（`ext-` / `mc-` / `st-` / `prim-` …）的孤儿行、属性面板上下拖动（拖 90px 高度同步 ±10、写入 localStorage、刷新保持、上下限夹紧、双击恢复默认），末尾回归左右拖宽 |
 | `relationship-model-e2e.mjs` | 关系模型进扩展包：两个 Profile 下各出现「关系」子包（SysML 9 条构造型 / UML 28 条元类，合计 37）、`satisfy` 与 `association` 可点选且属性窗口显示「扩展的元类」（Dependency / Association）、关系条目只在扩展包虚拟分组里出现（不与项目树混行）。只读脚本，无数据残留 |
+| `auto-layout-e2e.mjs` | 自动排布端到端：登录 → 打开沙箱项目 → 「排布」弹框（默认仅当前图 / 自动策略）→ 开始排布。断言全部从 `GET api/model` 现算：一次写入只推进 1 个 revision、排布后重叠为 0 且交叉显著下降、图面比例落在 0.5–3、元素/关系/图归属逐字段不变（只改坐标）、排布后自动适应窗口（缩放 < 100%）、撤销一步坐标逐条复原；再跑「全部图表」并校验序列图生命线未被改写，末尾按撤销栈深度退回排布前。需先用 `local-seed.mjs` 灌数 |
+| `local-seed.mjs` | 沙箱灌数（非浏览器）：把模型快照里挑几张图（含父链）在本地 jar 里重建成一个「自动排布实测」项目，并用快照原坐标铺出「排布前」的图面。图名走命令行参数，只连本地端口，不碰线上 |
 
 ## 本地跑带子路径前缀的产物
 
@@ -83,6 +85,13 @@ CDP_PORT=9444 node shell-ux-e2e.mjs
 SCOFEN_PASSWORD='<超管口令>' \
 APP_URL='http://<IP>/scofen/modelerStudio/' \
 CDP_PORT=9444 node property-dock-resize-e2e.mjs
+
+# 自动排布：只打本地沙箱。先起一个带临时口令的本地 jar，灌数，再跑 e2e
+SCOFEN_AUTH_ADMIN_PASSWORD='<临时口令>' java -jar scofen-web/target/scofen-server.jar --server.port=18095 --server.address=127.0.0.1
+SCOFEN_PASSWORD='<临时口令>' APP_URL='http://127.0.0.1:18095/' \
+  node local-seed.mjs '需求图-D1,用例图-D7,活动图-注册验证'
+SCOFEN_PASSWORD='<临时口令>' APP_URL='http://127.0.0.1:18095/' CDP_PORT=9444 node auto-layout-e2e.mjs
+# 换一批图验别的形状：SCOFEN_DIAGRAMS='用例图-D7,活动图-注册验证'（弹框默认策略想改看 [2] 的断言）
 ```
 
 ## 参数
@@ -92,8 +101,11 @@ CDP_PORT=9444 node property-dock-resize-e2e.mjs
 | `SCOFEN_PASSWORD` | 超管口令（脚本与仓库里都不留明文，必填） |
 | `APP_URL` | 应用入口。本地根部署 `http://127.0.0.1:18080/`；线上子路径 `http://<IP>/scofen/modelerStudio/` |
 | `CDP_PORT` | Chrome 调试端口，须与启动参数一致 |
+| `SCOFEN_DIAGRAMS` | `auto-layout-e2e.mjs` 要打开并断言的图名，逗号分隔；默认 `需求图-D1,用例图-D7,活动图-注册验证` |
+| `SCOFEN_PROJECT_NAME` | 自动排布两个脚本共用的项目名（灌数创建、e2e 按名打开），默认 `自动排布实测` |
+| `SCOFEN_SNAPSHOT` | `local-seed.mjs` 读取的模型快照 JSON，默认 `/tmp/mbse/mdesign_payload_final.json`；要复现线上数据得先有一份同结构的快照 |
 
-## 两个易踩点
+## 三个易踩点
 
 1. **页面内 fetch 一律用相对路径**（`api/exchange/xmi`，不是 `/api/exchange/xmi`）。
    绝对路径在子路径部署下会打到同机其它站点：服务器上 `/api/` 归 emotion 应用，
@@ -103,8 +115,13 @@ CDP_PORT=9444 node property-dock-resize-e2e.mjs
 2. **异步 `Runtime.evaluate` 必须传 `awaitPromise: true`**，否则 Promise 未被等待，
    读到的返回值是 undefined，断言会莫名其妙全红。
 
+3. **撤销 / 重做本身也是一条命令**，`revision` 照样往前走。判断「是否回到排布前」只能比坐标
+   和 `api/health` 的 `undoDepth`，不能比 revision；跑「全部图表」这种大动作前先记下
+   `undoDepth`，撤销时只回退到那个数，多按会把灌数命令的历史也撤掉。
+
 ## 产物
 
 截图落在 `/tmp/scofen-xmi-shots/`、`/tmp/scofen-root-shots/`、`/tmp/scofen-prop-shots/`、
-`/tmp/scofen-tree-shots/`、`/tmp/scofen-shell-shots/`、`/tmp/scofen-props-shots/`
+`/tmp/scofen-tree-shots/`、`/tmp/scofen-shell-shots/`、`/tmp/scofen-props-shots/`、
+`/tmp/scofen-layout-shots/`
 与 `/tmp/scofen-reconnect-*.png`，导入用的样本文件落在 `/tmp/scofen-xmi-files/`。

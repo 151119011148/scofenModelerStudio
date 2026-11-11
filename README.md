@@ -30,6 +30,7 @@
 | 规范约束的增删改 | 服务端 `ContainmentRules` 表驱动所有权规则（如 Port 只能属于 Block / PartProperty）、根类型限制、命名格式与同命名空间唯一性、图类型约束；前端右键菜单只列出规范允许的子类型 |
 | 右键菜单 | 新建子元素 / 重命名 / 加入当前图 / 在图中定位 / 删除；删除父节点级联整棵子树、关系与记法，单条原子命令且可撤销恢复 |
 | 图形拖拽 | 画布 shape 支持指针拖拽，坐标经 `MOVE_NOTATION` 写入服务端 `Notation` 对象并广播，越界或不在图内的元素被服务端拒绝 |
+| 自动排布 | 「模型 ▸ 自动排布…」与工具栏「排布」两个入口，范围可选**仅当前图 / 全部图表**，策略可选**自动 / 分层 / 枢纽 / 分组**。分层沿有向关系分层（包含、细化不参与分层依据）+ 中位数重心排序 + 蛇形折行；枢纽把高度数节点（参与者、系统块）摘到最外侧一列，其余按「连到哪个中心」成簇铺网格，专治用例图这类星形结构；分组按父子归属分块。`auto` 把三种策略 × 两方向 × 几档折行宽度全部算一遍，按交叉数、重叠数、图面比例、稀疏度、占文档面积、折行数打分取最小者。整批只发一条 `SET_NOTATIONS`（一次 revision、一步撤销），**只改记法坐标**，元素 / 关系 / 图归属逐字段不变；排布完按内容包围盒自动适应窗口（缩放下限 0.12）。实测 62 张图：重叠 0→0、连线交叉 2088→186，需求图-D1 554→0、用例图-D7 207→5 |
 | 建表脚本 | `MysqlSchema.ensure()` 幂等建六张表（项目、快照、用户、角色、用户角色、角色权限），MySQL 8.4 / InnoDB / utf8mb4 |
 | 登录与会话 | JWT(HS256) + PBKDF2 口令哈希，两个超管账号（`scofen` / `gaofeng`）共用口令；`/api/**` 与 WebSocket 握手都校验登录态，401 自动回登录页 |
 | 打开项目 | 顶栏项目选择器点击即打开、新建后自动打开；每个项目分配独立内存态模型运行时（唯一项目根 Package + 九图），统计 / revision / 撤销栈互不串写。**删除项目**（`DELETE /api/workspaces/projects/{id}`，`project.delete` 权限）同时移除目录项、运行时与落库快照；主示例项目受保护，删除当前项目会自动切到目录里的第一个项目 |
@@ -209,6 +210,7 @@ curl -X POST http://localhost:8080/api/commands \
 | `DELETE_ELEMENT` | `id` | 级联删除子树、关系、记法、图引用；逆命令为 `RESTORE_SUBTREE` |
 | `RESTORE_SUBTREE` | 删除前的完整对象列表 | 由服务端撤销栈内部执行，可精确恢复坐标与图引用 |
 | `MOVE_NOTATION` | `diagramId, elementId, x, y` | 拖拽落点；越界或元素不在该图内返回 400 |
+| `SET_NOTATIONS` | `items[{diagramId, elementId, x, y}]` | 批量改写记法坐标（自动排布用）：单次上限 5000 条，一条命令一次 revision，逆命令逐条回写原坐标、一步撤销；逐条沿用 `MOVE_NOTATION` 的越界与图归属校验，任一条不合法整条拒绝 |
 | `ADD_TO_DIAGRAM` / `REMOVE_FROM_DIAGRAM` | `diagramId, elementId` | 图与记法的引用维护 |
 | `RENAME_ELEMENT` / `UPDATE_DOCUMENTATION` | `id, name / documentation` | 语义层改名，九图同步 |
 
