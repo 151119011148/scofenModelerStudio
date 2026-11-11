@@ -85,8 +85,12 @@ class ModelEditingTest {
     void dropCoordinatesOutsideCanvasAreRejected() {
         cmd("CREATE_ELEMENT", Map.of("id", "pkg", "type", "Package", "name", "系统", "ownerId", ""));
         cmd("CREATE_DIAGRAM", Map.of("id", "d-pkg", "kind", "pkg", "name", "包图"));
+        // 边界是「文档」而不是视口：视口外的落点合法（自动排布要往右下展开）。
+        cmd("ADD_TO_DIAGRAM", Map.of("diagramId", "d-pkg", "elementId", "pkg", "x", 2200.0, "y", 34.0));
+        assertThat(notation("d-pkg", "pkg").x()).isEqualTo(2200.0);
+
         assertThatThrownBy(() -> cmd("ADD_TO_DIAGRAM", Map.of(
-                "diagramId", "d-pkg", "elementId", "pkg", "x", 999.0, "y", 34.0)))
+                "diagramId", "d-pkg", "elementId", "pkg", "x", 9999.0, "y", 34.0)))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("out of canvas");
         assertThatThrownBy(() -> cmd("CREATE_ELEMENT", Map.of(
@@ -264,5 +268,74 @@ class ModelEditingTest {
 
         executor.undo(SESSION);
         assertThat(executor.snapshot().notations()).isEmpty();
+    }
+
+    @Test
+    void batchLayoutWritesEveryNotationInOneRevisionAndUndoesInOneStep() {
+        seedTree();
+        double originalPartX = notation("d-ibd", "part").x();
+        long revisionBefore = executor.revision();
+
+        Patch patch = cmd("SET_NOTATIONS", Map.of("items", List.of(
+                Map.of("diagramId", "d-ibd", "elementId", "part", "x", 620.0, "y", 300.0),
+                Map.of("diagramId", "d-ibd", "elementId", "port", "x", 620.0, "y", 460.0))));
+
+        assertThat(notation("d-ibd", "part").x()).isEqualTo(620.0);
+        assertThat(notation("d-ibd", "port").y()).isEqualTo(460.0);
+        // 文档范围比视口宽：排布展开后不再被 480×340 拉回左上角叠成一团。
+        assertThat(notation("d-ibd", "part").x()).isGreaterThan(480.0);
+        // 逐节点发 MOVE_NOTATION 会留下两条 revision，撤销要点两次；批量命令只走一步。
+        assertThat(executor.revision()).isEqualTo(revisionBefore + 1);
+        assertThat(patch.affectedIds()).contains("d-ibd", "n-d-ibd-part", "n-d-ibd-port");
+        assertThat(patch.inverse().type()).isEqualTo("SET_NOTATIONS");
+
+        executor.undo(SESSION);
+        assertThat(notation("d-ibd", "part").x()).isEqualTo(originalPartX);
+        assertThat(executor.revision()).isEqualTo(revisionBefore + 2);
+
+        executor.redo(SESSION);
+        assertThat(notation("d-ibd", "part").x()).isEqualTo(620.0);
+        assertThat(notation("d-ibd", "port").y()).isEqualTo(460.0);
+    }
+
+    @Test
+    void batchLayoutCreatesMissingNotationsAndRemovesThemOnUndo() {
+        cmd("CREATE_ELEMENT", Map.of("id", "pkg", "type", "Package", "name", "系统", "ownerId", ""));
+        cmd("CREATE_ELEMENT", Map.of("id", "blk", "type", "Block", "name", "控制器", "ownerId", "pkg"));
+        cmd("CREATE_DIAGRAM", Map.of("id", "d-bdd", "kind", "bdd", "name", "块定义图",
+                "elementIds", List.of("blk")));
+        cmd("DELETE_NOTATION", Map.of("id", "n-d-bdd-blk"));
+
+        cmd("SET_NOTATIONS", Map.of("items", List.of(
+                Map.of("diagramId", "d-bdd", "elementId", "blk", "x", 720.0, "y", 540.0))));
+        assertThat(notation("d-bdd", "blk").x()).isEqualTo(720.0);
+
+        // 在图内但还没有记法的元素：排布补上记法，撤销按删掉的语义回去。
+        executor.undo(SESSION);
+        assertThat(executor.snapshot().notations()).noneMatch(n -> n.elementId().equals("blk"));
+
+        executor.redo(SESSION);
+        assertThat(notation("d-bdd", "blk").x()).isEqualTo(720.0);
+    }
+
+    @Test
+    void batchLayoutRejectsForeignElementUnknownDiagramDuplicatesAndOverflow() {
+        seedTree();
+
+        assertThatThrownBy(() -> cmd("SET_NOTATIONS", Map.of("items", List.of(
+                Map.of("diagramId", "d-ibd", "elementId", "blk", "x", 10.0, "y", 10.0)))))
+                .isInstanceOf(ValidationException.class).hasMessageContaining("is not on diagram");
+        assertThatThrownBy(() -> cmd("SET_NOTATIONS", Map.of("items", List.of(
+                Map.of("diagramId", "d-none", "elementId", "part", "x", 10.0, "y", 10.0)))))
+                .isInstanceOf(ValidationException.class).hasMessageContaining("Unknown diagram");
+        assertThatThrownBy(() -> cmd("SET_NOTATIONS", Map.of("items", List.of(
+                Map.of("diagramId", "d-ibd", "elementId", "part", "x", 10.0, "y", 10.0),
+                Map.of("diagramId", "d-ibd", "elementId", "part", "x", 20.0, "y", 20.0)))))
+                .isInstanceOf(ValidationException.class).hasMessageContaining("Duplicate notation");
+        assertThatThrownBy(() -> cmd("SET_NOTATIONS", Map.of("items", List.of(
+                Map.of("diagramId", "d-ibd", "elementId", "part", "x", 99999.0, "y", 10.0)))))
+                .isInstanceOf(ValidationException.class).hasMessageContaining("out of canvas");
+        assertThatThrownBy(() -> cmd("SET_NOTATIONS", Map.of("items", List.of())))
+                .isInstanceOf(ValidationException.class).hasMessageContaining("Nothing to lay out");
     }
 }

@@ -34,9 +34,16 @@ import java.util.Set;
  */
 public final class ValidationEngine {
 
-    /** 画布上限与节点尺寸：服务端下发，前端拖拽用同一组常量做边界约束。 */
-    public static final double CANVAS_MAX_X = 480.0;
-    public static final double CANVAS_MAX_Y = 340.0;
+    /**
+     * 记号坐标的文档范围与节点尺寸：服务端下发，前端拖拽用同一组常量做边界约束。
+     *
+     * <p>这是「文档」而非「视口」：视口是 canvas.width/height，文档范围要能容纳
+     * 自动排布展开后的多列分层布局，否则四十个节点的图会被钳回左上角叠成一团。</p>
+     */
+    public static final double CANVAS_MAX_X = 4000.0;
+    public static final double CANVAS_MAX_Y = 2600.0;
+    /** 单条批量命令的记法上限：一次排布全部图表也远不到这里，主要用于挡住异常载荷。 */
+    public static final int NOTATION_BATCH_MAX = 5000;
     public static final double NODE_WIDTH = InMemoryModelRepository.NODE_WIDTH;
     public static final double NODE_HEIGHT = InMemoryModelRepository.NODE_HEIGHT;
 
@@ -311,11 +318,9 @@ public final class ValidationEngine {
                 }
                 double x = cmd.decimal("x");
                 double y = cmd.decimal("y");
-                if (!Double.isFinite(x) || !Double.isFinite(y)
-                        || x < 0 || y < 0 || x > CANVAS_MAX_X || y > CANVAS_MAX_Y) {
-                    throw new ValidationException("Notation position out of canvas: " + x + "," + y);
-                }
+                assertPosition(x, y);
             }
+            case "SET_NOTATIONS" -> assertSetNotations(cmd, repository);
             case "DELETE_NOTATION" -> require(cmd.str("id"), "id");
             case "CREATE_RELATIONSHIP" -> {
                 require(cmd.str("id"), "id");
@@ -606,11 +611,47 @@ public final class ValidationEngine {
         if (cmd.payload().get("x") == null && cmd.payload().get("y") == null) {
             return;
         }
-        double x = cmd.decimal("x");
-        double y = cmd.decimal("y");
+        assertPosition(cmd.decimal("x"), cmd.decimal("y"));
+    }
+
+    /** 记号落点的统一边界：MOVE_NOTATION、SET_NOTATIONS、拖放创建走同一条规则。 */
+    private static void assertPosition(double x, double y) {
         if (!Double.isFinite(x) || !Double.isFinite(y)
                 || x < 0 || y < 0 || x > CANVAS_MAX_X || y > CANVAS_MAX_Y) {
             throw new ValidationException("Notation position out of canvas: " + x + "," + y);
+        }
+    }
+
+    /**
+     * SET_NOTATIONS：自动排布的批量落点。
+     *
+     * <p>逐节点发 MOVE_NOTATION 会把一次排布炸成几十条 revision、几十步撤销，
+     * 所以整批走一条命令；批内每个落点仍按单条移动的同一套规则校验。</p>
+     */
+    private static void assertSetNotations(Command cmd, InMemoryModelRepository repository) {
+        List<Map<String, Object>> items = cmd.mapList("items");
+        if (items.isEmpty() && cmd.strList("removeIds").isEmpty()) {
+            throw new ValidationException("Nothing to lay out");
+        }
+        if (items.size() > NOTATION_BATCH_MAX) {
+            throw new ValidationException("Too many notations in one command: " + items.size()
+                    + " > " + NOTATION_BATCH_MAX);
+        }
+        Set<String> seen = new HashSet<>();
+        for (Map<String, Object> row : items) {
+            String diagramId = rowString(row, "diagramId");
+            String elementId = rowString(row, "elementId");
+            require(diagramId, "diagramId");
+            require(elementId, "elementId");
+            if (!seen.add(diagramId + "/" + elementId)) {
+                throw new ValidationException("Duplicate notation in batch: " + diagramId + "/" + elementId);
+            }
+            Diagram diagram = repository.findDiagram(diagramId)
+                    .orElseThrow(() -> new ValidationException("Unknown diagram: " + diagramId));
+            if (!diagram.elementIds().contains(elementId)) {
+                throw new ValidationException("Element " + elementId + " is not on diagram " + diagramId);
+            }
+            assertPosition(rowDecimal(row, "x"), rowDecimal(row, "y"));
         }
     }
 
@@ -848,7 +889,18 @@ public final class ValidationEngine {
         return value == null ? null : value.toString();
     }
 
-    @SuppressWarnings("unchecked")
+    private static double rowDecimal(Map<String, Object> row, String key) {
+        Object value = row.get(key);
+        if (value instanceof Number number) {
+            return number.doubleValue();
+        }
+        try {
+            return Double.parseDouble(String.valueOf(value));
+        } catch (RuntimeException ex) {
+            throw new ValidationException("Invalid numeric field: " + key);
+        }
+    }
+
     private static List<String> rowStringList(Map<String, Object> row, String key) {
         Object value = row.get(key);
         if (!(value instanceof List<?> list)) {

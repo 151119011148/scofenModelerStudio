@@ -45,6 +45,8 @@ import type {
   WorkspaceProject,
 } from './types'
 import { arrowGeometry, edgePoint, relationshipStyle, shapeOf } from './notation'
+import { autoLayout, isLayoutImmutable } from './layout'
+import type { LayoutChoice } from './layout'
 import { DiagramIcon, FAMILIES, RelationIcon, TypeIcon, familyOfType } from './icons'
 import { pick, setLocale, t, useLocale } from './i18n'
 import LocaleSwitch from './LocaleSwitch'
@@ -59,7 +61,7 @@ const EMPTY_MODEL: ModelSnapshot = {
   notations: [],
 }
 
-const FALLBACK_CANVAS = { maxX: 480, maxY: 340, width: 640, height: 420 }
+const FALLBACK_CANVAS = { maxX: 4000, maxY: 2600, width: 640, height: 420 }
 const FALLBACK_NODE = { width: 168, height: 84 }
 const ROOT_KEY = '__root__'
 /**
@@ -71,15 +73,25 @@ const ROOT_KEY = '__root__'
 const CANVAS_OVERVIEW_MAX = 1200
 /** 模型树首次进入时的自动展开上限：不超过这个元素数就照旧一次铺满，超过只铺到「章 / 包」一级。 */
 const TREE_FULL_EXPAND_MAX = 800
-/** 画布缩放边界：低于 40% 看不清记法、高于 250% 只为对位，两侧都不需要。 */
+/** 画布缩放边界：下限要低到能把整张自动排布后的图收进视口，上限只为对位。 */
 /** 属性面板排序：规范目录顺序 / 按属性 key 升序 / 降序。 */
 type PropertySort = 'CATALOG' | 'KEY_ASC' | 'KEY_DESC'
 
 /** 属性编辑弹框的交互方式：由元属性声明的值类型决定。 */
 type PropEditorMode = 'text' | 'textarea' | 'boolean' | 'enum' | 'reference' | 'list' | 'json'
 
-const ZOOM_MIN = 0.4
+/** 自动排布的范围：当前打开的图，或项目里所有可排的图。 */
+type LayoutScope = 'diagram' | 'all'
+
+const ZOOM_MIN = 0.12
 const ZOOM_MAX = 2.5
+/** 适应窗口时内容四周留出的模型单位空白，免得节点贴着视口边缘。 */
+const FIT_PADDING = 40
+/**
+ * 一条 SET_NOTATIONS 携带的记法条数上限。服务端封顶 5000（再多整条命令被拒），
+ * 留点余量按图切批：宁可多一次撤销步，也不要大项目一次排布直接失败。
+ */
+const LAYOUT_BATCH_MAX = 4000
 
 /** 两栏拖拽宽度的边界：太窄放不下属性表，太宽会把画布挤没。 */
 const DOCK_LEFT_MIN = 200
@@ -687,6 +699,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null)
   const [diagramDialog, setDiagramDialog] = useState<DiagramDialogState | null>(null)
   const [relationDialog, setRelationDialog] = useState<RelationshipDialogState | null>(null)
+  // 自动排布：打开时记住范围，策略单独存（关窗重开不必再选一遍）。
+  const [layoutDialog, setLayoutDialog] = useState<LayoutScope | null>(null)
+  const [layoutStrategy, setLayoutStrategy] = useState<LayoutChoice>('auto')
   const [createType, setCreateType] = useState('')
   const [createName, setCreateName] = useState('')
   const [createStereotype, setCreateStereotype] = useState('')
@@ -1740,11 +1755,6 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     setZoom(clamp(Number(next.toFixed(3)), ZOOM_MIN, ZOOM_MAX))
   }, [])
 
-  const fitCanvas = useCallback(() => {
-    setZoom(1)
-    setPan({ x: 0, y: 0 })
-  }, [])
-
   // ── 文档标签：图标签切画布，对象标签只切属性窗口的编辑对象 ──
   const activeTabKey = selectedId && tabs.some((tab) => tab.kind === 'element' && tab.id === selectedId)
     ? `element:${selectedId}`
@@ -2629,6 +2639,124 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       }
     })
   }, [visibleElements, model.notations, activeDiagramId, drag, nodeSize.width, nodeSize.height])
+
+  /**
+   * 适应窗口：把当前图的内容包围盒整体缩进视口。
+   * 原来只是「回到 100% 并归零平移」，自动排布把图铺到几千单位宽之后那样等于什么都没做。
+   */
+  const fitCanvas = useCallback(() => {
+    if (positions.length === 0) {
+      setZoom(1)
+      setPan({ x: 0, y: 0 })
+      return
+    }
+    const left = Math.min(...positions.map((item) => item.x))
+    const top = Math.min(...positions.map((item) => item.y))
+    const width = Math.max(...positions.map((item) => item.x + item.w)) - left + FIT_PADDING * 2
+    const height = Math.max(...positions.map((item) => item.y + item.h)) - top + FIT_PADDING * 2
+    const next = clamp(Math.min(canvas.width / width, canvas.height / height), ZOOM_MIN, 1)
+    setZoom(Number(next.toFixed(3)))
+    setPan({
+      x: Math.round(left - FIT_PADDING - (canvas.width / next - width) / 2),
+      y: Math.round(top - FIT_PADDING - (canvas.height / next - height) / 2),
+    })
+  }, [positions, canvas.width, canvas.height])
+
+  // 排布写完坐标才缩放：模型是异步刷回来的，先立个牌子，等新记法渲染出来再适应窗口。
+  const fitAfterLayout = useRef(false)
+  useEffect(() => {
+    if (!fitAfterLayout.current) {
+      return
+    }
+    fitAfterLayout.current = false
+    fitCanvas()
+  }, [model.notations, fitCanvas])
+
+  /**
+   * 自动排布：只改写记法坐标，元素、关系与图归属一律不碰。
+   * 一条 SET_NOTATIONS 写完整批，撤销一步回到排布前；超过服务端批量上限按图切分多批。
+   */
+  const runAutoLayout = async (strategy: LayoutChoice, scope: LayoutScope) => {
+    setLayoutDialog(null)
+    const targets = scope === 'diagram' ? (activeDiagramObj ? [activeDiagramObj] : []) : model.diagrams
+    const elementById = new Map(model.elements.map((item) => [item.id, item]))
+    const notationBy = new Map(model.notations.map((item) => [`${item.diagramId}|${item.elementId}`, item]))
+    const batches: Record<string, unknown>[] = []
+    let batch: Record<string, unknown>[] = []
+    let moved = 0
+    let unchanged = 0
+    let immutable = 0
+    for (const diagram of targets) {
+      if (isLayoutImmutable(diagram.kind)) {
+        immutable += 1
+        continue
+      }
+      const elements = diagram.elementIds
+        .map((id) => elementById.get(id))
+        .filter((item): item is ModelElement => item !== undefined)
+      if (elements.length === 0) {
+        continue
+      }
+      const ids = new Set(elements.map((item) => item.id))
+      const result = autoLayout({
+        elements,
+        relationships: model.relationships.filter((item) => ids.has(item.sourceId) && ids.has(item.targetId)),
+        bounds: { maxX: canvas.maxX, maxY: canvas.maxY },
+        nodeSize,
+        sizeOf: (elementId) => {
+          const notation = notationBy.get(`${diagram.id}|${elementId}`)
+          return notation ? { w: notation.width, h: notation.height } : undefined
+        },
+        strategy,
+      })
+      // 排布没覆盖到全部元素就整图放弃：写一半只会把图面弄得更乱。
+      if (result.placements.length !== elements.length) {
+        continue
+      }
+      const items = result.placements
+        .map((placement) => ({ placement, notation: notationBy.get(`${diagram.id}|${placement.elementId}`) }))
+        .filter(({ placement, notation }) => !notation
+          || Math.abs(notation.x - placement.x) > 1
+          || Math.abs(notation.y - placement.y) > 1)
+        .map(({ placement }) => ({
+          diagramId: diagram.id,
+          elementId: placement.elementId,
+          x: placement.x,
+          y: placement.y,
+        }))
+      if (items.length === 0) {
+        unchanged += 1
+        continue
+      }
+      moved += items.length
+      for (const item of items) {
+        if (batch.length >= LAYOUT_BATCH_MAX) {
+          batches.push({ items: batch })
+          batch = []
+        }
+        batch.push(item)
+      }
+    }
+    if (batches.length === 0 && batch.length > 0) {
+      batches.push({ items: batch })
+    }
+    if (batches.length === 0) {
+      say(immutable > 0 && moved === 0 && unchanged === 0
+        ? '这些图的记法由图形自身规则排布（如序列图生命线），自动排布不参与'
+        : '{count} 张图的位置与排布结果一致，未写入', { count: unchanged + immutable })
+      return
+    }
+    fitAfterLayout.current = true
+    for (const payload of batches) {
+      const done = await runCommand('SET_NOTATIONS', payload)
+      if (!done) {
+        return
+      }
+    }
+    say('自动排布：{count} 个记法已重排 · 位置未变 {same} 个元素 · 跳过不可排图 {skipped} 张', {
+      count: moved, same: unchanged, skipped: immutable,
+    })
+  }
 
   const positionById = useMemo(
     () => new Map(positions.map((item) => [item.element.id, item])),
@@ -4154,6 +4282,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           disabled: !canEdit || !selectedId,
         },
         'separator',
+        {
+          label: '自动排布…',
+          run: () => setLayoutDialog(activeDiagramObj ? 'diagram' : 'all'),
+          disabled: !canEdit || busy || model.diagrams.length === 0,
+        },
+        'separator',
         { label: '重新连接并刷新', run: () => void bootstrap() },
       ],
     },
@@ -4317,6 +4451,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             <button type="button" className="tbi" title={t('放大')} onClick={() => applyZoom(zoom * 1.25)}>＋</button>
             <button type="button" className="tbi" title={t('缩小')} onClick={() => applyZoom(zoom / 1.25)}>−</button>
             <button type="button" className="tbi wide" title={t('适应窗口')} onClick={fitCanvas}>{t('适应')}</button>
+            <button
+              type="button"
+              className="tbi wide"
+              title={t('自动排布：按关系方向重排当前图的节点坐标')}
+              disabled={!canEdit || busy || model.diagrams.length === 0}
+              onClick={() => setLayoutDialog(activeDiagramObj ? 'diagram' : 'all')}
+            >{t('排布')}</button>
             <span className="tbi-sep" />
             <button type="button" className="tbi" title={t('导出当前图为 SVG')} disabled={!activeDiagramObj} onClick={exportSvg}>⇩</button>
           </div>
@@ -5825,6 +5966,52 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 disabled={busy || !newProjectName.trim()}
                 onClick={() => void submitNewProject()}
               >{t('创建')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {layoutDialog && (
+        <div className="modal-overlay" onPointerDown={() => setLayoutDialog(null)}>
+          <div className="modal" onPointerDown={(event) => event.stopPropagation()}>
+            <h2 className="modal-title">
+              <span className="mark" aria-hidden="true">▦</span>
+              {t('自动排布')}
+            </h2>
+            <p className="modal-sub">{t('按关系方向重排节点坐标：连线少交叉、图面比例接近视口')}</p>
+            <label className="field">
+              <span>{t('范围')}</span>
+              <select
+                value={layoutDialog}
+                onChange={(event) => setLayoutDialog(event.target.value as LayoutScope)}
+              >
+                <option value="diagram">{t('仅当前图')}{activeDiagramObj ? ` · ${activeDiagramObj.name}` : ''}</option>
+                <option value="all">{t('全部图表')} · {model.diagrams.length}</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>{t('策略')}</span>
+              <select
+                value={layoutStrategy}
+                onChange={(event) => setLayoutStrategy(event.target.value as LayoutChoice)}
+              >
+                <option value="auto">{t('自动：逐图打分挑一种')}</option>
+                <option value="layered">{t('分层：顺关系方向排，交叉最少')}</option>
+                <option value="hubbed">{t('枢纽：中心节点贴边，其余按簇分块')}</option>
+                <option value="grouped">{t('分组：按父子归属成块，适合结构图')}</option>
+              </select>
+            </label>
+            <p className="hint">
+              {t('只改写记法坐标：元素、关系与归属不变。整批一次写入，撤销一步即可回到排布前；序列图等由图形自身规则排布的图不参与。')}
+            </p>
+            <div className="modal-actions">
+              <button type="button" onClick={() => setLayoutDialog(null)}>{t('取消')}</button>
+              <button
+                type="button"
+                className="primary"
+                disabled={busy || (layoutDialog === 'diagram' && !activeDiagramObj)}
+                onClick={() => void runAutoLayout(layoutStrategy, layoutDialog)}
+              >{t('开始排布')}</button>
             </div>
           </div>
         </div>

@@ -515,6 +515,47 @@ public final class InMemoryModelRepository {
                                     Map.of("diagramId", diagramId, "elementId", elementId,
                                             "x", before.x(), "y", before.y()));
                 }
+                case "SET_NOTATIONS" -> {
+                    // 自动排布：一次改写一张或全部图的记法坐标。单命令单 revision，
+                    // 撤销一步回到排布前，不必按节点数连点撤销。
+                    List<Map<String, Object>> inverseItems = new ArrayList<>();
+                    List<String> inverseRemove = new ArrayList<>();
+                    for (Map<String, Object> row : cmd.mapList("items")) {
+                        String diagramId = str(row, "diagramId");
+                        String elementId = str(row, "elementId");
+                        String id = notationId(diagramId, elementId);
+                        Notation before = notations.get(id);
+                        if (before == null) {
+                            inverseRemove.add(id);
+                        } else {
+                            inverseItems.add(notationToMap(before));
+                        }
+                        Notation after = before == null
+                                ? placedNotation(diagramId, elementId, dbl(row, "x"), dbl(row, "y"))
+                                : new Notation(id, diagramId, elementId, dbl(row, "x"), dbl(row, "y"),
+                                        before.width(), before.height(), before.style());
+                        notations.put(id, after);
+                        changes.add(new Change(before == null ? "add" : "update", "notation", id, before, after));
+                        affected.add(id);
+                        affected.add(diagramId);
+                        affected.add(elementId);
+                    }
+                    // 仅出现在逆命令里：正向排布新建的记法，撤销时要删掉。
+                    for (String id : cmd.strList("removeIds")) {
+                        Notation before = notations.remove(id);
+                        if (before == null) {
+                            continue;
+                        }
+                        changes.add(new Change("remove", "notation", id, before, null));
+                        inverseItems.add(notationToMap(before));
+                        affected.add(id);
+                        affected.add(before.diagramId());
+                    }
+                    Map<String, Object> inversePayload = new LinkedHashMap<>();
+                    inversePayload.put("items", List.copyOf(inverseItems));
+                    inversePayload.put("removeIds", List.copyOf(inverseRemove));
+                    inverse = Command.of("SET_NOTATIONS", revision, "set-notations:inverse", inversePayload);
+                }
                 case "DELETE_NOTATION" -> {
                     String notationId = cmd.str("id");
                     Notation before = notations.remove(notationId);

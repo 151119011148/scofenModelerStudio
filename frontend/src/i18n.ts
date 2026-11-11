@@ -925,6 +925,53 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
     zh: '上下拖动调整属性窗口高度，双击恢复默认',
     en: 'Drag up or down to resize the property panel; double-click to reset',
   },
+
+  /* ── 自动排布 ── */
+  '自动排布': { zh: '自动排布', en: 'Auto layout' },
+  '自动排布…': { zh: '自动排布…', en: 'Auto layout…' },
+  '排布': { zh: '排布', en: 'Layout' },
+  '自动排布：按关系方向重排当前图的节点坐标': {
+    zh: '自动排布：按关系方向重排当前图的节点坐标',
+    en: 'Auto layout: rearrange node coordinates along the relationship direction',
+  },
+  '按关系方向重排节点坐标：连线少交叉、图面比例接近视口': {
+    zh: '按关系方向重排节点坐标：连线少交叉、图面比例接近视口',
+    en: 'Rearrange node coordinates along the relationships: fewer crossing lines, diagram shape closer to the viewport',
+  },
+  '范围': { zh: '范围', en: 'Scope' },
+  '策略': { zh: '策略', en: 'Strategy' },
+  '仅当前图': { zh: '仅当前图', en: 'Current diagram only' },
+  '全部图表': { zh: '全部图表', en: 'All diagrams' },
+  '自动：逐图打分挑一种': { zh: '自动：逐图打分挑一种', en: 'Auto: score each option per diagram' },
+  '分层：顺关系方向排，交叉最少': {
+    zh: '分层：顺关系方向排，交叉最少',
+    en: 'Layered: follow the relationship direction, fewest crossings',
+  },
+  '枢纽：中心节点贴边，其余按簇分块': {
+    zh: '枢纽：中心节点贴边，其余按簇分块',
+    en: 'Hubs: put high-degree nodes on the margin, cluster the rest',
+  },
+  '分组：按父子归属成块，适合结构图': {
+    zh: '分组：按父子归属成块，适合结构图',
+    en: 'Grouped: block by ownership, best for structure diagrams',
+  },
+  '只改写记法坐标：元素、关系与归属不变。整批一次写入，撤销一步即可回到排布前；序列图等由图形自身规则排布的图不参与。': {
+    zh: '只改写记法坐标：元素、关系与归属不变。整批一次写入，撤销一步即可回到排布前；序列图等由图形自身规则排布的图不参与。',
+    en: 'Only notation coordinates change; elements, relationships and ownership stay as they are. The whole batch is written at once, so a single undo restores the previous layout. Diagrams laid out by their own notation rules (such as sequence lifelines) are skipped.',
+  },
+  '开始排布': { zh: '开始排布', en: 'Run layout' },
+  '自动排布：{count} 个记法已重排 · 位置未变 {same} 个元素 · 跳过不可排图 {skipped} 张': {
+    zh: '自动排布：{count} 个记法已重排 · 位置未变 {same} 个元素 · 跳过不可排图 {skipped} 张',
+    en: 'Auto layout: {count} notations moved · {same} already in place · {skipped} diagrams skipped',
+  },
+  '{count} 张图的位置与排布结果一致，未写入': {
+    zh: '{count} 张图的位置与排布结果一致，未写入',
+    en: '{count} diagram(s) already match the layout; nothing written',
+  },
+  '这些图的记法由图形自身规则排布（如序列图生命线），自动排布不参与': {
+    zh: '这些图的记法由图形自身规则排布（如序列图生命线），自动排布不参与',
+    en: 'These diagrams use their own notation geometry (such as sequence lifelines); auto layout does not apply',
+  },
 }
 
 /** 语言包缺失时回退到中文原文，保证界面永远可读。 */
