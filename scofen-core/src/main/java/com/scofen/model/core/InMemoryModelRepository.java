@@ -226,6 +226,37 @@ public final class InMemoryModelRepository {
                                 inversePayload);
                     }
                 }
+                case "SET_MESSAGE_ORDER" -> {
+                    // 序列图时间槽：一批 message 关系的 messageOrder 一次写完。
+                    // 一条命令 = 一个 revision = 一个 Patch = 一步撤销，拖动重排才不会被拆成 N 步。
+                    List<Map<String, Object>> rows = cmd.mapList("items");
+                    List<Map<String, Object>> inverseRows = new ArrayList<>();
+                    for (Map<String, Object> row : rows) {
+                        String id = str(row, "id");
+                        Relationship before = relationships.get(id);
+                        if (before == null) {
+                            throw new ValidationException("Unknown relationship: " + id);
+                        }
+                        boolean remove = Boolean.TRUE.equals(row.get("remove"));
+                        Object oldValue = before.property("messageOrder");
+                        Relationship after = before.withProperty("messageOrder", remove ? null : row.get("order"));
+                        relationships.put(id, after);
+                        changes.add(new Change("update", "relationship", id, before, after));
+                        affected.add(id);
+                        affected.add(before.sourceId());
+                        affected.add(before.targetId());
+                        Map<String, Object> inverseRow = new LinkedHashMap<>();
+                        inverseRow.put("id", id);
+                        if (oldValue == null) {
+                            inverseRow.put("remove", Boolean.TRUE);
+                        } else {
+                            inverseRow.put("order", oldValue);
+                        }
+                        inverseRows.add(inverseRow);
+                    }
+                    inverse = Command.of("SET_MESSAGE_ORDER", revision, "messageOrder:inverse",
+                            Map.of("items", inverseRows));
+                }
                 case "DELETE_ELEMENT" -> {
                     String rootId = cmd.str("id");
                     requireElement(rootId);
@@ -530,10 +561,11 @@ public final class InMemoryModelRepository {
                         } else {
                             inverseItems.add(notationToMap(before));
                         }
-                        Notation after = before == null
-                                ? placedNotation(diagramId, elementId, dbl(row, "x"), dbl(row, "y"))
-                                : new Notation(id, diagramId, elementId, dbl(row, "x"), dbl(row, "y"),
-                                        before.width(), before.height(), before.style());
+                        // 宽高可选：泳道排布随内容改记法尺寸；未携带则沿用原尺寸（新建用默认）。
+                        double width = dbl(row, "width", before == null ? NODE_WIDTH : before.width());
+                        double height = dbl(row, "height", before == null ? NODE_HEIGHT : before.height());
+                        Notation after = new Notation(id, diagramId, elementId, dbl(row, "x"), dbl(row, "y"),
+                                width, height, before == null ? Map.of() : before.style());
                         notations.put(id, after);
                         changes.add(new Change(before == null ? "add" : "update", "notation", id, before, after));
                         affected.add(id);

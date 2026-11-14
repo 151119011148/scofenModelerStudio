@@ -12,7 +12,7 @@
 | --- | --- | --- | --- |
 | 可建元素类型 `ElementType` | 33 | **157**（核心 89 + 规范扩展 68） | `containment.types[]` 长度；`tier` 字段 |
 | 元类 `UmlMetaclass` | 160 | **281**（279 规范 + 2 实现层） | `properties.metaclasses[]` |
-| 元属性定义 | 451 | **593** | `properties.totalDefinitions` |
+| 元属性定义 | 451 | **597** | `properties.totalDefinitions` |
 | 关系类型 `RelationshipType` | 28 | **37** | `relationships[]` |
 | 扩展包顶层根 | 2（SysML / UML Profile） | **6**（2 Profile + 3 ModelLibrary + 1 标准 Profile） | `extension.elements` 里 `ownerId=model-root` 的节点 |
 | 扩展包内子包 | 0 | **6**（两个 Profile 各带「元类」「构造型」「关系」） | `packages[]` 里带 `parentId` 的项 |

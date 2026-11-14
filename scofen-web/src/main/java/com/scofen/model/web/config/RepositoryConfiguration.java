@@ -125,12 +125,39 @@ public class RepositoryConfiguration {
             element(executor, "state-idle", "State", "待机", "stm-vcu");
             element(executor, "int-charge", "Interaction", "充电交互", "pkg-1");
             element(executor, "life-user", "Lifeline", "用户", "int-charge");
+            element(executor, "life-pile", "Lifeline", "充电桩", "int-charge");
+            element(executor, "life-bms", "Lifeline", "电池管理系统", "int-charge");
+            // 由 createMessage 创建、再由 deleteMessage 销毁的生命线：表头不在公共表头行。
+            element(executor, "life-session", "Lifeline", "充电会话", "int-charge");
             element(executor, "cb-eff", "ConstraintBlock", "效率约束", "pkg-1");
+
+            // 组合片段：区间（起始/结束消息排位）与守卫都是可写元属性，图面按区间现算框。
+            // 覆盖 3..4（鉴权 / 返回），避开被创建生命线的表头，免得框线横穿表头。
+            element(executor, "frag-charge-opt", "CombinedFragment", "可选：鉴权", "int-charge");
+            run(executor, "UPDATE_PROPERTY", Map.of("id", "frag-charge-opt", "key", "interactionOperator", "value", "opt"));
+            run(executor, "UPDATE_PROPERTY", Map.of("id", "frag-charge-opt", "key", "coveredFrom", "value", 3));
+            run(executor, "UPDATE_PROPERTY", Map.of("id", "frag-charge-opt", "key", "coveredTo", "value", 4));
+            run(executor, "UPDATE_PROPERTY", Map.of("id", "frag-charge-opt", "key", "guards",
+                    "value", List.of("鉴权通过")));
 
             run(executor, "CREATE_RELATIONSHIP", Map.of("id", "rel-1", "type", "satisfy",
                     "sourceId", "e-vcu", "targetId", "r-range"));
             run(executor, "CREATE_RELATIONSHIP", Map.of("id", "rel-2", "type", "verify",
                     "sourceId", "tc-range", "targetId", "r-range"));
+
+            /*
+             * 序列图示例覆盖工具箱里的七种消息组件：同步 / 异步 / 异步信号 / 返回 /
+             * 创建 / 销毁 / 给自己的消息。四条生命线里「充电会话」由第 6 条消息创建、
+             * 第 7 条消息销毁，表头因此落在创建行下方、虚线终止于销毁行并画 X。
+             * messageOrder 是时间槽顺序（模型数据，不是创建顺序），messageSort 决定线型。
+             */
+            message(executor, "msg-plug", "插入充电枪", "life-user", "life-pile", 1, null);
+            message(executor, "msg-self-check", "设备自检", "life-pile", "life-pile", 2, null);
+            message(executor, "msg-auth", "请求鉴权", "life-pile", "life-bms", 3, "asynchCall");
+            message(executor, "msg-auth-ok", "鉴权通过", "life-bms", "life-pile", 4, "reply");
+            message(executor, "msg-status", "状态上报", "life-bms", "life-user", 5, "asynchSignal");
+            message(executor, "msg-create-session", "创建充电会话", "life-pile", "life-session", 6, "createMessage");
+            message(executor, "msg-destroy-session", "结束并销毁会话", "life-pile", "life-session", 7, "deleteMessage");
 
             Map<String, List<String>> refsByKind = new LinkedHashMap<>();
             refsByKind.put("pkg", List.of("pkg-1", "pkg-ctrl", "pkg-req"));
@@ -139,7 +166,8 @@ public class RepositoryConfiguration {
             refsByKind.put("ibd", List.of("part-vcu", "port-can"));
             refsByKind.put("par", List.of("cb-eff"));
             refsByKind.put("act", List.of("act-charge", "action-auth"));
-            refsByKind.put("seq", List.of("int-charge", "life-user"));
+            refsByKind.put("seq", List.of("int-charge", "life-user", "life-pile", "life-bms",
+                    "life-session", "frag-charge-opt"));
             refsByKind.put("stm", List.of("stm-vcu", "state-idle"));
             refsByKind.put("uc", List.of("uc-charge", "actor-driver"));
 
@@ -164,6 +192,17 @@ public class RepositoryConfiguration {
                         "ownerId", diagramOwner.getOrDefault(kind.code(), ""),
                         "elementIds", refsByKind.getOrDefault(kind.code(), List.of())));
             }
+
+            // 四条生命线按列铺开（记法 x 就是列序），交互自身的位置无所谓——它画成图框包住全图。
+            // 表头统一收窄到 132、列距 140，四列都留在 640 的默认画布宽度内；
+            // 七条消息的时间轴比 420 的默认画布高，前端打开序列图时会自动适应窗口一次。
+            run(executor, "SET_NOTATIONS", Map.of("items", List.of(
+                    Map.of("diagramId", "d-seq", "elementId", "int-charge", "x", 20, "y", 30),
+                    Map.of("diagramId", "d-seq", "elementId", "life-user", "x", 20, "y", 40, "width", 132, "height", 44),
+                    Map.of("diagramId", "d-seq", "elementId", "life-pile", "x", 160, "y", 40, "width", 132, "height", 44),
+                    Map.of("diagramId", "d-seq", "elementId", "life-bms", "x", 300, "y", 40, "width", 132, "height", 44),
+                    Map.of("diagramId", "d-seq", "elementId", "life-session", "x", 440, "y", 40, "width", 132, "height", 44),
+                    Map.of("diagramId", "d-seq", "elementId", "frag-charge-opt", "x", 20, "y", 230))));
 
             // 种子完成后立即落库，保证持久化模式首启即有基线
             executor.setPersistence(persistence);
@@ -198,8 +237,31 @@ public class RepositoryConfiguration {
                 "stereotypes", List.of(stereotype), "properties", properties));
     }
 
+    /**
+     * 序列图的一条消息：两端是生命线，第几条落成 messageOrder（1 起），
+     * 线型由 messageSort 决定。缺省 messageSort 就是 synchCall，不必写。
+     */
+    private static void message(CommandExecutor executor, String id, String name,
+                                String sourceId, String targetId, int slot, String sort) {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("messageOrder", slot);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", id);
+        payload.put("type", "message");
+        payload.put("sourceId", sourceId);
+        payload.put("targetId", targetId);
+        payload.put("name", name);
+        payload.put("properties", properties);
+        run(executor, "CREATE_RELATIONSHIP", payload);
+        if (sort != null) {
+            run(executor, "UPDATE_PROPERTY", Map.of("id", id, "key", "messageSort", "value", sort));
+        }
+    }
+
     private static void run(CommandExecutor executor, String type, Map<String, Object> payload) {
+        // 同一个元素连续写多条 UPDATE_PROPERTY 时，幂等键必须把 key 带上：
+        // 否则「seed-UPDATE_PROPERTY-frag-charge-opt」四条全撞同一个键，只有第一条生效。
         executor.execute("system", Command.of(type, executor.revision(),
-                "seed-" + type + "-" + payload.get("id"), payload));
+                "seed-" + type + "-" + payload.get("id") + "-" + payload.getOrDefault("key", ""), payload));
     }
 }

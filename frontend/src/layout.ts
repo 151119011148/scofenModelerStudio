@@ -12,8 +12,9 @@
 // 接近视口比例、占文档面积小、折行少者胜。这里只做计算；落库由调用方发一条 SET_NOTATIONS 一次写完。
 
 import type { ModelElement, Relationship } from './types'
+import { isPartitionType, SWIMLANE_HEADER } from './notation'
 
-export type LayoutStrategy = 'layered' | 'grouped' | 'hubbed'
+export type LayoutStrategy = 'layered' | 'grouped' | 'hubbed' | 'swimlane'
 export type LayoutChoice = LayoutStrategy | 'auto'
 export type LayoutAxis = 'right' | 'down'
 
@@ -21,6 +22,9 @@ export interface Placement {
   elementId: string
   x: number
   y: number
+  /** 泳道等需要随排布改尺寸的记法才携带；缺省时沿用记法原有尺寸。 */
+  w?: number
+  h?: number
 }
 
 export interface LayoutInput {
@@ -76,6 +80,8 @@ export const LAYOUT_IMMUTABLE_KINDS: string[] = ['seq']
 interface LayoutNode {
   id: string
   name: string
+  type: string
+  ownerId: string | null
   w: number
   h: number
 }
@@ -83,6 +89,8 @@ interface LayoutNode {
 interface LayoutEdge {
   from: string
   to: string
+  /** 关系类型（小写归一），泳道排布据此识别 partition 归属。 */
+  type: string
   /** 是否参与分层：包含与细化说的是归属/分解层次，当成分层依据会把图拉成几十层长链。 */
   layer: boolean
 }
@@ -108,6 +116,11 @@ export function autoLayout(input: LayoutInput): LayoutResult {
   const graph = prepare(input)
   if (graph.nodes.length === 0) {
     return emptyResult('layered', 'right')
+  }
+  // 图上只要有活动分区（泳道），泳道排布就是唯一正确形态：
+  // 分层 / 枢纽 / 分组都会把泳道打散成普通盒子、动作也不在泳道内，故直接短路。
+  if (graph.nodes.some((node) => isPartitionType(node.type))) {
+    return layoutSwimlane(graph, input.bounds)
   }
   const choice = input.strategy ?? 'auto'
   const wantLayered = choice === 'auto' || choice === 'layered'
@@ -236,6 +249,8 @@ function prepare(input: LayoutInput): Graph {
     return {
       id: element.id,
       name: element.name ?? element.id,
+      type: element.type,
+      ownerId: element.ownerId,
       w: measured?.w ?? input.nodeSize.width,
       h: measured?.h ?? input.nodeSize.height,
     }
@@ -266,7 +281,9 @@ function prepare(input: LayoutInput): Graph {
     edges.push({
       from: relation.sourceId,
       to: relation.targetId,
-      layer: type !== 'containment' && type !== 'refine',
+      type: type.replace(/[^a-z]/g, ''),
+      // partition 是泳道归属而非流程，参与分层会把本应并排的泳道拉成上下层。
+      layer: type !== 'containment' && type !== 'refine' && type !== 'partition',
     })
   }
 
@@ -818,6 +835,171 @@ function shelfWidth<T extends { width: number }>(slots: T[], gap: number): numbe
   return slots.reduce((sum, slot) => sum + slot.width, 0) + Math.max(0, slots.length - 1) * gap
 }
 
+/* ── swimlane：活动分区并排成竖直泳道，动作归位到所属泳道内部 ── */
+
+const LANE_PAD_X = 18
+const LANE_PAD_TOP = 16
+const LANE_PAD_BOTTOM = 22
+// 泳道连体成一张表：列间零间隙，相邻泳道的边框重合即共享竖线，
+// 标题栏底边连成整行横线，外框由最左/最右/顶/底边拼成（UML 泳道标准画法）。
+const LANE_GAP = 0
+const LANE_MEMBER_GAP = 30
+const LANE_MIN_WIDTH = 200
+const LANE_MIN_HEIGHT = 240
+const RESIDUAL_GAP = 36
+
+/**
+ * 泳道排布：顶层活动分区一人一条竖直泳道，自左向右并排、顶端对齐；
+ * 属于某泳道的动作（所有权落在该分区，或经 partition 关系挂到该分区）自上而下
+ * 排进泳道内部，泳道宽高随内容撑大。没有归属的节点收进最右侧一列，一个都不丢。
+ * 泳道尺寸随记法一并写入（Placement.w/h），渲染才能把动作真正罩在泳道里。
+ */
+function layoutSwimlane(graph: Graph, bounds: { maxX: number; maxY: number }): LayoutResult {
+  const partitionIds = new Set(graph.nodes.filter((node) => isPartitionType(node.type)).map((node) => node.id))
+  // 顶层泳道：所有者不是图上另一个分区的分区。嵌套分区收进祖先泳道当成员。
+  const lanes = graph.nodes.filter((node) =>
+    isPartitionType(node.type) && !(node.ownerId && partitionIds.has(node.ownerId)))
+  const laneIds = new Set(lanes.map((node) => node.id))
+
+  // 把一个分区解析到它所属的顶层泳道（自身即泳道则返回自身）。
+  const laneForPartition = (partitionId: string): string | null => {
+    let cur: string | null = partitionId
+    const guard = new Set<string>()
+    while (cur && !guard.has(cur)) {
+      guard.add(cur)
+      if (laneIds.has(cur)) {
+        return cur
+      }
+      cur = graph.byId.get(cur)?.ownerId ?? null
+    }
+    return null
+  }
+
+  // 归属优先看所有权链（动作建在分区下），沿父链找到顶层泳道。
+  const laneOf = new Map<string, string>()
+  for (const node of graph.nodes) {
+    if (laneIds.has(node.id)) {
+      continue
+    }
+    let cur = node.ownerId
+    const guard = new Set<string>()
+    while (cur && !guard.has(cur)) {
+      guard.add(cur)
+      if (laneIds.has(cur)) {
+        laneOf.set(node.id, cur)
+        break
+      }
+      cur = graph.byId.get(cur)?.ownerId ?? null
+    }
+  }
+  // 所有权没挂到泳道的，再看 partition 关系（分区 → 节点，反向也认）。
+  for (const edge of graph.edges) {
+    if (edge.type !== 'partition') {
+      continue
+    }
+    const fromPart = partitionIds.has(edge.from)
+    const toPart = partitionIds.has(edge.to)
+    if (fromPart && !toPart && !laneOf.has(edge.to)) {
+      const lane = laneForPartition(edge.from)
+      if (lane) {
+        laneOf.set(edge.to, lane)
+      }
+    } else if (toPart && !fromPart && !laneOf.has(edge.from)) {
+      const lane = laneForPartition(edge.to)
+      if (lane) {
+        laneOf.set(edge.from, lane)
+      }
+    }
+  }
+
+  const membersOf = new Map<string, string[]>(lanes.map((lane) => [lane.id, []]))
+  const residual: string[] = []
+  for (const node of graph.nodes) {
+    if (laneIds.has(node.id)) {
+      continue
+    }
+    const lane = laneOf.get(node.id)
+    if (lane) {
+      membersOf.get(lane)?.push(node.id)
+    } else {
+      residual.push(node.id)
+    }
+  }
+
+  const nameOrder = (a: string, b: string) =>
+    cmp(graph.byId.get(a)?.name ?? a, graph.byId.get(b)?.name ?? b) || cmp(a, b)
+  const orderedLanes = [...lanes].sort((a, b) => nameOrder(a.id, b.id))
+
+  // 泳道内的先后需要看「整张图」的控制流：泳道图的控制流恰恰在泳道之间来回穿梭，
+  // 只看泳道内部会一条边都没有。先对全图分层取层号，泳道内按全局层号自上而下排。
+  const rankOf = new Map<string, number>()
+  rankNodes(graph).forEach((group, rank) => {
+    for (const id of group) {
+      rankOf.set(id, rank)
+    }
+  })
+
+  // 各泳道宽度由最宽成员撑出；高度取所有泳道最大值，并排才像一张整齐的泳道图。
+  const laneWidth = new Map<string, number>()
+  let laneHeight = LANE_MIN_HEIGHT
+  for (const lane of orderedLanes) {
+    const members = membersOf.get(lane.id) ?? []
+    const widest = members.reduce((max, id) => Math.max(max, graph.byId.get(id)?.w ?? 0), 0)
+    laneWidth.set(lane.id, Math.max(LANE_MIN_WIDTH, widest + LANE_PAD_X * 2))
+    const contentHeight = SWIMLANE_HEADER + LANE_PAD_TOP + LANE_PAD_BOTTOM
+      + members.reduce((sum, id) => sum + (graph.byId.get(id)?.h ?? 0), 0)
+      + Math.max(0, members.length - 1) * LANE_MEMBER_GAP
+    laneHeight = Math.max(laneHeight, contentHeight)
+  }
+
+  const placements: Placement[] = []
+  const sizes = new Map<string, { w: number; h: number }>()
+  let cursorX = MARGIN
+  for (const lane of orderedLanes) {
+    const width = laneWidth.get(lane.id) ?? LANE_MIN_WIDTH
+    placements.push({ elementId: lane.id, x: cursorX, y: MARGIN, w: width, h: laneHeight })
+    sizes.set(lane.id, { w: width, h: laneHeight })
+    let cursorY = MARGIN + SWIMLANE_HEADER + LANE_PAD_TOP
+    for (const memberId of orderMembers(graph, membersOf.get(lane.id) ?? [], rankOf)) {
+      const node = graph.byId.get(memberId)!
+      placements.push({
+        elementId: memberId,
+        x: cursorX + (width - node.w) / 2,
+        y: cursorY,
+      })
+      sizes.set(memberId, { w: node.w, h: node.h })
+      cursorY += node.h + LANE_MEMBER_GAP
+    }
+    cursorX += width + LANE_GAP
+  }
+
+  // 无归属节点：表框右侧另起一列自上而下，不与泳道重叠。
+  let residualY = MARGIN
+  const residualX = cursorX + RESIDUAL_GAP
+  for (const id of [...residual].sort(nameOrder)) {
+    const node = graph.byId.get(id)!
+    placements.push({ elementId: id, x: residualX, y: residualY })
+    sizes.set(id, { w: node.w, h: node.h })
+    residualY += node.h + LANE_MEMBER_GAP
+  }
+
+  const clamped = clampToDocument(placements, sizes, bounds)
+  return {
+    placements: clamped,
+    strategy: 'swimlane',
+    axis: 'down',
+    bands: orderedLanes.length,
+    extent: extentOf(clamped, sizes),
+  }
+}
+
+/** 泳道内成员次序：按全图控制流层号自上而下；同层（并行分支）按名字定序，保证稳定。 */
+function orderMembers(graph: Graph, ids: string[], rankOf: Map<string, number>): string[] {
+  const nameOrder = (a: string, b: string) =>
+    cmp(graph.byId.get(a)?.name ?? a, graph.byId.get(b)?.name ?? b) || cmp(a, b)
+  return [...ids].sort((a, b) => (rankOf.get(a) ?? 0) - (rankOf.get(b) ?? 0) || nameOrder(a, b))
+}
+
 /* ── 收尾：范围钳制 ── */
 
 function extentOf(placements: Placement[], sizes: Map<string, { w: number; h: number }>):
@@ -843,10 +1025,18 @@ function clampToDocument(
 ): Placement[] {
   return placements.map((placement) => {
     const size = sizes.get(placement.elementId) ?? { w: 0, h: 0 }
-    return {
+    const clamped: Placement = {
       elementId: placement.elementId,
       x: Math.round(Math.min(Math.max(placement.x, 0), Math.max(0, bounds.maxX - size.w))),
       y: Math.round(Math.min(Math.max(placement.y, 0), Math.max(0, bounds.maxY - size.h))),
     }
+    // 泳道等携带尺寸的排布结果，钳制后仍要把宽高带回去。
+    if (placement.w !== undefined) {
+      clamped.w = placement.w
+    }
+    if (placement.h !== undefined) {
+      clamped.h = placement.h
+    }
+    return clamped
   })
 }

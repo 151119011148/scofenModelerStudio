@@ -319,6 +319,40 @@ class ModelEditingTest {
     }
 
     @Test
+    void batchLayoutPersistsOptionalSizesAndRestoresThemOnUndo() {
+        seedTree();
+        double originalWidth = notation("d-ibd", "part").width();
+        double originalHeight = notation("d-ibd", "part").height();
+        double portWidth = notation("d-ibd", "port").width();
+
+        // 泳道排布：携带宽高的条目尺寸随内容改写；未携带的条目沿用原尺寸。
+        cmd("SET_NOTATIONS", Map.of("items", List.of(
+                Map.of("diagramId", "d-ibd", "elementId", "part", "x", 40.0, "y", 40.0,
+                        "width", 260.0, "height", 480.0),
+                Map.of("diagramId", "d-ibd", "elementId", "port", "x", 90.0, "y", 120.0))));
+        assertThat(notation("d-ibd", "part").width()).isEqualTo(260.0);
+        assertThat(notation("d-ibd", "part").height()).isEqualTo(480.0);
+        assertThat(notation("d-ibd", "port").width()).isEqualTo(portWidth);
+
+        // 撤销一步即回到排布前的尺寸；重做重新写入。
+        executor.undo(SESSION);
+        assertThat(notation("d-ibd", "part").width()).isEqualTo(originalWidth);
+        assertThat(notation("d-ibd", "part").height()).isEqualTo(originalHeight);
+
+        executor.redo(SESSION);
+        assertThat(notation("d-ibd", "part").width()).isEqualTo(260.0);
+        assertThat(notation("d-ibd", "part").height()).isEqualTo(480.0);
+    }
+
+    @Test
+    void batchLayoutRejectsNonPositiveSize() {
+        seedTree();
+        assertThatThrownBy(() -> cmd("SET_NOTATIONS", Map.of("items", List.of(
+                Map.of("diagramId", "d-ibd", "elementId", "part", "x", 10.0, "y", 10.0, "width", 0.0)))))
+                .isInstanceOf(ValidationException.class).hasMessageContaining("positive and finite");
+    }
+
+    @Test
     void batchLayoutRejectsForeignElementUnknownDiagramDuplicatesAndOverflow() {
         seedTree();
 

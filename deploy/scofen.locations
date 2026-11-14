@@ -35,6 +35,28 @@ location /scofen/modelerStudio/ws/ {
     proxy_read_timeout    3600s;
 }
 
+# index.html 必须每次回源校验：否则浏览器按 Last-Modified 启发式缓存旧入口，
+# 发布新 bundle 后用户仍命中旧 JS。带哈希的静态资源不受影响（仍可长缓存）。
+location = /scofen/modelerStudio/ {
+    proxy_pass          http://127.0.0.1:18080/;
+    proxy_http_version  1.1;
+    proxy_set_header    Host              $host;
+    proxy_set_header    X-Real-IP         $remote_addr;
+    proxy_set_header    X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header    X-Forwarded-Proto $scheme;
+    add_header          Cache-Control     "no-cache" always;
+}
+
+location = /scofen/modelerStudio/index.html {
+    proxy_pass          http://127.0.0.1:18080/index.html;
+    proxy_http_version  1.1;
+    proxy_set_header    Host              $host;
+    proxy_set_header    X-Real-IP         $remote_addr;
+    proxy_set_header    X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header    X-Forwarded-Proto $scheme;
+    add_header          Cache-Control     "no-cache" always;
+}
+
 # 页面 / 静态资源 / REST：/scofen/modelerStudio/xxx -> /xxx
 location /scofen/modelerStudio/ {
     proxy_pass          http://127.0.0.1:18080/;

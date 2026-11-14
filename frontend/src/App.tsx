@@ -44,7 +44,12 @@ import type {
   WorkspaceDirectoryInfo,
   WorkspaceProject,
 } from './types'
-import { arrowGeometry, edgePoint, relationshipStyle, shapeOf } from './notation'
+import { arrowGeometry, controlGlyph, controlSizeOf, isBackdropShape, isLaneMembershipRelation, isPartitionType, moveRouteSegment, orthogonalRoute, readRoute, reattachRoute, relationshipStyle, routeMidpoint, shapeOf, simplifyRoute, SWIMLANE_HEADER, wrapLabel, type RoutePoint } from './notation'
+import {
+  layoutSequence, messageSortStyle, nextMessageOrder, reorderMessages, reorderMessagesTo,
+  SEQ_MESSAGE_TOOLS, seqMessageToolOf, SEQ_ROW_PITCH, SEQ_SELF_BUMP, SEQ_SELF_HEIGHT,
+} from './sequenceLayout'
+import type { SeqActivation, SeqFragment, SeqMessage, SeqMessageToolDef } from './sequenceLayout'
 import { autoLayout, isLayoutImmutable } from './layout'
 import type { LayoutChoice } from './layout'
 import { DiagramIcon, FAMILIES, RelationIcon, TypeIcon, familyOfType } from './icons'
@@ -85,6 +90,8 @@ type LayoutScope = 'diagram' | 'all'
 
 const ZOOM_MIN = 0.12
 const ZOOM_MAX = 2.5
+/** 平移时始终留在视口里的画布余量，防止一路推出去后满屏空白找不到图。 */
+const PAN_KEEP = 60
 /** 适应窗口时内容四周留出的模型单位空白，免得节点贴着视口边缘。 */
 const FIT_PADDING = 40
 /**
@@ -523,6 +530,19 @@ interface DragState {
   moved: boolean
 }
 
+/** 连线走线拖拽：按住某一段沿垂直方向平移，orig 保留起手路由供增量计算。 */
+interface EdgeDragState {
+  relationId: string
+  segment: number
+  startX: number
+  startY: number
+  orig: RoutePoint[]
+  points: RoutePoint[]
+  moved: boolean
+  sourceRect: { x: number; y: number; w: number; h: number }
+  targetRect: { x: number; y: number; w: number; h: number }
+}
+
 /** 状态栏消息：存词条与变量，渲染时翻译，切换语言后历史消息同步重译。 */
 interface MessageState {
   key: string
@@ -577,6 +597,27 @@ function ownerKey(id: string | null): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
+}
+
+/**
+ * 视口左上角的合法范围：无论怎么平移或缩放，视口与内容包围盒的可见重叠
+ * 至少留 K（PAN_KEEP；内容比它还窄时按内容算）。少了这一层，图被推到几百
+ * 单位外就是满屏空白，只能刷新页面找回来。
+ */
+function clampPanTo(
+  x: number,
+  y: number,
+  level: number,
+  box: { left: number; top: number; right: number; bottom: number },
+  viewWidth: number,
+  viewHeight: number,
+): { x: number; y: number } {
+  const keepX = Math.min(PAN_KEEP, Math.max(box.right - box.left, 1))
+  const keepY = Math.min(PAN_KEEP, Math.max(box.bottom - box.top, 1))
+  return {
+    x: clamp(x, box.left + keepX - viewWidth, box.right - keepX),
+    y: clamp(y, box.top + keepY - viewHeight, box.bottom - keepY),
+  }
 }
 
 /** 关系在「关系」虚拟节点下的一个挂载项：direction 决定它出现在哪一端。 */
@@ -707,15 +748,39 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [createStereotype, setCreateStereotype] = useState('')
   const [joinDiagram, setJoinDiagram] = useState(true)
   const [drag, setDrag] = useState<DragState | null>(null)
+  const [edgeDrag, setEdgeDrag] = useState<EdgeDragState | null>(null)
+  /**
+   * 序列图消息拖动改序：按下消息线即进入候选拖动，移动超过 4px 才算拖，
+   * 松手落到的时间槽下标由 seqLayout 换算。没拖动就还是「点选消息」。
+   */
+  const [seqDrag, setSeqDrag] = useState<{
+    relationId: string
+    startY: number
+    fromIndex: number
+    targetIndex: number
+    moved: boolean
+  } | null>(null)
   // 右侧垂直工具箱：组件内容只跟当前图相关（元素 + 关系 + 通用），参考 EA / StarUML。
   const [toolboxTab, setToolboxTab] = useState<'components' | 'styles'>('components')
   const [openToolGroups, setOpenToolGroups] = useState<Set<string>>(
-    () => new Set(['elements', 'relations', 'generic']),
+    () => new Set(['elements', 'relations', 'generic', 'seqMessages']),
   )
   const [relationCatalog, setRelationCatalog] = useState<RelationshipTypeInfo[]>([])
   // 连线工具：选中关系组件后在画布上依次点击起点、终点创建关系。
   const [relationTool, setRelationTool] = useState<string | null>(null)
   const [relationSource, setRelationSource] = useState<string | null>(null)
+  /**
+   * 序列图的「消息种类」工具：relationTool 仍是 'message'（服务端只认这个关系类型），
+   * 这里额外记住选的是同步 / 异步 / 信号 / 返回 / 创建 / 销毁 / 自消息，
+   * 建关系时把种类写进 properties.messageSort，图面才有对应的线型与语义。
+   */
+  const [seqMessageTool, setSeqMessageTool] = useState<string | null>(null)
+  // 退出连线或切到别的关系组件时，消息种类不能残留到下一次连线。
+  useEffect(() => {
+    if (relationTool !== 'message') {
+      setSeqMessageTool(null)
+    }
+  }, [relationTool])
   const [propsTab, setPropsTab] = useState<'attrs' | 'tags' | 'relations' | 'notation'>('attrs')
   // 属性窗口：UML 2.5.1 / SysML 1.6 元属性目录由服务端下发，三档只影响展示数量。
   const [propCatalog, setPropCatalog] = useState<PropertyCatalogInfo | null>(null)
@@ -771,6 +836,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [tabs, setTabs] = useState<DocTab[]>([])
   /** 左栏视图：项目（包树）/ 图表（按图类型）/ 模型库（扩展包与元类构造型）。 */
   const [leftTab, setLeftTab] = useState<'project' | 'charts' | 'library'>('project')
+  /** 图表页按图类型分组后，被折叠的类型集合：偏好落 localStorage，刷新后保持。 */
+  const [collapsedChartKinds, setCollapsedChartKinds] = useState<Set<string>>(() => {
+    try {
+      const raw = window.localStorage.getItem('scofen.modeler.collapsedChartKinds')
+      const parsed: unknown = raw ? JSON.parse(raw) : []
+      return Array.isArray(parsed) ? new Set(parsed.filter((k): k is string => typeof k === 'string')) : new Set()
+    } catch {
+      return new Set()
+    }
+  })
   const [treeFilter, setTreeFilter] = useState('')
   /** 被手动折叠的「关系」虚拟分组：默认全部展开，便于一眼看到端点挂载。 */
   const [collapsedRelationGroups, setCollapsedRelationGroups] = useState<Set<string>>(() => new Set())
@@ -812,7 +887,15 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   /** 画布缩放与平移：viewBox 只取其中一块视口，pointer 坐标由 getScreenCTM 自动换算。 */
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
-  const [panDrag, setPanDrag] = useState<{ startX: number; startY: number; panX: number; panY: number } | null>(null)
+  const [panDrag, setPanDrag] = useState<{
+    startX: number
+    startY: number
+    panX: number
+    panY: number
+    /** 起手落在空白画布上：没拖动的话按「取消选择」处理，拖了才算平移。 */
+    onBackground: boolean
+    moved: boolean
+  } | null>(null)
 
   // 所有 /api 请求都带当前项目头；在渲染期同步，避免切换项目时首帧请求串到旧项目。
   setProjectId(activeProjectId)
@@ -832,18 +915,19 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     // 那次失败属于旧项目，不该把「连接失败」横幅挂到新项目头上。
     const projectAtStart = getProjectId()
     try {
-      const [nextHealth, nextModel, nextWorkspace] = await Promise.all([
+      // 空间目录不认项目头，先单独取：模型接口 404 时（本地重启后记住的项目 id 已失效）
+      // 它也得落到 state，否则选择器是空的，用户连「换一个项目」这条路都走不通。
+      const nextWorkspace = await getWorkspaces().catch(() => null)
+      if (nextWorkspace) {
+        setWorkspace(nextWorkspace)
+      }
+      const [nextHealth, nextModel] = await Promise.all([
         getHealth(),
         getModel(),
-        // 空间目录里的当前项目统计随 WS Patch 一起刷新；目录接口失败不阻断模型加载。
-        getWorkspaces().catch(() => null),
       ])
       revisionRef.current = nextModel.revision
       setHealth(nextHealth)
       setModel(nextModel)
-      if (nextWorkspace) {
-        setWorkspace(nextWorkspace)
-      }
       // 成功即自愈：否则一次瞬时失败留下的红色横幅会一直挂着，直到用户手动重试。
       setConnectionError(null)
       setMessage((current) => (current.key === '正在连接服务端…' ? { key: '已同步至服务端' } : current))
@@ -870,6 +954,15 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       // 隐私模式 / 禁用存储时忽略，功能本身不受影响。
     }
   }, [showExtensions])
+
+  /** 图表分组的折叠状态落 localStorage：刷新后保持上次展开/折叠的类型。 */
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('scofen.modeler.collapsedChartKinds', JSON.stringify([...collapsedChartKinds]))
+    } catch {
+      // 隐私模式 / 禁用存储时忽略。
+    }
+  }, [collapsedChartKinds])
 
   /** 左栏宽度落 localStorage：刷新后保持上次拖到的位置。 */
   useEffect(() => {
@@ -1154,7 +1247,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
   // 切换图：组件内容随图联动，展开元素/关系分组，并清掉新图不允许的连线工具与起点。
   useEffect(() => {
-    setOpenToolGroups(new Set(['elements', 'relations', 'generic']))
+    setOpenToolGroups(new Set(['elements', 'relations', 'generic', 'seqMessages']))
     setRelationSource(null)
     setRelationTool((current) =>
       current && (activeSpec?.allowedRelationships ?? []).includes(current) ? current : null,
@@ -1745,15 +1838,24 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     )
   }
 
-  /** 画布视口：zoom 收窄取样范围、pan 平移原点；指针坐标由 getScreenCTM 自动换算。 */
-  const viewBox = `${pan.x} ${pan.y} ${canvas.width / zoom} ${canvas.height / zoom}`
-
+  /** 画布视口在 clampPan 一节定义（要按内容包围盒夹紧，得等 positions 算完）。 */
   const applyZoom = useCallback((next: number) => {
     if (!Number.isFinite(next)) {
       return
     }
-    setZoom(clamp(Number(next.toFixed(3)), ZOOM_MIN, ZOOM_MAX))
-  }, [])
+    const level = clamp(Number(next.toFixed(3)), ZOOM_MIN, ZOOM_MAX)
+    // ＋/− 与「重置 100%」以视口中心为锚点：原来只动缩放、viewBox 左上角钉在原处，
+    // 放大时正在看的图会被推出视口，还得再平移找回来。
+    const center = {
+      x: pan.x + canvas.width / (2 * zoom),
+      y: pan.y + canvas.height / (2 * zoom),
+    }
+    setZoom(level)
+    setPan({
+      x: center.x - canvas.width / (2 * level),
+      y: center.y - canvas.height / (2 * level),
+    })
+  }, [pan, zoom, canvas])
 
   // ── 文档标签：图标签切画布，对象标签只切属性窗口的编辑对象 ──
   const activeTabKey = selectedId && tabs.some((tab) => tab.kind === 'element' && tab.id === selectedId)
@@ -2627,40 +2729,93 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     )
     return visibleElements.map((element, index) => {
       const notation = byElement.get(element.id)
-      const baseX = notation?.x ?? 36 + (index % 3) * 196
-      const baseY = notation?.y ?? 36 + Math.floor(index / 3) * 128
+      const glyph = controlSizeOf(element.type)
+      const oldW = notation?.width ?? nodeSize.width
+      const oldH = notation?.height ?? nodeSize.height
+      // 控制节点图形用规范尺寸；旧的大框记法按中心居中收缩，图形不会漂到旧框角落。
+      const baseX = (notation?.x ?? 36 + (index % 3) * 196) + (glyph && notation ? (oldW - glyph.w) / 2 : 0)
+      const baseY = (notation?.y ?? 36 + Math.floor(index / 3) * 128) + (glyph && notation ? (oldH - glyph.h) / 2 : 0)
       const active = drag?.elementId === element.id ? drag : null
       return {
         element,
         x: active?.x ?? baseX,
         y: active?.y ?? baseY,
-        w: notation?.width ?? nodeSize.width,
-        h: notation?.height ?? nodeSize.height,
+        w: glyph?.w ?? oldW,
+        h: glyph?.h ?? oldH,
       }
-    })
+    // 垫底形状（泳道、生命线）先画：SVG 后画的盖在先画的上面，不透明底必须垫在动作/消息之下。
+    }).sort((a, b) => Number(isBackdropShape(shapeOf(b.element.type))) - Number(isBackdropShape(shapeOf(a.element.type))))
   }, [visibleElements, model.notations, activeDiagramId, drag, nodeSize.width, nodeSize.height])
+
+  /**
+   * 序列图的图面计算：生命线列、消息时间槽、激活条与内容盒。
+   * 记法坐标（含未落库的拖动实时值）是唯一输入，缩放/平移/适应窗口都据它取范围。
+   */
+  const seqLayout = useMemo(
+    () => (activeDiagramKind === 'seq'
+      ? layoutSequence(positions, model.relationships, {
+          elements: model.elements,
+          interactionId: activeDiagramObj?.ownerId ?? null,
+        })
+      : null),
+    [activeDiagramKind, positions, model.relationships, model.elements, activeDiagramObj?.ownerId],
+  )
+
+  /** 已在图面上按时间槽铺开、不再走通用「对角连线」渲染的消息。 */
+  const seqMessageIds = useMemo(
+    () => new Set((seqLayout?.messages ?? []).map((message) => message.relation.id)),
+    [seqLayout],
+  )
+
+  /** 组合片段已画成 UML 片段框，节点层不要再画一个普通方块。 */
+  const seqFragmentIds = useMemo(
+    () => new Set((seqLayout?.fragments ?? []).map((fragment) => fragment.element.id)),
+    [seqLayout],
+  )
+
+  /** 生命线表头几何（对齐后的行、统一底边）：renderNode 据此画框与竖线。 */
+  const seqLifelineById = useMemo(
+    () => new Map((seqLayout?.lifelines ?? []).map((lifeline) => [lifeline.element.id, lifeline])),
+    [seqLayout],
+  )
+
+  /** 当前图的内容包围盒；序列图要含推导出来的消息行与生命线末端。 */
+  const contentBox = useMemo(() => {
+    if (seqLayout) {
+      return seqLayout.box
+    }
+    if (positions.length === 0) {
+      return null
+    }
+    return {
+      left: Math.min(...positions.map((item) => item.x)),
+      top: Math.min(...positions.map((item) => item.y)),
+      right: Math.max(...positions.map((item) => item.x + item.w)),
+      bottom: Math.max(...positions.map((item) => item.y + item.h)),
+    }
+  }, [positions, seqLayout])
 
   /**
    * 适应窗口：把当前图的内容包围盒整体缩进视口。
    * 原来只是「回到 100% 并归零平移」，自动排布把图铺到几千单位宽之后那样等于什么都没做。
    */
   const fitCanvas = useCallback(() => {
-    if (positions.length === 0) {
+    if (!contentBox) {
       setZoom(1)
       setPan({ x: 0, y: 0 })
       return
     }
-    const left = Math.min(...positions.map((item) => item.x))
-    const top = Math.min(...positions.map((item) => item.y))
-    const width = Math.max(...positions.map((item) => item.x + item.w)) - left + FIT_PADDING * 2
-    const height = Math.max(...positions.map((item) => item.y + item.h)) - top + FIT_PADDING * 2
+    const left = contentBox.left
+    const top = contentBox.top
+    const width = contentBox.right - left + FIT_PADDING * 2
+    const height = contentBox.bottom - top + FIT_PADDING * 2
     const next = clamp(Math.min(canvas.width / width, canvas.height / height), ZOOM_MIN, 1)
     setZoom(Number(next.toFixed(3)))
     setPan({
       x: Math.round(left - FIT_PADDING - (canvas.width / next - width) / 2),
       y: Math.round(top - FIT_PADDING - (canvas.height / next - height) / 2),
     })
-  }, [positions, canvas.width, canvas.height])
+  }, [contentBox, canvas.width, canvas.height])
 
   // 排布写完坐标才缩放：模型是异步刷回来的，先立个牌子，等新记法渲染出来再适应窗口。
   const fitAfterLayout = useRef(false)
@@ -2671,6 +2826,24 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     fitAfterLayout.current = false
     fitCanvas()
   }, [model.notations, fitCanvas])
+
+  /**
+   * 序列图的消息是逐行往下堆的，消息一多图面就比默认画布高，打开时底部会被裁掉
+   * （示例图七条消息、创建出来的表头与销毁 X 全在视口外）。第一次打开这张图时若内容
+   * 超出视口就自动适应窗口一次；按图 id 记牌子，之后用户自己缩放 / 平移不会再被拉回。
+   */
+  const autoFitSeqDiagram = useRef<string | null>(null)
+  useEffect(() => {
+    if (!activeDiagramId || !seqLayout || autoFitSeqDiagram.current === activeDiagramId) {
+      return
+    }
+    const box = seqLayout.box
+    if (box.bottom <= canvas.height && box.right <= canvas.width) {
+      return
+    }
+    autoFitSeqDiagram.current = activeDiagramId
+    fitCanvas()
+  }, [activeDiagramId, seqLayout, fitCanvas, canvas.width, canvas.height])
 
   /**
    * 自动排布：只改写记法坐标，元素、关系与图归属一律不碰。
@@ -2704,6 +2877,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         bounds: { maxX: canvas.maxX, maxY: canvas.maxY },
         nodeSize,
         sizeOf: (elementId) => {
+          const glyph = controlSizeOf(elementById.get(elementId)?.type ?? '')
+          if (glyph) {
+            return glyph
+          }
           const notation = notationBy.get(`${diagram.id}|${elementId}`)
           return notation ? { w: notation.width, h: notation.height } : undefined
         },
@@ -2715,15 +2892,29 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       }
       const items = result.placements
         .map((placement) => ({ placement, notation: notationBy.get(`${diagram.id}|${placement.elementId}`) }))
-        .filter(({ placement, notation }) => !notation
-          || Math.abs(notation.x - placement.x) > 1
-          || Math.abs(notation.y - placement.y) > 1)
-        .map(({ placement }) => ({
-          diagramId: diagram.id,
-          elementId: placement.elementId,
-          x: placement.x,
-          y: placement.y,
-        }))
+        .filter(({ placement, notation }) => {
+          const glyph = controlSizeOf(elementById.get(placement.elementId)?.type ?? '')
+          const wantW = glyph?.w ?? placement.w
+          const wantH = glyph?.h ?? placement.h
+          return !notation
+            || Math.abs(notation.x - placement.x) > 1
+            || Math.abs(notation.y - placement.y) > 1
+            || (wantW !== undefined && Math.abs(notation.width - wantW) > 1)
+            || (wantH !== undefined && Math.abs(notation.height - wantH) > 1)
+        })
+        .map(({ placement }) => {
+          const glyph = controlSizeOf(elementById.get(placement.elementId)?.type ?? '')
+          return {
+            diagramId: diagram.id,
+            elementId: placement.elementId,
+            x: placement.x,
+            y: placement.y,
+            // 泳道排布会随内容改记法尺寸；控制节点锁规范图形尺寸；其余沿用原尺寸。
+            ...(placement.w !== undefined ? { width: placement.w } : {}),
+            ...(placement.h !== undefined ? { height: placement.h } : {}),
+            ...(glyph ? { width: glyph.w, height: glyph.h } : {}),
+          }
+        })
       if (items.length === 0) {
         unchanged += 1
         continue
@@ -2757,6 +2948,34 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       count: moved, same: unchanged, skipped: immutable,
     })
   }
+
+  // 泳道自动归位：打开含活动分区的图时，若泳道仍是默认尺寸（尚未排布），自动跑一次
+  // 泳道排布让动作回到泳道内；已排布或手动调过尺寸的图不碰，每张图每次会话只触发一次。
+  const swimlaneAutoApplied = useRef(new Set<string>())
+  useEffect(() => {
+    const diagram = activeDiagramObj
+    if (!diagram || busy || !canEdit || swimlaneAutoApplied.current.has(diagram.id)) {
+      return
+    }
+    const partitions = diagram.elementIds
+      .map((id) => elementById.get(id))
+      .filter((element): element is ModelElement => element !== undefined && isPartitionType(element.type))
+    if (partitions.length === 0) {
+      return
+    }
+    const notationByElement = new Map(
+      model.notations.filter((item) => item.diagramId === diagram.id).map((item) => [item.elementId, item]),
+    )
+    const unarranged = partitions.every((element) => {
+      const notation = notationByElement.get(element.id)
+      return !notation || (notation.width === nodeSize.width && notation.height === nodeSize.height)
+    })
+    if (!unarranged) {
+      return
+    }
+    swimlaneAutoApplied.current.add(diagram.id)
+    void runAutoLayout('auto', 'diagram')
+  }, [activeDiagramObj, model.notations, elementById, nodeSize, busy, canEdit])
 
   const positionById = useMemo(
     () => new Map(positions.map((item) => [item.element.id, item])),
@@ -2933,11 +3152,15 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       return
     }
     const id = `dg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+    const hostOwnerId = await ensureDiagramHost(diagramDialog.kind, diagramDialog.ownerId ?? '')
+    if (hostOwnerId === null) {
+      return
+    }
     const ok = await runCommand('CREATE_DIAGRAM', {
       id,
       kind: diagramDialog.kind,
       name: diagramDialog.name.trim(),
-      ownerId: diagramDialog.ownerId ?? '',
+      ownerId: hostOwnerId,
       elementIds: [],
     })
     if (ok) {
@@ -2947,19 +3170,62 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }
 
+  /**
+   * 序列图的宿主是 Interaction：元模型的容器规则里生命线、片段、发生规格只能挂在交互（或片段）之下，
+   * 图直接建在包下时工具箱建生命线必然被拒。建图时补上交互宿主（结构与示例模型 seq 图 owner=交互 一致），
+   * 已有宿主就复用，不重复造空交互。返回 null 表示宿主创建失败，调用方不要再往下建图。
+   */
+  const ensureDiagramHost = async (kind: string, ownerId: string): Promise<string | null> => {
+    if (kind !== 'seq') {
+      return ownerId
+    }
+    const owner = model.elements.find((element) => element.id === ownerId)
+    if (owner && codeOf(owner.type) === 'Interaction') {
+      return ownerId
+    }
+    const existing = model.elements.find((element) =>
+      codeOf(element.type) === 'Interaction' && (element.ownerId ?? projectRootId) === (ownerId || projectRootId))
+    if (existing) {
+      return existing.id
+    }
+    const info = typeInfo.get('Interaction')
+    const id = `e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+    const ok = await runCommand('CREATE_ELEMENT', {
+      id,
+      type: info?.uml ?? 'Interaction',
+      name: t('交互 {count}', { count: model.elements.filter((element) => codeOf(element.type) === 'Interaction').length + 1 }),
+      ownerId: ownerId || projectRootId || '',
+      documentation: '',
+      stereotypes: [],
+    })
+    return ok ? id : null
+  }
+
+  /**
+   * 序列图的消息不只是「一条线」：它在时间轴上的位置是模型数据（messageOrder），
+   * 所以新建时就把序号一起落库（落最后），而不是靠关系数组的先后顺序碰巧对。
+   */
+  const relationPayload = (id: string, type: string, sourceId: string, targetId: string) => {
+    const payload: Record<string, unknown> = { id, type, sourceId, targetId, diagramId: activeDiagramId }
+    if (type.toLowerCase() === 'message') {
+      // 消息种类工具预设的 messageSort 随关系一次落库，不必再进属性面板改枚举。
+      const tool = seqMessageToolOf(seqMessageTool)
+      payload.properties = {
+        messageOrder: nextMessageOrder(seqLayout?.messages ?? []),
+        ...(tool ? { messageSort: tool.sort } : {}),
+      }
+    }
+    return payload
+  }
+
   const submitRelation = async () => {
     if (!relationDialog || !relationDialog.sourceId || !relationDialog.targetId) {
       say('请选择关系的两端元素')
       return
     }
     const id = `rel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
-    const ok = await runCommand('CREATE_RELATIONSHIP', {
-      id,
-      type: relationDialog.type,
-      sourceId: relationDialog.sourceId,
-      targetId: relationDialog.targetId,
-      diagramId: activeDiagramId,
-    })
+    const ok = await runCommand('CREATE_RELATIONSHIP',
+      relationPayload(id, relationDialog.type, relationDialog.sourceId, relationDialog.targetId))
     if (ok) {
       setRelationDialog(null)
     }
@@ -3020,7 +3286,45 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }, [refresh])
 
   /**
+   * 上移 / 下移一条序列图消息：整条时间轴归一化后由一条 SET_MESSAGE_ORDER 写完，
+   * 一个 revision、一步撤销。顺序是模型数据（messageOrder），不是画布上的 y。
+   */
+  const moveMessage = useCallback(async (relationId: string, delta: number) => {
+    if (!canEdit) {
+      say('当前账号没有编辑模型的权限')
+      return
+    }
+    const items = reorderMessages(seqLayout?.messages ?? [], relationId, delta)
+    if (items.length === 0) {
+      say('已经到时间轴{direction}了', { direction: delta < 0 ? '首' : '尾' })
+      return
+    }
+    const ok = await runCommand('SET_MESSAGE_ORDER', { items })
+    if (ok) {
+      const index = items.findIndex((item) => item.id === relationId)
+      say('已移到第 {index} 条消息', { index: index + 1 })
+    }
+  }, [canEdit, seqLayout, runCommand])
+
+  /** 拖动消息线到某一行：与 Alt+↑/↓ 共用 SET_MESSAGE_ORDER，仍是一个 revision 一步撤销。 */
+  const moveMessageTo = useCallback(async (relationId: string, targetIndex: number) => {
+    if (!canEdit) {
+      say('当前账号没有编辑模型的权限')
+      return
+    }
+    const items = reorderMessagesTo(seqLayout?.messages ?? [], relationId, targetIndex)
+    if (items.length === 0) {
+      return
+    }
+    const ok = await runCommand('SET_MESSAGE_ORDER', { items })
+    if (ok) {
+      say('已移到第 {index} 条消息', { index: targetIndex + 1 })
+    }
+  }, [canEdit, seqLayout, runCommand])
+
+  /**
    * 全局快捷键：Ctrl/⌘+Z 撤销、Ctrl/⌘+Shift+Z 或 Ctrl+Y 重做、Esc 退出连线模式。
+   * 序列图里 Alt+↑/↓ 调整选中消息的时间槽位置。
    * 输入框 / 文本域 / 下拉框 / 可编辑区不拦截，交给浏览器原生文本撤销；
    * busy 期间与空撤销栈时只给提示，不向服务端发空请求（否则会 500）。
    */
@@ -3044,6 +3348,18 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         setRelationTool(null)
         setRelationSource(null)
         say('已退出连线模式')
+        return
+      }
+      // 序列图：Alt + ↑/↓ 改选中消息的时间槽位置（只对 message 关系生效）。
+      if (event.altKey && !event.ctrlKey && !event.metaKey && !event.repeat
+        && (event.key === 'ArrowUp' || event.key === 'ArrowDown')
+        && selectedRelationId && !isTextEntry(event.target)) {
+        event.preventDefault()
+        if (selectedRelationId.startsWith('virtual:')) {
+          say('这条消息由导入的 Message 元素补全，没有对应关系，不能改顺序')
+        } else {
+          void moveMessage(selectedRelationId, event.key === 'ArrowUp' ? -1 : 1)
+        }
         return
       }
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.repeat || isTextEntry(event.target)) {
@@ -3073,7 +3389,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [handleUndo, handleRedo, relationTool, busy, health, propDialog])
+  }, [handleUndo, handleRedo, relationTool, busy, health, propDialog, moveMessage, selectedRelationId])
 
   // 「树上高亮」的标记在 2.4 秒后自动消隐：用户看一眼就知道定位到了哪儿，
   // 又不会被一直高亮干扰后续操作。
@@ -3094,12 +3410,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }
 
   /**
-   * 「树上高亮」：把模型树定位到指定元素——展开它的祖先链、选中它，并滚动到可视区。
+   * 把模型树展开到目标元素并滚动到可视区，但不改变当前选中与提示。
    *
    * <p>祖先链按 ownerId 逐级上溯（含图节点：元素也可能只出现在某张图的节点列表里，
-   * 此时把那张图也展开），保证目标行确实渲染在树上。</p>
+   * 此时把那张图也展开），保证目标行确实渲染在树上。画布点选时用它做静默跟随定位。</p>
    */
-  const locateInTree = (elementId: string) => {
+  const revealInTree = (elementId: string) => {
     const chain: string[] = []
     let cursor = elementById.get(elementId)
     while (cursor?.ownerId) {
@@ -3119,17 +3435,22 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       }
       return next
     })
-    setSelectedId(elementId)
-    setSelectedDiagramId(null)
     setTreeLocateId(elementId)
-    const target = elementById.get(elementId)
-    say('已在模型树中定位「{name}」', { name: target?.name ?? elementId })
     // 展开是异步渲染，等一帧再滚动，避免目标行尚未挂载。
     window.setTimeout(() => {
       document
         .querySelector(`[data-tree-id="${CSS.escape(elementId)}"]`)
         ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
     }, 60)
+  }
+
+  /** 「树上高亮」菜单动作：静默定位 + 选中 + 提示，供属性面板/画布右键调用。 */
+  const locateInTree = (elementId: string) => {
+    revealInTree(elementId)
+    setSelectedId(elementId)
+    setSelectedDiagramId(null)
+    const target = elementById.get(elementId)
+    say('已在模型树中定位「{name}」', { name: target?.name ?? elementId })
   }
 
   /**
@@ -3320,6 +3641,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     event.currentTarget.setPointerCapture(event.pointerId)
     setSelectedId(element.id)
     setSelectedDiagramId(null)
+    // 点选画布图形即静默定位到模型树：切到「项目」页让树可见，展开祖先链并高亮该行。
+    setLeftTab('project')
+    revealInTree(element.id)
     setDrag({
       elementId: element.id,
       originX: x,
@@ -3332,7 +3656,55 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     })
   }
 
-  /** 滚轮以光标为锚点缩放：光标下的模型点保持不动，缩放后不会丢掉正在看的目标。 */
+  /**
+   * 屏幕像素 → 模型单位：getScreenCTM 的 a 分量就是「一个模型单位占多少像素」。
+   * 用它换算比拿 viewBox 宽除以面板宽更准——两者宽高比不一致时 SVG 会留白，
+   * 按面板宽换算会让拖动距离差一档，缩放越多越明显。
+   */
+  const pixelsToUnits = useCallback((pixels: number): number => {
+    const matrix = svgRef.current?.getScreenCTM()
+    return matrix && matrix.a > 0 ? pixels / matrix.a : pixels / zoom
+  }, [zoom])
+
+  /** 当前图的内容包围盒；空图退回整张画布，新建图也要能正常平移。序列图用推导出的内容盒（见 contentBox）。 */
+  const panBox = useMemo(
+    () => contentBox ?? { left: 0, top: 0, right: canvas.maxX, bottom: canvas.maxY },
+    [contentBox, canvas.maxX, canvas.maxY],
+  )
+
+  const viewWidth = canvas.width / zoom
+  const viewHeight = canvas.height / zoom
+
+  /** 平移落点夹紧：视口始终与内容保留一段可见交集（规则见 clampPanTo）。 */
+  const clampPan = useCallback(
+    (x: number, y: number, level = zoom) => clampPanTo(
+      x,
+      y,
+      level,
+      panBox,
+      canvas.width / level,
+      canvas.height / level,
+    ),
+    [canvas.width, canvas.height, panBox, zoom],
+  )
+
+  /**
+   * 按屏幕像素量平移视口（滚轮 / 触摸板双指）：deltaY 为正就是「往下滚」，
+   * 视口跟着往下移，所以 pan 增大。注意与拖动相反——拖动是内容跟着手指走，
+   * 滚动是视口跟着滚动方向走，两条手势的符号本来就不该一样。
+   */
+  const panByPixels = useCallback((dx: number, dy: number) => {
+    setPan((current) => clampPan(current.x + pixelsToUnits(dx), current.y + pixelsToUnits(dy)))
+  }, [clampPan, pixelsToUnits])
+
+  /**
+   * 画布视口：zoom 收窄取样范围、pan 平移原点，再按内容包围盒夹紧——
+   * 显示出来的永远在范围内，缩放和平移都不怕把图推丢。
+   */
+  const clampedPan = clampPan(pan.x, pan.y)
+  const viewBox = `${clampedPan.x} ${clampedPan.y} ${viewWidth} ${viewHeight}`
+
+  /** 以光标为锚点缩放：光标下的模型点保持不动，缩放后不会丢掉正在看的目标。 */
   const zoomAtCursor = useCallback((clientX: number, clientY: number, deltaY: number) => {
     const svg = svgRef.current
     if (!svg) {
@@ -3351,12 +3723,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       return
     }
     const ratio = zoom / next
-    setPan({
-      x: anchor.x - (anchor.x - pan.x) * ratio,
-      y: anchor.y - (anchor.y - pan.y) * ratio,
-    })
+    setPan(clampPan(
+      anchor.x - (anchor.x - pan.x) * ratio,
+      anchor.y - (anchor.y - pan.y) * ratio,
+      next,
+    ))
     setZoom(Number(next.toFixed(3)))
-  }, [zoom, pan])
+  }, [zoom, pan, clampPan])
 
   // 滚轮监听必须是非 passive 的原生监听：React 的 onWheel 走被动通道，preventDefault 无效。
   useEffect(() => {
@@ -3366,32 +3739,80 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
     const onWheel = (event: WheelEvent) => {
       event.preventDefault()
-      zoomAtCursor(event.clientX, event.clientY, event.deltaY)
+      // 双指滚动 / 鼠标滚轮平移，捏合与 Ctrl/⌘+滚轮缩放：Chrome 把触摸板捏合报成带
+      // ctrlKey 的滚轮事件，所以两条手势天然分得开，不必再让滚动去抢缩放。
+      if (event.ctrlKey || event.metaKey) {
+        zoomAtCursor(event.clientX, event.clientY, event.deltaY)
+        return
+      }
+      // deltaMode=1 是「按行」计（部分鼠标滚轮），一行折 16 像素；触摸板给的就是像素。
+      const scale = event.deltaMode === 1 ? 16 : 1
+      panByPixels(event.deltaX * scale, event.deltaY * scale)
     }
     svg.addEventListener('wheel', onWheel, { passive: false })
     return () => svg.removeEventListener('wheel', onWheel)
-  }, [zoomAtCursor])
+  }, [zoomAtCursor, panByPixels])
 
-  /** 中键或 Shift+左键拖动平移视口；普通左键仍用于选择图形。 */
+  /**
+   * 平移起手：空白画布上左键直接拖，任意位置 Shift+左键 / 中键拖。
+   * 左键按在图形上时不动视口，交给图形自己的拖拽。
+   */
   const handleCanvasPanStart = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (event.button !== 1 && !(event.button === 0 && event.shiftKey)) {
+    const onBackground = event.target === event.currentTarget
+    if (event.button !== 1 && !(event.button === 0 && (onBackground || event.shiftKey))) {
       return
     }
     event.preventDefault()
     // 捕获指针：拖到画布外再松手也能正常结束平移，不会卡在 panning 状态。
     event.currentTarget.setPointerCapture(event.pointerId)
-    setPanDrag({ startX: event.clientX, startY: event.clientY, panX: pan.x, panY: pan.y })
+    setPanDrag({
+      startX: event.clientX,
+      startY: event.clientY,
+      panX: pan.x,
+      panY: pan.y,
+      onBackground,
+      moved: false,
+    })
   }
 
   const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (seqDrag) {
+      const moved = seqDrag.moved || Math.abs(event.clientY - seqDrag.startY) > 4
+      const point = toSvgPoint(event.clientX, event.clientY)
+      const rows = seqLayout?.messages ?? []
+      let targetIndex = rows.findIndex((message) => Math.abs(message.y - point.y) <= SEQ_ROW_PITCH / 2)
+      if (targetIndex < 0 && rows.length > 0) {
+        targetIndex = point.y < rows[0].y ? 0 : rows.length - 1
+      }
+      if (targetIndex < 0) {
+        targetIndex = seqDrag.fromIndex
+      }
+      if (moved !== seqDrag.moved || targetIndex !== seqDrag.targetIndex) {
+        setSeqDrag({ ...seqDrag, moved, targetIndex })
+      }
+      return
+    }
     if (panDrag) {
-      // 屏幕像素换算成模型单位：视口宽度 = canvas.width / zoom，铺满 svg 的实际像素宽度。
-      const rect = svgRef.current?.getBoundingClientRect()
-      const perPixel = rect && rect.width > 0 ? (canvas.width / zoom) / rect.width : 1 / zoom
-      setPan({
-        x: panDrag.panX - (event.clientX - panDrag.startX) * perPixel,
-        y: panDrag.panY - (event.clientY - panDrag.startY) * perPixel,
-      })
+      const dx = event.clientX - panDrag.startX
+      const dy = event.clientY - panDrag.startY
+      const moved = panDrag.moved || Math.abs(dx) > 2 || Math.abs(dy) > 2
+      setPan(clampPan(panDrag.panX - pixelsToUnits(dx), panDrag.panY - pixelsToUnits(dy)))
+      if (moved !== panDrag.moved) {
+        setPanDrag({ ...panDrag, moved })
+      }
+      return
+    }
+    if (edgeDrag) {
+      const point = toSvgPoint(event.clientX, event.clientY)
+      const dx = point.x - edgeDrag.startX
+      const dy = point.y - edgeDrag.startY
+      const moved = edgeDrag.moved || Math.abs(dx) > 2 || Math.abs(dy) > 2
+      const shifted = moveRouteSegment(edgeDrag.orig, edgeDrag.segment, dx, dy)
+      // 拖到首/末段时端点会离开节点边界：实时重挂回去，预览与落库都保持连线贴着图形。
+      const points = shifted.length >= 3
+        ? reattachRoute(shifted, edgeDrag.sourceRect, edgeDrag.targetRect)
+        : shifted
+      setEdgeDrag({ ...edgeDrag, points, moved })
       return
     }
     if (!drag) {
@@ -3409,7 +3830,39 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }
 
   const handlePointerUp = () => {
+    if (edgeDrag) {
+      const finished = edgeDrag
+      setEdgeDrag(null)
+      if (finished.moved && activeDiagramId) {
+        // 一次拖拽 = 一条 UPDATE_PROPERTY = 一步撤销；路由按图存在关系 properties 上。
+        const anchored = finished.points.length >= 3
+          ? reattachRoute(finished.points, finished.sourceRect, finished.targetRect)
+          : finished.points
+        void runCommand('UPDATE_PROPERTY', {
+          id: finished.relationId,
+          key: `route:${activeDiagramId}`,
+          value: simplifyRoute(anchored).map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) })),
+        })
+      }
+      return
+    }
+    if (seqDrag) {
+      const finished = seqDrag
+      setSeqDrag(null)
+      if (finished.moved && finished.targetIndex !== finished.fromIndex) {
+        void moveMessageTo(finished.relationId, finished.targetIndex)
+      }
+      return
+    }
     if (panDrag) {
+      // 空白处按下又没拖动就是「点空白」：取消连线起点或关系选择。拖过了就只是平移，不改选择。
+      if (!panDrag.moved && panDrag.onBackground) {
+        if (relationTool) {
+          setRelationSource(null)
+        } else {
+          setSelectedRelationId(null)
+        }
+      }
       setPanDrag(null)
       return
     }
@@ -3419,12 +3872,27 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const finished = drag
     setDrag(null)
     if (finished.moved && activeDiagramId) {
-      void runCommand('MOVE_NOTATION', {
-        diagramId: activeDiagramId,
-        elementId: finished.elementId,
-        x: Math.round(finished.x),
-        y: Math.round(finished.y),
-      })
+      const glyph = controlSizeOf(elementById.get(finished.elementId)?.type ?? '')
+      if (glyph) {
+        // 控制节点图形宽高锁规范值：MOVE_NOTATION 会沿用旧大框，下次渲染居中收缩会再漂一次。
+        void runCommand('SET_NOTATIONS', {
+          items: [{
+            diagramId: activeDiagramId,
+            elementId: finished.elementId,
+            x: Math.round(finished.x),
+            y: Math.round(finished.y),
+            width: glyph.w,
+            height: glyph.h,
+          }],
+        })
+      } else {
+        void runCommand('MOVE_NOTATION', {
+          diagramId: activeDiagramId,
+          elementId: finished.elementId,
+          x: Math.round(finished.x),
+          y: Math.round(finished.y),
+        })
+      }
     }
   }
 
@@ -3433,8 +3901,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const paletteEntries = useMemo<ElementTypeInfo[]>(
     () => (activeSpec?.allowedTypes ?? [])
       .map((code) => typeInfo.get(code))
-      .filter((item): item is ElementTypeInfo => item !== undefined),
-    [activeSpec, typeInfo],
+      .filter((item): item is ElementTypeInfo => item !== undefined)
+      // 序列图里的「消息」是两条生命线之间的一条关系箭头，不是画布上的方块：
+      // 元模型把 MESSAGE 同时登记成元素类型，工具箱再给一次只会让人拖出一个没用的框。
+      .filter((item) => !(activeDiagramKind === 'seq' && item.code === 'Message')),
+    [activeSpec, typeInfo, activeDiagramKind],
   )
   /**
    * 工具箱分组拆两层：核心类型直接铺开，规范全量类型（§16 具体动作）收进「更多」。
@@ -3485,6 +3956,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }),
     [activeSpec, relationInfo],
   )
+  /** 当前激活的序列图消息种类：状态栏、连线提示都用它显示具体工具名。 */
+  const activeSeqTool = useMemo(() => seqMessageToolOf(seqMessageTool), [seqMessageTool])
   const relationGroups = useMemo(() => {
     const order = ['requirement', 'namespace', 'structure', 'constraint',
       'activity', 'interaction', 'state', 'usecase']
@@ -3527,8 +4000,63 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   /** 点选（或拖入）关系组件 → 进入连线模式，随后在画布上依次点击起点、终点。 */
   const activateRelationTool = (code: string) => {
     setRelationTool(code)
+    setSeqMessageTool(null)
     setRelationSource(null)
     say('已选择「{relation}」：在画布上依次点击起点与终点（Esc 退出）', { relation: relationLabel(code) })
+  }
+
+  /** 序列图的消息种类工具：仍走 'message' 关系，只是预设 messageSort / 自消息端点。 */
+  const activateSeqMessageTool = (key: string) => {
+    const tool = seqMessageToolOf(key)
+    if (!tool) {
+      return
+    }
+    setRelationTool('message')
+    setSeqMessageTool(key)
+    setRelationSource(null)
+    say('已选择「{tool}」：{hint}', { tool: pick(tool.label, tool.labelEn), hint: t(tool.hint) })
+  }
+
+  /** 工具箱里的线型缩略图：与画布共用 messageSortStyle，按钮上就能看出线型差别。 */
+  const renderSeqToolIcon = (tool: SeqMessageToolDef): ReactNode => {
+    const style = messageSortStyle(tool.sort)
+    const dash = style.dashed ? style.dash : undefined
+    const pen = { stroke: style.color, strokeWidth: 1.5, fill: 'none' as const }
+    return (
+      <svg className="seq-tool-glyph" width={18} height={16} viewBox="0 0 18 16" aria-hidden="true">
+        {tool.self ? (
+          <>
+            <polyline points="3,3 13,3 13,11 3,11" {...pen} strokeDasharray={dash} />
+            <polyline points="7,8 3,11 7,14" {...pen} />
+          </>
+        ) : tool.sort === 'createMessage' ? (
+          <>
+            <line x1={2} y1={5} x2={13} y2={10} {...pen} strokeDasharray={dash} />
+            <rect x={12} y={10} width={5} height={5} {...pen} />
+          </>
+        ) : (
+          <>
+            <line x1={2} y1={8} x2={14} y2={8} {...pen} strokeDasharray={dash} />
+            {style.arrow === 'filled'
+              ? <polygon points="15,8 10,5 10,11" fill={style.color} stroke="none" />
+              : <polyline points="10,5 15,8 10,11" {...pen} />}
+          </>
+        )}
+      </svg>
+    )
+  }
+
+  /** 由连线工具建一条关系：成功后只清起点，工具保持激活以便连续画同类消息。 */
+  const createToolRelationship = async (tool: string, sourceId: string, targetId: string) => {
+    const id = `rel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+    const ok = await runCommand('CREATE_RELATIONSHIP', relationPayload(id, tool, sourceId, targetId))
+    if (ok) {
+      setRelationSource(null)
+      say(sourceId === targetId
+        ? '已创建给自己的消息，可继续连线或按 Esc 退出'
+        : '已创建 «{relation}» 关系，可继续连线或按 Esc 退出', { relation: relationLabel(tool) })
+    }
+    return ok
   }
 
   const openRelationDialog = () => {
@@ -3543,28 +4071,32 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     if (!relationTool) {
       return
     }
+    const tool = relationTool === 'message' ? seqMessageToolOf(seqMessageTool) : null
+    // 自消息只点一条生命线：一步建成 source = target 的关系，不要逼用户点两次同一个目标。
+    const selfTool = activeDiagramKind === 'seq' && !!tool?.self
     if (!relationSource) {
+      if (selfTool) {
+        await createToolRelationship(relationTool, elementId, elementId)
+        return
+      }
       setRelationSource(elementId)
       say('起点：{name}；请点击终点元素', { name: model.elements.find((e) => e.id === elementId)?.name ?? elementId })
       return
     }
     if (relationSource === elementId) {
+      // 序列图里点回起点是画「给自己的消息」；但创建 / 销毁自己没有 UML 语义，
+      // 这两类工具点回起点仍按取消处理，避免建出一条画不出表头 / X 的自反消息。
+      const selfAllowed = !tool
+        || (tool.sort !== 'createMessage' && tool.sort !== 'deleteMessage')
+      if (activeDiagramKind === 'seq' && relationTool === 'message' && selfAllowed) {
+        await createToolRelationship(relationTool, elementId, elementId)
+        return
+      }
       setRelationSource(null)
       say('已取消起点，请重新选择起点元素')
       return
     }
-    const id = `rel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
-    const ok = await runCommand('CREATE_RELATIONSHIP', {
-      id,
-      type: relationTool,
-      sourceId: relationSource,
-      targetId: elementId,
-      diagramId: activeDiagramId,
-    })
-    if (ok) {
-      setRelationSource(null)
-      say('已创建 «{relation}» 关系，可继续连线或按 Esc 退出', { relation: relationTool })
-    }
+    await createToolRelationship(relationTool, relationSource, elementId)
   }
 
   /**
@@ -4029,10 +4561,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const selected = selectedId === element.id
     const isLinkSource = relationSource === element.id
     const isPort = shape === 'port'
-    const bw = isPort ? 26 : w
-    const bh = isPort ? 26 : h
-    const bx = isPort ? x + w / 2 - 13 : x
-    const by = isPort ? y + h / 2 - 13 : y
+    // 生命线以图面计算为准：表头对齐到同一行，宽度取到放得下名字，竖线一直伸到共享底边。
+    const lifeline = shape === 'lifeline' ? seqLifelineById.get(element.id) : undefined
+    const bw = isPort ? 26 : lifeline?.width ?? w
+    const bh = isPort ? 26 : lifeline?.height ?? h
+    const bx = isPort ? x + w / 2 - 13 : lifeline?.x ?? x
+    const by = isPort ? y + h / 2 - 13 : lifeline?.y ?? y
     const children = (childrenByOwner.get(element.id) ?? []).map((child) => child.name)
     const fill = isLinkSource ? '#e6f6f3' : selected ? '#e9f0fc' : '#ffffff'
     const stroke = isLinkSource ? '#0f766e' : selected ? '#2b5cb8' : '#cbd3dd'
@@ -4109,8 +4643,109 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           </g>
         )
         break
+      case 'swimlane': {
+        const headerFill = isLinkSource ? '#d8efe9' : selected ? '#dbe7fb' : '#e8edf4'
+        const bodyFill = isLinkSource ? '#f2fbf8' : selected ? '#f3f7fe' : '#fafbfd'
+        shapeSvg = (
+          <g>
+            <rect x={bx} y={by} width={bw} height={bh} fill={bodyFill} stroke={stroke} strokeWidth={strokeW} />
+            <rect x={bx} y={by} width={bw} height={SWIMLANE_HEADER} fill={headerFill} stroke={stroke} strokeWidth={strokeW} />
+            <text x={bx + bw / 2} y={by + SWIMLANE_HEADER / 2 + 4} textAnchor="middle" className="node-name">
+              {wrapLabel(element.name, bw - 12, 13, 1)[0]}
+            </text>
+          </g>
+        )
+        break
+      }
+      case 'lifeline': {
+        const axisX = bx + bw / 2
+        const axisEnd = lifeline?.bottom ?? by + bh
+        const headerFill = isLinkSource ? '#d8efe9' : selected ? '#dbe7fb' : '#f8fafc'
+        shapeSvg = (
+          <g>
+            {/* 先竖线后表头：线从框底边起笔，压在矩形之下不留毛边。 */}
+            <line className="lifeline-axis" x1={axisX} y1={by + bh} x2={axisX} y2={axisEnd} stroke={stroke} strokeWidth={strokeW} strokeDasharray="6 4" />
+            <rect x={bx} y={by} width={bw} height={bh} fill={headerFill}
+              stroke={lifeline?.created ? '#2f855a' : stroke} strokeWidth={strokeW} />
+            {/* 被 createMessage 创建：表头不在公共表头行，绿色描边 + 左侧落点三角说明来由。 */}
+            {lifeline?.created && (
+              <path className="seq-created-mark" d={`M${bx - 8},${by + 4} l8,6 -8,6 z`}
+                fill="#2f855a" stroke="none" pointerEvents="none" />
+            )}
+            <text x={axisX} y={by + 17} textAnchor="middle" className="node-type">«{info?.uml ?? 'Lifeline'}»</text>
+            <text x={axisX} y={by + 34} textAnchor="middle" className="node-name">{wrapLabel(element.name, bw - 10, 13, 1)[0]}</text>
+            {/* 销毁消息打到的那一行：虚线到此为止，按 UML 画一个大 X 作终止符。 */}
+            {lifeline?.destroyedAt !== undefined && (
+              <g className="seq-destroy" stroke="#c53030" strokeWidth={2}>
+                <line x1={axisX - 7} y1={lifeline.destroyedAt - 7} x2={axisX + 7} y2={lifeline.destroyedAt + 7} />
+                <line x1={axisX + 7} y1={lifeline.destroyedAt - 7} x2={axisX - 7} y2={lifeline.destroyedAt + 7} />
+              </g>
+            )}
+            {/* 竖线也要可点：不透明命中条比 1px 虚线好抓，拖动即移动该生命线。 */}
+            <rect x={axisX - 7} y={by + bh} width={14} height={Math.max(0, axisEnd - by - bh)} fill="#000000" fillOpacity={0} />
+          </g>
+        )
+        break
+      }
+      case 'control': {
+        const glyph = controlGlyph(element.type)
+        if (!glyph) {
+          shapeSvg = <rect x={bx} y={by} width={bw} height={bh} rx={8} fill="#eef6ff" stroke={stroke} strokeWidth={strokeW} />
+          break
+        }
+        const cx = bx + bw / 2
+        const cy = by + bh / 2
+        const ink = selected ? '#2b5cb8' : '#1f2937'
+        const r = Math.min(bw, bh) / 2 - 1
+        let glyphSvg: ReactNode
+        switch (glyph) {
+          case 'initial':
+            glyphSvg = <circle cx={cx} cy={cy} r={r} fill={ink} />
+            break
+          case 'final':
+            glyphSvg = (
+              <g>
+                <circle cx={cx} cy={cy} r={r} fill="#ffffff" stroke={ink} strokeWidth={2} />
+                <circle cx={cx} cy={cy} r={Math.max(3, r - 6)} fill={ink} />
+              </g>
+            )
+            break
+          case 'flowfinal':
+            glyphSvg = (
+              <g stroke={ink} strokeWidth={2}>
+                <circle cx={cx} cy={cy} r={r} fill="#ffffff" />
+                <line x1={cx - r * 0.55} y1={cy - r * 0.55} x2={cx + r * 0.55} y2={cy + r * 0.55} />
+                <line x1={cx - r * 0.55} y1={cy + r * 0.55} x2={cx + r * 0.55} y2={cy - r * 0.55} />
+              </g>
+            )
+            break
+          case 'fork':
+          case 'join':
+            glyphSvg = <rect x={bx} y={by} width={bw} height={bh} rx={1.5} fill={ink} />
+            break
+          default:
+            glyphSvg = (
+              <polygon
+                points={`${cx},${by} ${bx + bw},${cy} ${cx},${by + bh} ${bx},${cy}`}
+                fill={selected ? '#e9f0fc' : '#ffffff'}
+                stroke={ink}
+                strokeWidth={1.6}
+              />
+            )
+        }
+        shapeSvg = (
+          <g>
+            {selected && (
+              <rect x={bx - 5} y={by - 5} width={bw + 10} height={bh + 10} rx={6} fill="none" stroke="#2b5cb8" strokeWidth={1.2} strokeDasharray="4 3" />
+            )}
+            {glyphSvg}
+            {/* 小图形难点中：透明命中区罩住图形与下方名称。 */}
+            <rect x={bx - 8} y={by - 8} width={bw + 16} height={bh + 40} fill="#000000" fillOpacity={0} />
+          </g>
+        )
+        break
+      }
       case 'action':
-      case 'control':
       case 'object':
         shapeSvg = (
           <rect
@@ -4119,7 +4754,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             width={bw}
             height={bh}
             rx={shape === 'action' ? 22 : 8}
-            fill={shape === 'control' ? '#eef6ff' : fill}
+            fill={fill}
             stroke={stroke}
             strokeWidth={strokeW}
           />
@@ -4129,21 +4764,47 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         shapeSvg = <rect x={bx} y={by} width={bw} height={bh} rx={8} fill={fill} stroke={stroke} strokeWidth={strokeW} />
     }
 
-    const showText = !isPort && shape !== 'pseudostate' && shape !== 'actor'
+    const glyphKind = shape === 'control' ? controlGlyph(element.type) : null
+    const showText =
+      !isPort && shape !== 'pseudostate' && shape !== 'actor' && shape !== 'swimlane' && shape !== 'lifeline' && !glyphKind
     const showLabel = shape === 'actor' || shape === 'pseudostate'
     const showCompartment =
       !isPort && (shape === 'block' || shape === 'frame' || shape === 'requirement' || shape === 'package') && children.length > 0
+    // 有隔间的形状名字只能占隔间线以上一行；其余按框高折行，末行省略，杜绝标签跨框。
+    const nameLines = wrapLabel(
+      element.name,
+      bw - 24,
+      13,
+      showCompartment ? 1 : Math.max(1, Math.floor((bh - 50) / 15) + 1),
+    )
 
     return (
       <g
         className={`node ${drag?.elementId === element.id && drag.moved ? 'dragging' : ''} ${isLinkSource ? 'link-source' : ''}`}
+        data-element-id={element.id}
         onPointerDown={onDown}
+        onContextMenu={(event) => {
+          event.preventDefault()
+          event.stopPropagation()
+          openMenu(event, { kind: 'element', id: element.id })
+        }}
       >
         {shapeSvg}
+        {glyphKind && (
+          <text x={bx + bw / 2} y={by + bh + 15} textAnchor="middle" className="control-label">
+            {wrapLabel(element.name, 150, 11, 2).map((line, index) => (
+              <tspan key={index} x={bx + bw / 2} dy={index === 0 ? 0 : 12}>{line}</tspan>
+            ))}
+          </text>
+        )}
         {showText && (
           <>
-            <text x={bx + 12} y={by + 22} className="node-type">«{info?.uml ?? element.type}»</text>
-            <text x={bx + 12} y={by + 42} className="node-name">{element.name}</text>
+            <text x={bx + 12} y={by + 22} className="node-type">{wrapLabel(`«${info?.uml ?? element.type}»`, bw - 24, 11, 1)[0]}</text>
+            <text x={bx + 12} y={by + 42} className="node-name">
+              {nameLines.map((line, index) => (
+                <tspan key={index} x={bx + 12} dy={index === 0 ? 0 : 15}>{line}</tspan>
+              ))}
+            </text>
           </>
         )}
         {showLabel && (
@@ -4160,6 +4821,299 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             )}
           </>
         )}
+      </g>
+    )
+  }
+
+  /**
+   * 序列图的一条消息：水平箭头落在自己的时间槽上，标签压在线上方（带时间轴序号）。
+   * 激活条统一由 seqLayout 画——它们可能跨越多行，不能挂在某一条消息上。
+   * 线型按 UML 规范的 messageSort：同步调用实心三角、异步开放箭头、信号/创建/删除/回复带构造型。
+   */
+  const renderSeqMessage = (message: SeqMessage): ReactNode => {
+    const style = messageSortStyle(message.sort)
+    const notation = message.virtual ? { ...style, color: '#8a97a8' } : style
+    const isSelected = selectedRelationId === message.relation.id || seqDrag?.relationId === message.relation.id
+    const strokeWidth = isSelected ? 2.2 : 1.4
+    const dash = notation.dashed ? (notation.dash || '6 4') : undefined
+    const bar = message.activation
+    // 箭头停在激活条边缘，不扎进条里；没有激活条才贴到生命线中心。
+    // createMessage 例外：它斜指新生命线的表头顶边，终点不能被激活条挤偏。
+    const startX = message.fromX
+    const endX = message.endY !== undefined
+      ? message.toX
+      : bar ? (message.toX >= startX ? bar.x : bar.x + bar.width) : message.toX
+    const rowY = message.y
+    const endY = message.endY ?? rowY
+    const selfY = rowY + SEQ_SELF_HEIGHT
+    const points = message.self
+      ? `${startX},${rowY} ${startX + SEQ_SELF_BUMP},${rowY} ${startX + SEQ_SELF_BUMP},${selfY} ${startX},${selfY}`
+      : ''
+    const arrow = message.self
+      ? arrowGeometry(startX + SEQ_SELF_BUMP, selfY, startX, selfY)
+      : arrowGeometry(startX, rowY, endX, endY)
+    const name = message.label.trim()
+    const stereotype = notation.stereotype ? `«${notation.stereotype}»` : ''
+    const lines: { text: string; baseline: number; color: string }[] = []
+    if (stereotype) {
+      lines.push({ text: stereotype, baseline: rowY - 22, color: notation.color })
+    }
+    if (name) {
+      // 前缀时间轴序号：读图的人据此确认「谁先谁后」，与拖动改顺序直接对应。
+      lines.push({ text: `${message.seqNo}: ${name}`, baseline: rowY - 8, color: '#2d3748' })
+    }
+    // 自消息往右折出，标签起笔在折线右侧；横向消息标签居中对齐到箭头中点。
+    const anchorStart = message.self
+    const labelX = anchorStart ? startX + SEQ_SELF_BUMP + 8 : (startX + endX) / 2
+    const boxWidth = Math.max(0, ...lines.map((line) => line.text.length * 6.4)) + 10
+    const boxX = anchorStart ? labelX - 4 : labelX - boxWidth / 2
+    const boxY = (lines[0]?.baseline ?? rowY) - 12
+    const sourceName = seqLifelineById.get(message.relation.sourceId)?.element.name ?? ''
+    const targetName = seqLifelineById.get(message.relation.targetId)?.element.name ?? ''
+    const messageTip = (
+      <title>
+        {name || `«${message.relation.type}» ${relationLabel(message.relation.type)}`}
+        {'：'}{sourceName} → {targetName}{t('｜点击查看 / 编辑关系属性')}
+        {message.virtual ? t(' · 导入补全的只读消息') : t(' · 拖动或 Alt+↑/↓ 调整时间顺序')}
+      </title>
+    )
+    const pickMessage = (event: ReactPointerEvent<SVGElement>) => {
+      event.stopPropagation()
+      if (relationTool) {
+        return
+      }
+      setSelectedId(null)
+      setSelectedDiagramId(null)
+      if (message.virtual) {
+        // 虚拟消息没有真实关系：选中树上的 Message 元素，别让属性面板去查一个不存在的 id。
+        setSelectedRelationId(null)
+        setSelectedId(message.relation.id.slice('virtual:'.length))
+        say('这条消息由导入的 Message 元素补全，没有对应关系，不能改顺序')
+        return
+      }
+      setSelectedRelationId(message.relation.id)
+      if (!canEdit || event.button !== 0 || !seqLayout) {
+        return
+      }
+      const fromIndex = seqLayout.messages.findIndex((item) => item.relation.id === message.relation.id)
+      event.currentTarget.setPointerCapture(event.pointerId)
+      setSeqDrag({
+        relationId: message.relation.id,
+        startY: event.clientY,
+        fromIndex,
+        targetIndex: fromIndex,
+        moved: false,
+      })
+    }
+    return (
+      /* 与通用连线同规矩：整组不吃指针，只有末尾透明粗线负责命中点选。 */
+      <g
+        key={message.relation.id}
+        className={`seq-message sort-${message.sort}${message.self ? ' self' : ''}${message.virtual ? ' virtual' : ''}`}
+        data-seq-sort={message.sort}
+        pointerEvents="none"
+      >
+        {isSelected && (
+          <line
+            x1={Math.min(startX, endX)}
+            y1={rowY}
+            x2={Math.max(startX, endX)}
+            y2={endY}
+            stroke="#2b5cb8"
+            strokeWidth={strokeWidth + 7}
+            strokeOpacity={0.18}
+            strokeLinecap="round"
+          />
+        )}
+        {message.self ? (
+          <polyline className="seq-line" points={points} fill="none" stroke={notation.color} strokeWidth={strokeWidth} strokeDasharray={dash} />
+        ) : (
+          <line className="seq-line" x1={startX} y1={rowY} x2={endX} y2={endY} stroke={notation.color} strokeWidth={strokeWidth} strokeDasharray={dash} />
+        )}
+        {notation.arrow === 'filled' && (
+          <polygon points={arrow.points} fill={notation.color} stroke="none" />
+        )}
+        {notation.arrow === 'open' && (
+          <polyline
+            points={`${arrow.v1} ${message.self ? startX : endX},${message.self ? selfY : endY} ${arrow.v2}`}
+            fill="none"
+            stroke={notation.color}
+            strokeWidth={strokeWidth}
+          />
+        )}
+        {lines.length > 0 && (
+          <>
+            <rect className="seq-label" x={boxX} y={boxY} width={boxWidth} height={lines.length * 14 + 3} rx={3} fill="#ffffff" opacity={0.92} />
+            {lines.map((line) => (
+              <text
+                key={line.text}
+                x={labelX}
+                y={line.baseline}
+                textAnchor={anchorStart ? 'start' : 'middle'}
+                className="edge-label"
+                fill={line.color}
+              >
+                {line.text}
+              </text>
+            ))}
+          </>
+        )}
+        {message.self ? (
+          <polyline
+            className="seq-hit"
+            points={points}
+            fill="none"
+            stroke="#000000"
+            strokeOpacity={0}
+            strokeWidth={12}
+            pointerEvents={relationTool ? 'none' : 'stroke'}
+            style={{ cursor: relationTool ? 'crosshair' : message.virtual ? 'default' : 'grab' }}
+            onPointerDown={pickMessage}
+          >
+            {messageTip}
+          </polyline>
+        ) : (
+          <line
+            className="seq-hit"
+            x1={startX}
+            y1={rowY}
+            x2={endX}
+            y2={endY}
+            stroke="#000000"
+            strokeOpacity={0}
+            strokeWidth={12}
+            strokeLinecap="round"
+            pointerEvents={relationTool ? 'none' : 'stroke'}
+            style={{ cursor: relationTool ? 'crosshair' : message.virtual ? 'default' : 'grab' }}
+            onPointerDown={pickMessage}
+          >
+            {messageTip}
+          </line>
+        )}
+      </g>
+    )
+  }
+
+  /**
+   * 序列图的激活条：跨行的一段，统一画在生命线之上、消息之下。
+   * 条本身不吃指针——点它应该等于点它下面的生命线或消息，所以 pointerEvents 关掉。
+   */
+  const renderSeqActivation = (activation: SeqActivation): ReactNode => (
+    <rect
+      key={`act-${activation.lifelineId}-${activation.y}-${activation.depth}`}
+      className="seq-bar"
+      x={activation.x}
+      y={activation.y}
+      width={activation.width}
+      height={activation.height}
+      fill="#f4f8fd"
+      stroke="#9db8d9"
+      strokeWidth={1}
+      pointerEvents="none"
+    />
+  )
+
+  /**
+   * 交互图框：UML 里 Interaction 就是序列图的边框（左上五边形「sd 名称」），
+   * 不是画布上可以随便拖的一个方块。图里有 Interaction 就按它框住整张图。
+   */
+  const renderSeqFrame = (frame: NonNullable<typeof seqLayout>['frame']): ReactNode => {
+    if (!frame) {
+      return null
+    }
+    const tabHeight = 22
+    const tabWidth = Math.max(84, frame.label.length * 13 + 34)
+    const focused = selectedId === frame.element.id
+    return (
+      <g key="seq-frame" className="seq-frame" pointerEvents="none">
+        <rect
+          x={frame.x}
+          y={frame.y}
+          width={frame.width}
+          height={frame.height}
+          fill="#ffffff"
+          fillOpacity={0.5}
+          stroke={focused ? '#2b5cb8' : '#9aa5b1'}
+          strokeWidth={focused ? 2 : 1.2}
+        />
+        <path
+          d={`M${frame.x},${frame.y} h${tabWidth - 12} l12,${tabHeight} h-${tabWidth} z`}
+          fill="#eef2f7"
+          stroke={focused ? '#2b5cb8' : '#9aa5b1'}
+          strokeWidth={1}
+          pointerEvents="auto"
+          style={{ cursor: 'pointer' }}
+          onPointerDown={(event) => {
+            // 五边形标签就是交互本身：点它等于选中 Interaction（框体不挡画布，别把整张图变成一块死区）。
+            event.stopPropagation()
+            setSelectedId(frame.element.id)
+            setSelectedRelationId(null)
+            setSelectedDiagramId(null)
+          }}
+        />
+        <text x={frame.x + 9} y={frame.y + 16} className="seq-frame-label">{`sd ${frame.label}`}</text>
+      </g>
+    )
+  }
+
+  /**
+   * 组合片段：UML 的 alt / opt / loop 框。区间（起始/结束消息排位）与守卫都是模型属性，
+   * 这里只把区间换算成图面矩形；每个操作数之间画一条水平虚线并标 [guard]。
+   * 框体不吃指针，只有左上角的 operator 标签可选中（属性面板里改区间与守卫）。
+   */
+  const renderSeqFragment = (fragment: SeqFragment): ReactNode => {
+    const focused = selectedId === fragment.element.id
+    const stroke = focused ? '#2b5cb8' : '#8a97a8'
+    const firstGuard = fragment.guards[0]?.trim()
+    const label = `${fragment.operator}${firstGuard ? ` [${firstGuard}]` : ''}`
+    const tabWidth = Math.max(58, label.length * 8 + 24)
+    const tabHeight = 19
+    return (
+      <g key={`seq-fragment-${fragment.element.id}`} className="seq-fragment" pointerEvents="none">
+        <rect
+          x={fragment.x}
+          y={fragment.y}
+          width={fragment.width}
+          height={fragment.height}
+          fill="#f8fafc"
+          fillOpacity={0.55}
+          stroke={stroke}
+          strokeWidth={focused ? 1.8 : 1.1}
+        />
+        {fragment.operandLines.map((y, index) => (
+          <g key={`operand-${index}`}>
+            <line
+              x1={fragment.x}
+              y1={y}
+              x2={fragment.x + fragment.width}
+              y2={y}
+              stroke={stroke}
+              strokeWidth={1}
+              strokeDasharray="5 4"
+              opacity={0.8}
+            />
+            {fragment.guards[index + 1]?.trim() && (
+              <text x={fragment.x + 10} y={y + 14} className="seq-fragment-guard">
+                {`[${fragment.guards[index + 1].trim()}]`}
+              </text>
+            )}
+          </g>
+        ))}
+        <path
+          d={`M${fragment.x},${fragment.y} h${tabWidth - 10} l10,${tabHeight} h-${tabWidth} z`}
+          fill="#e8eef7"
+          stroke={stroke}
+          strokeWidth={1}
+          pointerEvents="auto"
+          style={{ cursor: 'pointer' }}
+          onPointerDown={(event) => {
+            event.stopPropagation()
+            setSelectedId(fragment.element.id)
+            setSelectedRelationId(null)
+            setSelectedDiagramId(null)
+          }}
+        />
+        <text x={fragment.x + 8} y={fragment.y + 13} className="seq-fragment-label">{label}</text>
       </g>
     )
   }
@@ -4354,7 +5308,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       entries: [
         {
           label: '快捷键',
-          run: () => say('Ctrl/⌘+Z 撤销 · Ctrl+Y 重做 · 滚轮缩放 · Shift+拖动平移画布 · Esc 退出连线'),
+          run: () => say('Ctrl/⌘+Z 撤销 · Ctrl+Y 重做 · 双指滚动或拖动空白平移画布 · 捏合或 Ctrl/⌘+滚轮缩放 · Esc 退出连线'),
         },
         {
           label: '关于 Scofen Modeler Studio',
@@ -4760,11 +5714,25 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 <span className="ext-toggle-mark" aria-hidden="true">{showExtensions ? '◉' : '○'}</span>
               </button>
             </div>
+          ) : leftTab === 'charts' ? (
+            <div className="panel-title panel-title-charts">
+              <span>{t('按图类型分组 · 共 {count} 张', { count: model.diagrams.length })}</span>
+              <span className="chart-group-actions">
+                <button
+                  type="button"
+                  className="chart-group-action"
+                  onClick={() => setCollapsedChartKinds(new Set())}
+                >{t('展开全部')}</button>
+                <button
+                  type="button"
+                  className="chart-group-action"
+                  onClick={() => setCollapsedChartKinds(new Set(diagramsByKind.map(([kind]) => kind)))}
+                >{t('折叠全部')}</button>
+              </span>
+            </div>
           ) : (
             <div className="panel-title">
-              {leftTab === 'charts'
-                ? t('按图类型分组 · 共 {count} 张', { count: model.diagrams.length })
-                : t('通用扩展包 · 元类 / 构造型 / 关系')}
+              {t('通用扩展包 · 元类 / 构造型 / 关系')}
             </div>
           )}
           <div className="browser" onContextMenu={(event) => openMenu(event, { kind: 'root', id: null })}>
@@ -4772,12 +5740,27 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <>
                 {diagramsByKind.map(([kind, list]) => (
                   <section className="chart-group" key={kind}>
-                    <div className="chart-group-head">
+                    <button
+                      type="button"
+                      className="chart-group-head"
+                      aria-expanded={!collapsedChartKinds.has(kind)}
+                      title={collapsedChartKinds.has(kind) ? t('展开该类型') : t('折叠该类型')}
+                      onClick={() => setCollapsedChartKinds((previous) => {
+                        const next = new Set(previous)
+                        if (next.has(kind)) {
+                          next.delete(kind)
+                        } else {
+                          next.add(kind)
+                        }
+                        return next
+                      })}
+                    >
+                      <span className={`chart-group-chevron ${collapsedChartKinds.has(kind) ? 'collapsed' : ''}`} aria-hidden="true">▾</span>
                       <DiagramIcon code={kind} size={14} />
-                      <span>{diagramLabel(kind)}</span>
+                      <span className="chart-group-label">{diagramLabel(kind)}</span>
                       <span className="chart-group-count">{list.length}</span>
-                    </div>
-                    {list.map((diagram) => (
+                    </button>
+                    {!collapsedChartKinds.has(kind) && list.map((diagram) => (
                       <button
                         type="button"
                         key={diagram.id}
@@ -5262,6 +6245,36 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 <span className="tb-count">{activeDiagramObj?.name ?? ''}</span>
               </div>
               <div className="tb-scroll">
+                {/* 序列图把七种消息组件置顶：画时序图时最常用，不该藏在关系组底部让人滚半天 */}
+                {activeDiagramKind === 'seq' && (
+                  <div className={`tb-group current seq-message-group ${openToolGroups.has('seqMessages') ? 'open' : ''}`}>
+                    <button type="button" className="tb-group-head" onClick={() => toggleToolGroup('seqMessages')}>
+                      <RelationIcon code="message" size={16} />
+                      <span className="tb-group-label">{t('消息种类')}</span>
+                      <span className="tb-count">{SEQ_MESSAGE_TOOLS.length}</span>
+                      <span className="tb-caret">{openToolGroups.has('seqMessages') ? '⌄' : '›'}</span>
+                    </button>
+                    {openToolGroups.has('seqMessages') && (
+                      <div className="tb-items">
+                        {SEQ_MESSAGE_TOOLS.map((tool) => (
+                          <button
+                            key={tool.key}
+                            type="button"
+                            data-seq-tool={tool.key}
+                            className={`tb-item relation seq-msg-tool ${relationTool === 'message' && seqMessageTool === tool.key ? 'tool-active' : ''}`}
+                            disabled={busy}
+                            onClick={() => activateSeqMessageTool(tool.key)}
+                            title={t('{label}｜{hint}', { label: pick(tool.label, tool.labelEn), hint: t(tool.hint) })}
+                          >
+                            {renderSeqToolIcon(tool)}
+                            <span className="tb-item-label">{pick(tool.label, tool.labelEn)}</span>
+                          </button>
+                        ))}
+                        <p className="tb-tip">{t('选一种消息点起点与终点生命线；「给自己的消息」只点一条')}</p>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {/* 元素：仅当前图允许的类型，按语义族分小节 */}
                 <div className={`tb-group current ${openToolGroups.has('elements') ? 'open' : ''}`}>
                   <button type="button" className="tb-group-head" onClick={() => toggleToolGroup('elements')}>
@@ -5359,14 +6372,23 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   </button>
                   {openToolGroups.has('relations') && (
                     <div className="tb-items">
-                      {relationGroups.map((group) => (
+                      {/* 序列图的七种消息组件已置顶成独立分组，这里只列其余关系。 */}
+                      {relationGroups.map((group) => {
+                        // 序列图里通用「消息」已被上面七种组件取代，别再列一个不带种类的空壳。
+                        const items = activeDiagramKind === 'seq'
+                          ? group.items.filter((rel) => rel.code.toLowerCase() !== 'message')
+                          : group.items
+                        if (items.length === 0) {
+                          return null
+                        }
+                        return (
                         <div className="tb-sect" key={group.key}>
                           <div className="tb-sect-label">{group.label}</div>
-                          {group.items.map((rel) => (
+                          {items.map((rel) => (
                             <button
                               key={rel.code}
                               type="button"
-                              className={`tb-item relation ${relationTool === rel.code ? 'tool-active' : ''}`}
+                              className={`tb-item relation ${relationTool === rel.code && !seqMessageTool ? 'tool-active' : ''}`}
                               draggable={canEdit}
                               disabled={busy}
                               onDragStart={(event) => event.dataTransfer.setData('text/scofen-relation', rel.code)}
@@ -5378,10 +6400,15 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                             </button>
                           ))}
                         </div>
-                      ))}
+                        )
+                      })}
                       {relationTool && (
                         <div className="tb-link-hint">
-                          <span>{t('连线中 · «{relation}»', { relation: relationLabel(relationTool) })}</span>
+                          <span>{t('连线中 · «{relation}»', {
+                            relation: activeSeqTool
+                              ? pick(activeSeqTool.label, activeSeqTool.labelEn)
+                              : relationLabel(relationTool),
+                          })}</span>
                           <button
                             type="button"
                             onClick={() => {
@@ -5528,7 +6555,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <span className="dt-name">{activeDiagramObj?.name ?? '—'}</span>
               <span className="dt-counts">
                 {paletteEntries.length} {t('类元素')} · {relationEntries.length} {t('类关系')}
-                {relationTool && <span className="dt-linkflag">{t(' · 连线中 «{relation}»（Esc 退出）', { relation: relationLabel(relationTool) })}</span>}
+                {relationTool && <span className="dt-linkflag">{t(' · 连线中 «{relation}»（Esc 退出）', {
+                  relation: activeSeqTool ? pick(activeSeqTool.label, activeSeqTool.labelEn) : relationLabel(relationTool),
+                })}</span>}
               </span>
             </div>
           </div>
@@ -5537,20 +6566,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             className={`${relationTool ? 'linking' : ''}${panDrag ? ' panning' : ''}`.trim() || undefined}
             viewBox={viewBox}
             role="img"
-            aria-label={t('模型画布，图形可拖拽；连线模式下依次点击起点与终点')}
-            onPointerDown={(event) => {
-              // 中键 / Shift+左键先进入平移，其余落在空白处才清空选择。
-              handleCanvasPanStart(event)
-              if (event.target !== event.currentTarget) {
-                return
-              }
-              // 连线模式下点击画布空白取消已选起点；普通模式点击空白取消关系选择。
-              if (relationTool) {
-                setRelationSource(null)
-              } else {
-                setSelectedRelationId(null)
-              }
-            }}
+            aria-label={t('模型画布，图形可拖拽；空白处拖动或双指滚动平移，捏合或 Ctrl/⌘+滚轮缩放')}
+            onPointerDown={handleCanvasPanStart}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
@@ -5576,7 +6593,44 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 pointerEvents="none"
               />
             ))}
-            {positions.map(({ element, x, y, w, h }) => renderNode(element, x, y, w, h))}
+            {seqLayout?.frame ? renderSeqFrame(seqLayout.frame) : null}
+            {seqLayout?.fragments.map((fragment) => renderSeqFragment(fragment))}
+            {positions.map(({ element, x, y, w, h }) => (
+              // 序列图的交互是图框、组合片段是区间框，都不再画成画布上的普通方块。
+              (seqLayout?.frame && seqLayout.frame.element.id === element.id) || seqFragmentIds.has(element.id)
+                ? null : renderNode(element, x, y, w, h)
+            ))}
+            {seqLayout?.activations.map((activation) => renderSeqActivation(activation))}
+            {seqDrag?.moved && seqLayout?.messages[seqDrag.targetIndex] && (
+              <g className="seq-drop-marker" pointerEvents="none">
+                <rect
+                  x={seqLayout.box.left}
+                  y={seqLayout.messages[seqDrag.targetIndex].y - SEQ_ROW_PITCH / 2 + 3}
+                  width={Math.max(80, seqLayout.box.right - seqLayout.box.left)}
+                  height={SEQ_ROW_PITCH - 6}
+                  rx={4}
+                  fill="#2b5cb8"
+                  opacity={0.08}
+                />
+                <line
+                  x1={seqLayout.box.left}
+                  y1={seqLayout.messages[seqDrag.targetIndex].y - SEQ_ROW_PITCH / 2}
+                  x2={seqLayout.box.right}
+                  y2={seqLayout.messages[seqDrag.targetIndex].y - SEQ_ROW_PITCH / 2}
+                  stroke="#2b5cb8"
+                  strokeWidth={1.6}
+                  strokeDasharray="7 4"
+                />
+                <text
+                  x={seqLayout.box.left + 6}
+                  y={seqLayout.messages[seqDrag.targetIndex].y - SEQ_ROW_PITCH / 2 - 5}
+                  className="seq-drop-label"
+                >
+                  {t('放到第 {index} 条', { index: seqDrag.targetIndex + 1 })}
+                </text>
+              </g>
+            )}
+            {seqLayout?.messages.map((message) => renderSeqMessage(message))}
             {positions.length === 0 && (
               <text x={canvas.width / 2} y={canvas.height / 2} textAnchor="middle" className="empty">
                 {activeDiagramObj
@@ -5585,6 +6639,14 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               </text>
             )}
             {model.relationships.map((relation) => {
+              // 序列图里两端都是生命线的消息已按时间槽水平铺开，不再画成对角连线。
+              if (seqMessageIds.has(relation.id)) {
+                return null
+              }
+              // 泳道归属靠动作落在泳道内表达，画虚线反而把表格式泳道弄花。
+              if (isLaneMembershipRelation(relation.type, activeDiagramObj?.kind ?? '')) {
+                return null
+              }
               const from = positionById.get(relation.sourceId)
               const to = positionById.get(relation.targetId)
               if (!from || !to) {
@@ -5598,12 +6660,25 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               const th = toShape === 'port' ? 26 : to.h
               const sc = { x: from.x + from.w / 2, y: from.y + from.h / 2 }
               const tc = { x: to.x + to.w / 2, y: to.y + to.h / 2 }
-              const sEdge = edgePoint(sc.x, sc.y, fw, fh, tc.x, tc.y)
-              const tEdge = edgePoint(tc.x, tc.y, tw, th, sc.x, sc.y)
+              const sourceRect = { x: sc.x - fw / 2, y: sc.y - fh / 2, w: fw, h: fh }
+              const targetRect = { x: tc.x - tw / 2, y: tc.y - th / 2, w: tw, h: th }
+              // 手动走线按图持久化；节点移动后端点自动重挂，拖拽中用实时路由。
+              const manual = readRoute(relation.properties, activeDiagramId ?? '')
+              const dragging = edgeDrag?.relationId === relation.id ? edgeDrag : null
+              const route = dragging
+                ? dragging.points
+                : manual
+                  ? reattachRoute(manual, sourceRect, targetRect)
+                  : orthogonalRoute(sourceRect, targetRect)
+              const sEdge = route[0]
+              const tEdge = route[route.length - 1]
+              const prevPoint = route[route.length - 2] ?? sEdge
               const style = relationshipStyle(relation.type)
-              const arrow = arrowGeometry(sEdge.x, sEdge.y, tEdge.x, tEdge.y)
-              const midX = (sEdge.x + tEdge.x) / 2
-              const midY = (sEdge.y + tEdge.y) / 2
+              const arrow = arrowGeometry(prevPoint.x, prevPoint.y, tEdge.x, tEdge.y)
+              const mid = routeMidpoint(route)
+              const midX = mid.x
+              const midY = mid.y
+              const routePoints = route.map((point) => `${point.x},${point.y}`).join(' ')
               const isSelected = selectedRelationId === relation.id
               const sourceName = from.element.name
               const targetName = to.element.name
@@ -5613,24 +6688,34 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                  * 透明加粗线接收命中（pointerEvents="stroke"），这样关系可以点选，
                  * 又不会在连线模式下挡住节点点选。
                  */
-                <g key={relation.id} pointerEvents="none">
+                <g
+                  key={relation.id}
+                  pointerEvents="none"
+                  onDoubleClick={(event) => {
+                    event.stopPropagation()
+                    if (readRoute(relation.properties, activeDiagramId ?? '')) {
+                      void runCommand('UPDATE_PROPERTY', {
+                        id: relation.id,
+                        key: `route:${activeDiagramId}`,
+                        remove: true,
+                      })
+                      say('已恢复该连线的自动路由')
+                    }
+                  }}
+                >
                   {isSelected && (
-                    <line
-                      x1={sEdge.x}
-                      y1={sEdge.y}
-                      x2={tEdge.x}
-                      y2={tEdge.y}
+                    <polyline
+                      points={routePoints}
+                      fill="none"
                       stroke="#2b5cb8"
                       strokeWidth={(style.width ?? 1.4) + 7}
                       strokeOpacity={0.18}
                       strokeLinecap="round"
                     />
                   )}
-                  <line
-                    x1={sEdge.x}
-                    y1={sEdge.y}
-                    x2={tEdge.x}
-                    y2={tEdge.y}
+                  <polyline
+                    points={routePoints}
+                    fill="none"
                     stroke={style.color}
                     strokeWidth={isSelected ? (style.width ?? 1.4) + 0.8 : style.width}
                     strokeDasharray={style.dashed ? '5 4' : undefined}
@@ -5660,11 +6745,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       </text>
                     </g>
                   )}
-                  <line
-                    x1={sEdge.x}
-                    y1={sEdge.y}
-                    x2={tEdge.x}
-                    y2={tEdge.y}
+                  <polyline
+                    points={routePoints}
+                    fill="none"
                     stroke="#000000"
                     strokeOpacity={0}
                     strokeWidth={12}
@@ -5676,6 +6759,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       if (relationTool) {
                         return
                       }
+                      if (selectedRelationId !== relation.id) {
+                        say('已选中连线：拖拽线段调整走线，双击恢复自动路由')
+                      }
                       setSelectedRelationId(relation.id)
                       setSelectedId(null)
                       setSelectedDiagramId(null)
@@ -5685,7 +6771,55 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       {relation.name?.trim() || `«${relation.type}» ${relationLabel(relation.type)}`}
                       {'：'}{sourceName} → {targetName}{t('｜点击查看 / 编辑关系属性')}
                     </title>
-                  </line>
+                  </polyline>
+                  {/* 选中后线段拖拽手柄盖在主命中线之上：否则 12px 主线会盖住手柄，按下只选中却拖不动。 */}
+                  {isSelected && !relationTool && route.slice(0, -1).map((point, index) => {
+                    const next = route[index + 1]
+                    const horizontal = Math.abs(next.x - point.x) >= Math.abs(next.y - point.y)
+                    return (
+                      <polyline
+                        key={`seg-${index}`}
+                        points={`${point.x},${point.y} ${next.x},${next.y}`}
+                        fill="none"
+                        stroke="#000000"
+                        strokeOpacity={0}
+                        strokeWidth={14}
+                        pointerEvents="stroke"
+                        style={{ cursor: horizontal ? 'row-resize' : 'col-resize' }}
+                        onPointerDown={(event) => {
+                          event.stopPropagation()
+                          event.currentTarget.setPointerCapture(event.pointerId)
+                          const start = toSvgPoint(event.clientX, event.clientY)
+                          setSelectedRelationId(relation.id)
+                          setSelectedId(null)
+                          setSelectedDiagramId(null)
+                          setEdgeDrag({
+                            relationId: relation.id,
+                            segment: index,
+                            startX: start.x,
+                            startY: start.y,
+                            orig: route,
+                            points: route,
+                            moved: false,
+                            sourceRect,
+                            targetRect,
+                          })
+                        }}
+                      />
+                    )
+                  })}
+                  {isSelected && !relationTool && route.slice(1, -1).map((point, index) => (
+                    <circle
+                      key={`vtx-${index}`}
+                      cx={point.x}
+                      cy={point.y}
+                      r={3.5}
+                      fill="#ffffff"
+                      stroke="#2b5cb8"
+                      strokeWidth={1.4}
+                      pointerEvents="none"
+                    />
+                  ))}
                 </g>
               )
             })}
@@ -5716,7 +6850,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         <div className="sb-group sb-right">
           {relationTool && (
             <span className="sb-item link-status">
-              {t('连线 «{relation}» · {hint} · Esc 退出', { relation: relationLabel(relationTool), hint: relationSource ? t('点击终点元素') : t('点击起点元素') })}
+              {t('连线 «{relation}» · {hint} · Esc 退出', {
+                relation: activeSeqTool ? pick(activeSeqTool.label, activeSeqTool.labelEn) : relationLabel(relationTool),
+                hint: activeSeqTool?.self
+                  ? t('点击一条生命线即可建出给自己的消息')
+                  : relationSource ? t('点击终点元素') : t('点击起点元素'),
+              })}
             </span>
           )}
           <span className="sb-item">
@@ -5765,6 +6904,14 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               {menuInDiagram && (
                 <button type="button" onClick={() => locateInDiagram(menuElement!.id)}>{t('在图中定位')}</button>
               )}
+              <button
+                type="button"
+                onClick={() => {
+                  setLeftTab('project')
+                  locateInTree(menuElement!.id)
+                  setMenu(null)
+                }}
+              >{t('树上高亮')}</button>
               {isProjectRoot(menuElement) ? (
                 <button type="button" className="disabled-hint" disabled title={t('项目根节点不可删除')}>
                   {t('项目根节点 · 不可删除')}

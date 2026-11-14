@@ -326,9 +326,9 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
     zh: '选择一个模型元素或关系以查看其构造型、文档与标签值',
     en: 'Select an element or relationship to view its stereotypes, documentation and tagged values',
   },
-  '模型画布，图形可拖拽；连线模式下依次点击起点与终点': {
-    zh: '模型画布，图形可拖拽；连线模式下依次点击起点与终点',
-    en: 'Model canvas — drag shapes; in relation mode click the source then the target',
+  '模型画布，图形可拖拽；空白处拖动或双指滚动平移，捏合或 Ctrl/⌘+滚轮缩放': {
+    zh: '模型画布，图形可拖拽；空白处拖动或双指滚动平移，捏合或 Ctrl/⌘+滚轮缩放',
+    en: 'Model canvas — drag shapes to move them; drag the empty background or scroll with two fingers to pan, pinch or Ctrl/⌘+wheel to zoom',
   },
   '拖拽图形可移动位置 · 关系以连线呈现（含类型箭头与标签）· 端口贴附所属块边框 · 坐标由服务端记法对象保存并广播给所有会话': {
     zh: '拖拽图形可移动位置 · 关系以连线呈现（含类型箭头与标签）· 端口贴附所属块边框 · 坐标由服务端记法对象保存并广播给所有会话',
@@ -440,6 +440,7 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
     en: 'Created and opened project "{name}"',
   },
   '新建{label} {count}': { zh: '新建{label} {count}', en: 'New {label} {count}' },
+  '交互 {count}': { zh: '交互 {count}', en: 'Interaction {count}' },
   '新建图 {count}': { zh: '新建图 {count}', en: 'New diagram {count}' },
   '在{space}新建项目': { zh: '在{space}新建项目', en: 'New project in {space}' },
   '{diagrams} 图 · {elements} 元素 · rev {revision}': {
@@ -484,6 +485,26 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
   '｜点击查看 / 编辑关系属性': {
     zh: '｜点击查看 / 编辑关系属性',
     en: ' | click to view / edit the relationship properties',
+  },
+  ' · Alt+↑/↓ 调整时间顺序': {
+    zh: ' · Alt+↑/↓ 调整时间顺序',
+    en: ' | Alt+↑/↓ to move it in time',
+  },
+  ' · 拖动或 Alt+↑/↓ 调整时间顺序': {
+    zh: ' · 拖动或 Alt+↑/↓ 调整时间顺序',
+    en: ' | drag or Alt+↑/↓ to move it in time',
+  },
+  ' · 导入补全的只读消息': {
+    zh: ' · 导入补全的只读消息',
+    en: ' | read-only message reconstructed from the import',
+  },
+  '这条消息由导入的 Message 元素补全，没有对应关系，不能改顺序': {
+    zh: '这条消息由导入的 Message 元素补全，没有对应关系，不能改顺序',
+    en: 'This message was reconstructed from an imported Message element; it has no relationship and cannot be reordered',
+  },
+  '放到第 {index} 条': {
+    zh: '放到第 {index} 条',
+    en: 'Drop at position {index}',
   },
   '已同步至服务端 · rev {revision} · 在线会话 {sessions} · Ctrl/⌘+Z 撤销 / Ctrl+Y 重做': {
     zh: '已同步至服务端 · rev {revision} · 在线会话 {sessions} · Ctrl/⌘+Z 撤销 / Ctrl+Y 重做',
@@ -686,6 +707,18 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
     zh: '按图类型分组 · 共 {count} 张',
     en: 'Grouped by diagram type · {count} total',
   },
+  '展开该类型': { zh: '展开该类型', en: 'Expand this type' },
+  '折叠该类型': { zh: '折叠该类型', en: 'Collapse this type' },
+  '展开全部': { zh: '展开全部', en: 'Expand all' },
+  '折叠全部': { zh: '折叠全部', en: 'Collapse all' },
+  '已选中连线：拖拽线段调整走线，双击恢复自动路由': {
+    zh: '已选中连线：拖拽线段调整走线，双击恢复自动路由',
+    en: 'Edge selected: drag a segment to adjust routing, double-click to restore auto-routing',
+  },
+  '已恢复该连线的自动路由': {
+    zh: '已恢复该连线的自动路由',
+    en: 'Restored auto-routing for this edge',
+  },
   '通用扩展包 · 元类与构造型': {
     zh: '通用扩展包 · 元类与构造型',
     en: 'Common extension packages · metaclasses and stereotypes',
@@ -771,9 +804,9 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
     zh: '元类 {types} · 元属性 {props} · 关系类型 {relations}',
     en: '{types} metaclasses · {props} meta-properties · {relations} relationship types',
   },
-  'Ctrl/⌘+Z 撤销 · Ctrl+Y 重做 · 滚轮缩放 · Shift+拖动平移画布 · Esc 退出连线': {
-    zh: 'Ctrl/⌘+Z 撤销 · Ctrl+Y 重做 · 滚轮缩放 · Shift+拖动平移画布 · Esc 退出连线',
-    en: 'Ctrl/⌘+Z undo · Ctrl+Y redo · wheel to zoom · Shift+drag to pan · Esc to cancel linking',
+  'Ctrl/⌘+Z 撤销 · Ctrl+Y 重做 · 双指滚动或拖动空白平移画布 · 捏合或 Ctrl/⌘+滚轮缩放 · Esc 退出连线': {
+    zh: 'Ctrl/⌘+Z 撤销 · Ctrl+Y 重做 · 双指滚动或拖动空白平移画布 · 捏合或 Ctrl/⌘+滚轮缩放 · Esc 退出连线',
+    en: 'Ctrl/⌘+Z undo · Ctrl+Y redo · two-finger scroll or drag the empty canvas to pan · pinch or Ctrl/⌘+wheel to zoom · Esc to cancel linking',
   },
   'Scofen Modeler Studio · SysML 1.6 / UML 2.5.1 轻量建模器 · 每个项目独立命令通道与撤销栈': {
     zh: 'Scofen Modeler Studio · SysML 1.6 / UML 2.5.1 轻量建模器 · 每个项目独立命令通道与撤销栈',
@@ -971,6 +1004,33 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
   '这些图的记法由图形自身规则排布（如序列图生命线），自动排布不参与': {
     zh: '这些图的记法由图形自身规则排布（如序列图生命线），自动排布不参与',
     en: 'These diagrams use their own notation geometry (such as sequence lifelines); auto layout does not apply',
+  },
+  /* ── 序列图消息种类工具 ── */
+  '消息种类': { zh: '消息种类', en: 'MESSAGE KINDS' },
+  '选一种消息点起点与终点生命线；「给自己的消息」只点一条': {
+    zh: '选一种消息点起点与终点生命线；「给自己的消息」只点一条',
+    en: 'Pick a kind, then click the source and target lifelines; a self message needs only one click',
+  },
+  '在画布上依次点击起点、终点生命线（Esc 退出）': {
+    zh: '在画布上依次点击起点、终点生命线（Esc 退出）',
+    en: 'Click the source lifeline, then the target lifeline on the canvas (Esc to exit)',
+  },
+  '点击一条生命线，即可建出给自己的消息': {
+    zh: '点击一条生命线，即可建出给自己的消息',
+    en: 'Click one lifeline to create a message to itself',
+  },
+  '点击一条生命线即可建出给自己的消息': {
+    zh: '点击一条生命线即可建出给自己的消息',
+    en: 'click one lifeline to create a self message',
+  },
+  '{label}｜{hint}': { zh: '{label}｜{hint}', en: '{label} | {hint}' },
+  '已选择「{tool}」：{hint}': {
+    zh: '已选择「{tool}」：{hint}',
+    en: 'Selected "{tool}": {hint}',
+  },
+  '已创建给自己的消息，可继续连线或按 Esc 退出': {
+    zh: '已创建给自己的消息，可继续连线或按 Esc 退出',
+    en: 'Self message created; keep drawing or press Esc to exit',
   },
 }
 

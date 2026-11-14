@@ -97,6 +97,19 @@ public final class ValidationEngine {
                 boolean remove = Boolean.TRUE.equals(cmd.payload().get("remove"));
                 Object value = cmd.payload().get("value");
 
+                // 视图层走线注解 route:<diagramId>：按图保存的折线拐点，属表示层而非 UML 语义，
+                // 不进元类属性清单校验；只校验坐标形状，保证落库数据可被前端安全读回。
+                if (key.startsWith("route:")) {
+                    if (repository.findElement(targetId).isEmpty()
+                            && repository.findRelationship(targetId).isEmpty()) {
+                        throw new ValidationException("Unknown model object: " + targetId);
+                    }
+                    if (!remove) {
+                        assertRouteValue(value);
+                    }
+                    return;
+                }
+
                 ModelElement element = repository.findElement(targetId).orElse(null);
                 if (element != null) {
                     ElementType type = ElementType.fromAny(element.type())
@@ -349,6 +362,34 @@ public final class ValidationEngine {
                 }
             }
             case "DELETE_RELATIONSHIP", "DELETE_DIAGRAM" -> require(cmd.str("id"), "id");
+            /*
+             * 序列图时间槽顺序：一批消息的 messageOrder 一次写完（拖动重排不能拆成 N 条命令）。
+             * 只接受 message 关系；序号必须是整数，重复由前端负责归一化，服务端只管值域。
+             */
+            case "SET_MESSAGE_ORDER" -> {
+                List<Map<String, Object>> rows = cmd.mapList("items");
+                if (rows.isEmpty()) {
+                    throw new ValidationException("Missing required field: items");
+                }
+                for (Map<String, Object> row : rows) {
+                    String id = rowString(row, "id");
+                    Relationship relationship = repository.findRelationship(id)
+                            .orElseThrow(() -> new ValidationException("Unknown relationship: " + id));
+                    RelationshipType relType = RelationshipType.fromAny(relationship.type())
+                            .orElseThrow(() -> new ValidationException(
+                                    "Unknown relationship type: " + relationship.type()));
+                    if (relType != RelationshipType.MESSAGE) {
+                        throw new ValidationException("只有 «message» 关系有时间槽顺序: " + id);
+                    }
+                    if (Boolean.TRUE.equals(row.get("remove"))) {
+                        continue;
+                    }
+                    Object order = row.get("order");
+                    if (!(order instanceof Number number) || number.doubleValue() != Math.rint(number.doubleValue())) {
+                        throw new ValidationException("消息顺序必须是整数: " + order);
+                    }
+                }
+            }
             case "RENAME_DIAGRAM" -> {
                 require(cmd.str("id"), "id");
                 require(cmd.str("name"), "name");
@@ -652,6 +693,19 @@ public final class ValidationEngine {
                 throw new ValidationException("Element " + elementId + " is not on diagram " + diagramId);
             }
             assertPosition(rowDecimal(row, "x"), rowDecimal(row, "y"));
+            assertOptionalSize(row, "width");
+            assertOptionalSize(row, "height");
+        }
+    }
+
+    /** 可选宽高（泳道排布随内容改记法尺寸）：携带时必须是有限正数，缺省则沿用原尺寸。 */
+    private static void assertOptionalSize(Map<String, Object> row, String key) {
+        if (!row.containsKey(key)) {
+            return;
+        }
+        double value = rowDecimal(row, key);
+        if (!Double.isFinite(value) || value <= 0) {
+            throw new ValidationException("Notation " + key + " must be positive and finite: " + value);
         }
     }
 
@@ -821,6 +875,21 @@ public final class ValidationEngine {
         }
         String text = String.valueOf(value).trim();
         return text.isEmpty() ? List.of() : List.of(text);
+    }
+
+    /** 走线注解值必须是 ≥2 个 {x,y} 数字拐点，杜绝非法坐标落库后前端读回崩溃。 */
+    private static void assertRouteValue(Object value) {
+        if (!(value instanceof List<?> rows) || rows.size() < 2) {
+            throw new ValidationException("走线至少需要两个拐点");
+        }
+        for (Object row : rows) {
+            if (!(row instanceof Map<?, ?> point)) {
+                throw new ValidationException("走线拐点必须是 {x,y} 对象");
+            }
+            if (!(point.get("x") instanceof Number) || !(point.get("y") instanceof Number)) {
+                throw new ValidationException("走线拐点坐标必须是数字");
+            }
+        }
     }
 
     private boolean createsCycle(String start, String target, Collection<Relationship> existing) {

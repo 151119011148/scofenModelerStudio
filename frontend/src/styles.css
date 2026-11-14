@@ -1455,6 +1455,7 @@ body.row-resizing * { cursor: row-resize !important; }
 .node-type { font-size: 11px; fill: var(--text-3); font-family: var(--mono); }
 .node-name { font-size: 13px; fill: var(--text); }
 .node-child { font-size: 11px; fill: var(--text-2); font-family: var(--sans); }
+.control-label { font-size: 11px; fill: var(--text-2); font-family: var(--sans); }
 .edge-label { font-size: 10.5px; font-family: var(--mono); }
 .empty { font-size: 13px; fill: var(--text-3); }
 
@@ -2006,15 +2007,47 @@ body.col-resizing * { cursor: col-resize !important; }
   display: flex;
   align-items: center;
   gap: 6px;
+  width: 100%;
   margin-bottom: 3px;
   padding: 3px 2px;
+  border: none;
   border-bottom: 1px dashed var(--line);
+  background: transparent;
+  border-radius: 4px 4px 0 0;
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: .04em;
   color: var(--text-3);
+  text-align: left;
+  cursor: pointer;
 }
+.chart-group-head:hover { background: var(--surface-2); color: var(--accent); border-bottom-color: var(--accent); }
+.chart-group-chevron {
+  display: inline-block;
+  width: 10px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--text-3);
+  transition: transform .15s ease;
+}
+.chart-group-chevron.collapsed { transform: rotate(-90deg); }
+.chart-group-head:hover .chart-group-chevron { color: var(--accent); }
+.chart-group-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .chart-group-count { margin-left: auto; }
+.panel-title-charts { display: flex; align-items: center; gap: 8px; }
+.chart-group-actions { margin-left: auto; display: flex; gap: 4px; }
+.chart-group-action {
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text-3);
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: .02em;
+  cursor: pointer;
+}
+.chart-group-action:hover { color: var(--accent); border-color: var(--accent); }
 .chart-row {
   display: flex;
   align-items: center;
@@ -2187,3 +2220,46 @@ body.col-resizing * { cursor: col-resize !important; }
   .mb-brand strong { display: none; }
   .sb-right .sb-item:first-child { display: none; }
 }
+
+/* 序列图：图框标签与激活条（图面推导，不落库） */
+.seq-frame-label {
+  font-size: 11px;
+  font-weight: 600;
+  fill: #4a5568;
+}
+.seq-bar {
+  pointer-events: none;
+}
+
+/* 序列图组合片段与拖动改序指示 */
+.seq-fragment-label {
+  font-size: 11px;
+  font-weight: 700;
+  fill: #3c4a5c;
+  letter-spacing: 0.2px;
+}
+.seq-fragment-guard {
+  font-size: 10px;
+  fill: #6b7787;
+  font-style: italic;
+}
+.seq-drop-label {
+  font-size: 11px;
+  font-weight: 600;
+  fill: #2b5cb8;
+}
+.seq-message.virtual .edge-label {
+  opacity: 0.78;
+}
+
+/* ── 序列图消息种类：工具箱线型缩略 + 画布上各类消息的辨识细节 ── */
+.seq-tool-glyph { flex: 0 0 18px; height: 16px; }
+.tb-group.seq-message-group { padding-bottom: 4px; border-bottom: 1px solid var(--line-2); }
+.tb-item.seq-msg-tool { cursor: pointer; }
+/* 标签底块给一圈很淡的种类色，和线型/构造型呼应，不抢消息文字 */
+.seq-message.sort-reply .seq-label { stroke: #805ad5; stroke-opacity: .32; stroke-width: .8; }
+.seq-message.sort-createMessage .seq-label { stroke: #2f855a; stroke-opacity: .38; stroke-width: .8; }
+.seq-message.sort-deleteMessage .seq-label { stroke: #c53030; stroke-opacity: .38; stroke-width: .8; }
+.seq-message.sort-asynchSignal .seq-label { stroke: #3182ce; stroke-opacity: .3; stroke-width: .8; }
+.seq-message.self .seq-label { stroke: #3182ce; stroke-opacity: .26; stroke-width: .8; }
+.seq-created-mark, .seq-destroy { pointer-events: none; }

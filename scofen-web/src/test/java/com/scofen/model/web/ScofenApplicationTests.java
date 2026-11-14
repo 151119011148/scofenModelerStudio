@@ -25,8 +25,8 @@ class ScofenApplicationTests {
     void contextLoadsAndSeedsHierarchicalModelAndAllNineDiagrams() {
         ModelSnapshot snapshot = executor.snapshot();
         assertThat(snapshot.diagrams()).hasSize(9);
-        // 21 个示例元素 + 通用扩展包（SysML / UML 的元类与构造型）
-        assertThat(snapshot.elements()).hasSize(21 + ExtensionLibrary.size());
+        // 25 个示例元素（含序列图里被创建/销毁的生命线与组合片段示例）+ 通用扩展包（SysML / UML 的元类与构造型）
+        assertThat(snapshot.elements()).hasSize(25 + ExtensionLibrary.size());
         assertThat(snapshot.elements()).extracting(ModelElement::id)
                 .contains("model-root", "pkg-1", "pkg-ctrl", "e-vcu", "part-vcu", "r-range", "life-user",
                         ExtensionLibrary.SYSML_PROFILE_ID, ExtensionLibrary.UML_PROFILE_ID);

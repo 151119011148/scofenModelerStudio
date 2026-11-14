@@ -538,6 +538,13 @@ public final class PropertyCatalog {
         mc(UmlMetaclass.MESSAGE,
                 e("messageSort", "消息种类", STD, "synchCall", "asynchCall", "asynchSignal",
                         "createMessage", "deleteMessage", "reply"),
+                /*
+                 * 序列图的时间槽位置（第几条消息，1 起）。规范里「交互拥有的消息」本身是有序关联
+                 * （Interaction.message），排序键不落在消息上；但本工具的消息是关系、交互未必进图，
+                 * 所以把排位挂在消息上：一条消息一个整数，改顺序时整批重排 —— 见 SET_MESSAGE_ORDER。
+                 * 缺省为空表示「按创建顺序排在所有已编号消息之后」。
+                 */
+                s("messageOrder", "消息顺序", INT, STD),
                 ed("messageKind", "消息类别（派生）", "complete", "lost", "found", "unknown"),
                 s("argument", "实参", REFS, STD),
                 s("connector", "连接器", REF, EXP),
@@ -556,7 +563,16 @@ public final class PropertyCatalog {
                 e("interactionOperator", "交互操作符", STD, "alt", "opt", "par", "loop", "critical",
                         "neg", "assert", "strict", "seq", "ignore", "consider", "break"),
                 s("operand", "操作数", REFS, STD),
-                s("cfragmentGate", "门", REFS, EXP));
+                s("cfragmentGate", "门", REFS, EXP),
+                /*
+                 * 序列图片段框住哪一段消息，用「起始/结束消息排位」表达（对应 message 关系的
+                 * messageOrder）。规范里这个区间由 InteractionOperand.fragment + coveredBy 隐式
+                 * 决定，本工具的轻量模型不建 MessageOccurrenceSpecification，所以显式落成
+                 * 两个可写整数；guards 是每个操作数的守卫条件，按顺序自上而下分区。
+                 */
+                s("coveredFrom", "起始消息序号", INT, STD),
+                s("coveredTo", "结束消息序号", INT, STD),
+                s("guards", "分支守卫", STRS, STD));
         mc(UmlMetaclass.INTERACTION_OPERAND,
                 s("guard", "守卫", STR, STD),
                 s("fragment", "片段", REFS, EXP));
