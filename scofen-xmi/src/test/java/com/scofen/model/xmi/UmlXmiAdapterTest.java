@@ -119,6 +119,19 @@ class UmlXmiAdapterTest {
     }
 
     @Test
+    void sidecarCarriesDiagramFrameAndNotationStyles() {
+        ModelSnapshot base = sample();
+        Diagram styled = base.diagrams().get(0).withStyle(Map.of("frame", "off", "frameBorder", "#123456"));
+        ModelSnapshot original = new ModelSnapshot(base.revision(), base.elements(), base.relationships(),
+                List.of(styled), base.notations());
+        ModelSnapshot back = adapter.importModel(adapter.exportModel(original));
+
+        assertThat(back.diagrams().get(0).style())
+                .containsEntry("frame", "off").containsEntry("frameBorder", "#123456");
+        assertThat(back.notations().get(0).style()).containsEntry("shape", "round");
+    }
+
+    @Test
     void importWithoutSidecarStillKeepsSemantics() {
         ModelSnapshot original = sample();
         ExchangeBundle bundle = adapter.exportModel(original);

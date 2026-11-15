@@ -13,6 +13,7 @@ import com.scofen.model.metamodel.ElementType;
 import com.scofen.model.metamodel.ExtensionLibrary;
 import com.scofen.model.metamodel.MetamodelRegistry;
 import com.scofen.model.metamodel.ModelSnapshot;
+import com.scofen.model.metamodel.NotationStyle;
 import com.scofen.model.metamodel.PropertyCatalog;
 import com.scofen.model.metamodel.RelationshipType;
 import com.scofen.model.web.persistence.PersistenceServiceFactory;
@@ -32,6 +33,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeSet;
 import java.util.UUID;
 
 @RestController
@@ -186,6 +188,27 @@ public class ModelController {
                     "spec", type.spec(),
                     "stereotypeRelationship", type.stereotypeRelationship()));
         }
+        return result;
+    }
+
+    /**
+     * 图形样式字典：节点 / 连线 / 图框三处共用的键、取值区间与枚举由服务端下发，
+     * 样式面板据此构造控件——界面能给出的每个键都必然能被写入命令接受。
+     */
+    @GetMapping("/metamodel/styles")
+    @RequiresPermission(Permission.MODEL_VIEW)
+    public Map<String, Object> styles() {
+        Map<String, Object> numbers = new LinkedHashMap<>();
+        NotationStyle.NUMBER_KEYS.forEach((key, range) -> numbers.put(key, List.of(range[0], range[1])));
+        Map<String, Object> enums = new LinkedHashMap<>();
+        NotationStyle.ENUM_KEYS.forEach((key, values) -> enums.put(key, new ArrayList<>(new TreeSet<>(values))));
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("keys", NotationStyle.keys());
+        result.put("colors", new ArrayList<>(new TreeSet<>(NotationStyle.COLOR_KEYS)));
+        result.put("numbers", numbers);
+        result.put("enums", enums);
+        result.put("text", List.of(NotationStyle.FRAME_TITLE));
+        result.put("maxTitle", NotationStyle.FRAME_TITLE_MAX);
         return result;
     }
 

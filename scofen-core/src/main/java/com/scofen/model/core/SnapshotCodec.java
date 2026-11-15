@@ -126,7 +126,8 @@ public final class SnapshotCodec {
                 node.path("name").asText(""),
                 node.path("ownerId").asText(null),
                 readStringList(node.path("elementIds")),
-                readStringList(node.path("relationshipIds")));
+                readStringList(node.path("relationshipIds")),
+                readStringMap(node.path("style")));
     }
 
     private static Notation readNotation(JsonNode node) {

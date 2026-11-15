@@ -7,6 +7,7 @@ import com.scofen.model.metamodel.ExtensionLibrary;
 import com.scofen.model.metamodel.ModelElement;
 import com.scofen.model.metamodel.ModelSnapshot;
 import com.scofen.model.metamodel.Notation;
+import com.scofen.model.metamodel.NotationStyle;
 import com.scofen.model.metamodel.Relationship;
 
 import java.util.ArrayDeque;
@@ -84,6 +85,13 @@ public final class InMemoryModelRepository {
     public Optional<Diagram> findDiagram(String id) {
         synchronized (lock) {
             return Optional.ofNullable(diagrams.get(id));
+        }
+    }
+
+    /** 记法样式命令按 id 定位记法；记法 id 由 diagramId + elementId 生成，前端不自行拼。 */
+    public Optional<Notation> findNotation(String id) {
+        synchronized (lock) {
+            return Optional.ofNullable(notations.get(id));
         }
     }
 
@@ -436,7 +444,8 @@ public final class InMemoryModelRepository {
                         String id = str(row, "id");
                         Diagram diagram = new Diagram(id, DiagramKind.fromCode(str(row, "kind")),
                                 str(row, "name"), blankToNull(str(row, "ownerId")),
-                                strList(row, "elementIds"), strList(row, "relationshipIds"));
+                                strList(row, "elementIds"), strList(row, "relationshipIds"),
+                                strMap(row, "style"));
                         diagrams.put(id, diagram);
                         changes.add(new Change("add", "diagram", id, null, diagram));
                         affected.add(id);
@@ -515,7 +524,8 @@ public final class InMemoryModelRepository {
                     for (Map<String, Object> row : cmd.mapList("diagrams")) {
                         Diagram diagram = new Diagram(str(row, "id"), DiagramKind.fromCode(str(row, "kind")),
                                 str(row, "name"), blankToNull(str(row, "ownerId")),
-                                strList(row, "elementIds"), strList(row, "relationshipIds"));
+                                strList(row, "elementIds"), strList(row, "relationshipIds"),
+                                strMap(row, "style"));
                         diagrams.put(diagram.id(), diagram);
                         changes.add(new Change("add", "diagram", diagram.id(), null, diagram));
                         affected.add(diagram.id());
@@ -644,6 +654,47 @@ public final class InMemoryModelRepository {
                     inversePayload.put("items", List.copyOf(inverseItems));
                     inversePayload.put("removeIds", List.copyOf(inverseRemove));
                     inverse = Command.of("SET_NOTATIONS", revision, "set-notations:inverse", inversePayload);
+                }
+                case "SET_NOTATION_STYLE" -> {
+                    // 图形样式：一批记法一次写完（一个 revision / 一个 Patch / 一步撤销）。
+                    // style 缺省是增量合并；replace=true 整包替换，供撤销与「重置样式」使用。
+                    boolean replace = Boolean.TRUE.equals(cmd.payload().get("replace"));
+                    List<Map<String, Object>> inverseItems = new ArrayList<>();
+                    for (Map<String, Object> row : cmd.mapList("items")) {
+                        String id = str(row, "notationId");
+                        Notation before = notations.get(id);
+                        if (before == null) {
+                            throw new ValidationException("Unknown notation: " + id);
+                        }
+                        Object rawStyle = row.get("style");
+                        Map<String, String> patch = rawStyle instanceof Map<?, ?> map
+                                ? NotationStyle.normalize(map) : Map.of();
+                        Map<String, String> merged = NotationStyle.merge(before.style(), patch, replace);
+                        Notation after = new Notation(before.id(), before.diagramId(), before.elementId(),
+                                before.x(), before.y(), before.width(), before.height(), merged);
+                        notations.put(id, after);
+                        changes.add(new Change("update", "notation", id, before, after));
+                        affected.add(id);
+                        affected.add(before.diagramId());
+                        affected.add(before.elementId());
+                        inverseItems.add(Map.of("notationId", id, "style", before.style()));
+                    }
+                    inverse = Command.of("SET_NOTATION_STYLE", revision, "notation-style:inverse",
+                            Map.of("items", List.copyOf(inverseItems), "replace", Boolean.TRUE));
+                }
+                case "SET_DIAGRAM_STYLE" -> {
+                    String id = cmd.str("diagramId");
+                    Diagram before = requireDiagram(id);
+                    boolean replace = Boolean.TRUE.equals(cmd.payload().get("replace"));
+                    Object rawStyle = cmd.payload().get("style");
+                    Map<String, String> patch = rawStyle instanceof Map<?, ?> map
+                            ? NotationStyle.normalize(map) : Map.of();
+                    Diagram after = before.withStyle(NotationStyle.merge(before.style(), patch, replace));
+                    diagrams.put(id, after);
+                    changes.add(new Change("update", "diagram", id, before, after));
+                    affected.add(id);
+                    inverse = Command.of("SET_DIAGRAM_STYLE", revision, id + ":style:inverse",
+                            Map.of("diagramId", id, "style", before.style(), "replace", Boolean.TRUE));
                 }
                 case "DELETE_NOTATION" -> {
                     String notationId = cmd.str("id");
@@ -924,8 +975,7 @@ public final class InMemoryModelRepository {
     }
 
     private static Diagram withRefs(Diagram diagram, List<String> refs) {
-        return new Diagram(diagram.id(), diagram.kind(), diagram.name(), diagram.ownerId(),
-                refs, diagram.relationshipIds());
+        return diagram.withRefs(refs);
     }
 
     private static String notationId(String diagramId, String elementId) {
@@ -986,6 +1036,7 @@ public final class InMemoryModelRepository {
         row.put("ownerId", orEmpty(diagram.ownerId()));
         row.put("elementIds", diagram.elementIds());
         row.put("relationshipIds", diagram.relationshipIds());
+        row.put("style", diagram.style());
         return row;
     }
 

@@ -179,7 +179,8 @@ public class ExchangeController {
         List<Diagram> diagrams = snapshot.diagrams().stream()
                 .map(diagram -> new Diagram(diagram.id(), diagram.kind(), diagram.name(), diagram.ownerId(),
                         diagram.elementIds().stream().filter(id -> !extensionIds.contains(id)).toList(),
-                        diagram.relationshipIds().stream().filter(id -> !extensionIds.contains(id)).toList()))
+                        diagram.relationshipIds().stream().filter(id -> !extensionIds.contains(id)).toList(),
+                        diagram.style()))
                 .toList();
         List<Notation> notations = snapshot.notations().stream()
                 .filter(notation -> !extensionIds.contains(notation.elementId()))
@@ -232,7 +233,8 @@ public class ExchangeController {
                         diagram.elementIds().stream()
                                 .map(id -> importedRootId.equals(id) ? localRootId : id).toList(),
                         diagram.relationshipIds().stream()
-                                .map(id -> importedRootId.equals(id) ? localRootId : id).toList()))
+                                .map(id -> importedRootId.equals(id) ? localRootId : id).toList(),
+                        diagram.style()))
                 .toList();
         List<Notation> notations = snapshot.notations().stream()
                 .map(notation -> new Notation(notation.id(), notation.diagramId(),

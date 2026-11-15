@@ -126,6 +126,25 @@ class ModelControllerTest {
     }
 
     @Test
+    void stylesEndpointPublishesTheServerSideWhitelist() {
+        Map<String, Object> payload = controller.styles();
+        @SuppressWarnings("unchecked")
+        List<String> keys = (List<String>) payload.get("keys");
+        @SuppressWarnings("unchecked")
+        List<String> colors = (List<String>) payload.get("colors");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> numbers = (Map<String, Object>) payload.get("numbers");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> enums = (Map<String, Object>) payload.get("enums");
+        assertThat(keys).contains("fontSize", "fontColor", "fill", "stroke", "lineColor",
+                "frameBorder", "frame", "frameTitle");
+        assertThat(colors).contains("fill", "stroke", "lineColor", "frameBorder");
+        assertThat(numbers).containsKeys("fontSize", "strokeWidth", "frameFontSize");
+        assertThat(enums).containsKeys("fontWeight", "strokeDash", "lineDash", "frame");
+        assertThat(payload.get("maxTitle")).isEqualTo(160);
+    }
+
+    @Test
     void extensionEndpointPublishesRelationshipPackages() {
         Map<String, Object> payload = controller.extension();
 

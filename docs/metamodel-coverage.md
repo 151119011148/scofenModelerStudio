@@ -169,16 +169,43 @@ FAIL ENUMERATION_LITERAL    owner=Block        → Containment rule violation（
 
 ---
 
+## 6.5 表示层样式：图形 / 连线 / 图框（不进元属性）
+
+样式不是 UML 元属性，但也不能散在前端写死——否则导出的 SVG、刷新后的画布、别人打开的同一张图
+长得都不一样。本轮把它也做成**服务端权威的表示层对象**，并且三处共用一套键：
+
+| 对象 | 落点 | 写入命令 | 键 |
+| --- | --- | --- | --- |
+| 图形 | `Notation.style` | `SET_NOTATION_STYLE`（批量，一次 revision / 一步撤销） | `fontSize` `fontColor` `fontWeight` `textAlign` `fill` `fillOpacity` `stroke` `strokeWidth` `strokeDash` |
+| 连线 | 关系的 `properties["style:<diagramId>"]` | `UPDATE_PROPERTY`（`style:` 前缀走表示层例外分支） | `lineColor` `lineWidth` `lineDash` `labelFontSize` |
+| 图框 | `Diagram.style` | `SET_DIAGRAM_STYLE` | `frame` `frameTitle` `frameBorder` `frameBorderWidth` `frameKindColor` `frameText` `frameFontSize` |
+
+`NotationStyle` 是唯一的字典：`keys()` / `COLOR_KEYS` / `NUMBER_KEYS`（带区间）/ `ENUM_KEYS` /
+`FRAME_TITLE_MAX`，`GET /api/metamodel/styles` 原样下发，`validate()` 在每条命令落库前再核一遍。
+颜色只认 `#RGB` / `#RRGGBB` / `#RRGGBBAA` / `none` / `transparent`，数值越界与未知键一律
+`validation_failed`（400）——样式值最终会被塞进 SVG 属性，这里是防注入的那道闸。
+
+样式值统一存字符串：快照与 XMI 侧车都是 JSON，字符串免去 Integer / Double 的类型抖动；
+增量合并时**空串表示删除该键**，于是「恢复默认」= 发一条空串补丁，撤销栈里也只是一条命令。
+`SnapshotCodec`、`/api/model` 的 `diagramToMap`、`.di.json` 侧车与 `UmlXmiAdapter` 四处都读写
+`Diagram.style`，导入导出不会把用户的图框设置丢掉。
+
+图框：几何按内容包围盒现算，标题按 `图种 [宿主 [图名]]` 三段式生成（可自定义）。**序列图例外**——
+它自带 `sd` 图框，再加一层通用框就成了双层嵌套，所以序列图让通用框让开，样式直接作用于那个 `sd` 框，
+工具条与样式面板的「显示图框」开关置灰并说明原因。
+
+---
+
 ## 7. 验证
 
 | 层 | 手段 | 结果 |
 | --- | --- | --- |
-| 单元测试 | `./mvnw -B -ntp test` | **144 项、136 通过**（metamodel 19 / core 57 / xmi 12 / web 56；8 项 Testcontainers 无 Docker 跳过），BUILD SUCCESS |
+| 单元测试 | `./mvnw -B -ntp test` | **165 项、157 通过**（metamodel 19 / core 76 / xmi 13 / web 57；8 项 Testcontainers 无 Docker 跳过），BUILD SUCCESS |
 | 目录守卫 | `MetamodelRegistryTest.everyElementTypeIsFullyRegistered` | 157 个类型逐一断言「有主图归属 + 有属性表 + 有可挂载父类型」 |
 | 关系守卫 | `everyRelationshipHasANormativeMetaclass`、`extensionLibraryMaterialisesEveryRelationshipType` | 37 种关系逐一断言「有规范元类 + 属性链含该元类 + 扩展包有对应条目 + 条目类型与 extendsMetaclass 正确」 |
 | 层级守卫 | `everyMetaclassIsConnectedToTheHierarchy` | 281 个元类不断链；抽象性按规范显式标注 |
 | 接口实测 | 真实命令写入 / 删除（本地实例） | 21 个新增类型全部可建，错误父级一律 400 `validation_rule violation`，无残留 |
-| 浏览器 E2E | headless Chrome + CDP | 外壳 30 / 模型树与关系 37 / 属性栏 41 / 面板尺寸 18 / 关系模型 20，共 **146 项全通过**（本地与线上各跑一遍） |
+| 浏览器 E2E | headless Chrome + CDP | 外壳 30 / 模型树与关系 37 / 属性栏 41 / 面板尺寸 18 / 关系模型 20 / 图形样式 38 / 序列图 98，共 **282 项全通过**（样式与序列图两类本地与线上各跑一遍） |
 
 顺带修掉一个真实缺陷：`POST /api/commands` 载荷缺字段时 `Map.copyOf(null)` 抛 NPE 报 500，
 现在归一为空载荷走校验失败（400 `validation_failed`），并加单测锁定。

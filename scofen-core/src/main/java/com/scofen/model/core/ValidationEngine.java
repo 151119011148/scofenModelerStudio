@@ -9,6 +9,7 @@ import com.scofen.model.metamodel.MetamodelRegistry;
 import com.scofen.model.metamodel.ModelElement;
 import com.scofen.model.metamodel.ModelSnapshot;
 import com.scofen.model.metamodel.Notation;
+import com.scofen.model.metamodel.NotationStyle;
 import com.scofen.model.metamodel.PropertyCatalog;
 import com.scofen.model.metamodel.Relationship;
 import com.scofen.model.metamodel.RelationshipType;
@@ -106,6 +107,18 @@ public final class ValidationEngine {
                     }
                     if (!remove) {
                         assertRouteValue(value);
+                    }
+                    return;
+                }
+                // 连线样式 style:<diagramId>：同样是表示层注解，按图挂在关系 properties 上，
+                // 不进元类属性清单；值必须是白名单键值对象，避免任意字符串塞进 SVG 属性。
+                if (NotationStyle.isStyleProperty(key)) {
+                    if (repository.findElement(targetId).isEmpty()
+                            && repository.findRelationship(targetId).isEmpty()) {
+                        throw new ValidationException("Unknown model object: " + targetId);
+                    }
+                    if (!remove) {
+                        assertStylePatch(value);
                     }
                     return;
                 }
@@ -417,6 +430,36 @@ public final class ValidationEngine {
                 assertPosition(x, y);
             }
             case "SET_NOTATIONS" -> assertSetNotations(cmd, repository);
+            case "SET_NOTATION_STYLE" -> {
+                // 图形样式：一次命令改一批记法（多选批量应用 / 预设 / 重置都是一个 revision）。
+                List<Map<String, Object>> items = cmd.mapList("items");
+                if (items.isEmpty()) {
+                    throw new ValidationException("Missing required field: items");
+                }
+                if (items.size() > NOTATION_BATCH_MAX) {
+                    throw new ValidationException("Too many notations in one command: " + items.size());
+                }
+                Set<String> seen = new HashSet<>();
+                for (Map<String, Object> row : items) {
+                    String id = rowString(row, "notationId");
+                    require(id, "notationId");
+                    if (!seen.add(id)) {
+                        throw new ValidationException("Duplicate notation in batch: " + id);
+                    }
+                    if (repository.findNotation(id).isEmpty()) {
+                        throw new ValidationException("Unknown notation: " + id);
+                    }
+                    assertStylePatch(row.get("style"));
+                }
+            }
+            case "SET_DIAGRAM_STYLE" -> {
+                // 图框样式按图保存：开关、边框色、标题都是这张图的表示层状态。
+                String diagramId = cmd.str("diagramId");
+                require(diagramId, "diagramId");
+                repository.findDiagram(diagramId)
+                        .orElseThrow(() -> new ValidationException("Unknown diagram: " + diagramId));
+                assertStylePatch(cmd.payload().get("style"));
+            }
             case "DELETE_NOTATION" -> require(cmd.str("id"), "id");
             case "CREATE_RELATIONSHIP" -> {
                 require(cmd.str("id"), "id");
@@ -1124,6 +1167,27 @@ public final class ValidationEngine {
         }
         String text = String.valueOf(value).trim();
         return text.isEmpty() ? List.of() : List.of(text);
+    }
+
+    /**
+     * 样式补丁：必须是键值对象；非空值全部过 {@link NotationStyle} 白名单与取值校验。
+     * 空串 / null 是「删除该键」的标记，不进入校验也不落库。
+     */
+    private static void assertStylePatch(Object raw) {
+        if (!(raw instanceof Map<?, ?> map)) {
+            throw new ValidationException("样式必须是键值对象");
+        }
+        Map<String, String> effective = new LinkedHashMap<>();
+        for (Map.Entry<String, String> entry : NotationStyle.normalize(map).entrySet()) {
+            if (!entry.getValue().isEmpty()) {
+                effective.put(entry.getKey(), entry.getValue());
+            }
+        }
+        try {
+            NotationStyle.validate(effective);
+        } catch (IllegalArgumentException ex) {
+            throw new ValidationException("样式不合法: " + ex.getMessage());
+        }
     }
 
     /** 走线注解值必须是 ≥2 个 {x,y} 数字拐点，杜绝非法坐标落库后前端读回崩溃。 */

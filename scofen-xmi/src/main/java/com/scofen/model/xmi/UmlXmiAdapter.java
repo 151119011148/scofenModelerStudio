@@ -580,7 +580,8 @@ public final class UmlXmiAdapter implements IModelAdapter {
                 diagrams.add(new Diagram(String.valueOf(row.get("id")), diagramKind,
                         String.valueOf(row.getOrDefault("name", "")), asString(row.get("ownerId")),
                         listOf(row.get("elementIds")).stream().map(String::valueOf).toList(),
-                        listOf(row.get("relationshipIds")).stream().map(String::valueOf).toList()));
+                        listOf(row.get("relationshipIds")).stream().map(String::valueOf).toList(),
+                        stringMap(row.get("style"))));
             }
             for (Object item : listOf(map.get("notations"))) {
                 Map<String, Object> row = asMap(item);

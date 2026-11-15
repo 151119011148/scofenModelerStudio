@@ -15,6 +15,7 @@ import {
   getProjectId,
   getProperties,
   getRelationships,
+  getStyleCatalog,
   getValidation,
   getWorkspaces,
   importXmi,
@@ -44,6 +45,8 @@ import type {
   RelationshipTypeInfo,
   RequirementCoverage,
   Session,
+  StyleCatalog,
+  StyleMap,
   ValidationIssue,
   ValidationReport,
   WorkspaceDirectoryInfo,
@@ -64,6 +67,11 @@ import LoginView from './LoginView'
 import AdminPanel from './AdminPanel'
 import { buildModelReportHtml } from './report'
 import TaggedValuesEditor from './TaggedValuesEditor'
+import { StylePanel } from './StylePanel'
+import {
+  alignAnchor, alignX, colorOr, dashArray, frameEnabledOf, frameStyleOf,
+  numberValue, relationStyleOf,
+} from './diagramStyle'
 
 const EMPTY_MODEL: ModelSnapshot = {
   revision: 0,
@@ -1074,14 +1082,19 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [validationError, setValidationError] = useState<string | null>(null)
   const [problemFilter, setProblemFilter] = useState<'all' | 'error' | 'warning'>('all')
   const [coverageFilter, setCoverageFilter] = useState<'all' | 'unsatisfied' | 'unverified' | 'uncovered'>('all')
-  /** SysML 标准图框（图种首页标签 + 图名）：默认开，导出随之带上。 */
-  const [diagramFrameOpen, setDiagramFrameOpen] = useState(() => {
+  /**
+   * SysML 标准图框的「新图默认开关」。每张图自己的开关由服务端 Diagram.style.frame
+   * 权威保存（SET_DIAGRAM_STYLE），这里只决定从未设置过的图默认显示与否。
+   */
+  const [frameDefaultOpen, setFrameDefaultOpen] = useState(() => {
     try {
       return window.localStorage.getItem('scofen.modeler.diagramFrame') !== '0'
     } catch {
       return true
     }
   })
+  /** 样式字典：服务端下发键与取值区间，样式面板与写入校验同源。 */
+  const [styleCatalog, setStyleCatalog] = useState<StyleCatalog | null>(null)
   /** 模型树滚动视口（虚拟化窗口取行用）：高度由 ResizeObserver 实测。 */
   const [treeViewport, setTreeViewport] = useState({ top: 0, height: 600 })
 
@@ -1257,11 +1270,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
   useEffect(() => {
     try {
-      window.localStorage.setItem('scofen.modeler.diagramFrame', diagramFrameOpen ? '1' : '0')
+      window.localStorage.setItem('scofen.modeler.diagramFrame', frameDefaultOpen ? '1' : '0')
     } catch {
       // 忽略存储失败。
     }
-  }, [diagramFrameOpen])
+  }, [frameDefaultOpen])
 
   /** 图表分组的折叠状态落 localStorage：刷新后保持上次展开/折叠的类型。 */
   useEffect(() => {
@@ -1413,6 +1426,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         // 与项目快照隔离的只读定义：扩展包虚拟树只认这份数据。
         setExtensionElements(catalog.elements ?? [])
       }),
+      // 样式字典是增强项：旧服务端没有这个端点时降级到面板内置范围，不让整个应用连不上。
+      getStyleCatalog().then(setStyleCatalog).catch(() => setStyleCatalog(null)),
     ])
     setExtensionCatalogReady(true)
     const failed = results.find((result) => result.status === 'rejected')
@@ -1552,6 +1567,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     () => specs.find((spec) => spec.code === activeDiagramKind) ?? null,
     [specs, activeDiagramKind],
   )
+  /** 图框按每张图单独开关：服务端 Diagram.style.frame 优先，未设置时走本地默认。 */
+  const frameEnabled = frameEnabledOf(activeDiagramObj, frameDefaultOpen)
+  const frameStyle = frameStyleOf(activeDiagramObj)
 
   // 模型装载完成后默认激活第一张图
   useEffect(() => {
@@ -3178,6 +3196,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         y: py,
         w: glyph?.w ?? oldW,
         h: glyph?.h ?? oldH,
+        // 记法样式（字号 / 颜色 / 线型）由服务端保存，渲染时逐节点取出。
+        style: notation?.style ?? {},
       }
     // 垫底形状（泳道、生命线）先画：SVG 后画的盖在先画的上面，不透明底必须垫在动作/消息之下。
     }).sort((a, b) => Number(isBackdropShape(shapeOf(b.element.type))) - Number(isBackdropShape(shapeOf(a.element.type))))
@@ -3241,7 +3261,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       setPan({ x: 0, y: 0 })
       return
     }
-    const box = expandBoxForFrame(contentBox, diagramFrameOpen && !!activeDiagramObj)
+    const box = expandBoxForFrame(contentBox, frameEnabled && !!activeDiagramObj)
     const left = box.left
     const top = box.top
     const width = box.right - left + FIT_PADDING * 2
@@ -3252,7 +3272,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       x: Math.round(left - FIT_PADDING - (canvas.width / next - width) / 2),
       y: Math.round(top - FIT_PADDING - (canvas.height / next - height) / 2),
     })
-  }, [contentBox, canvas.width, canvas.height, diagramFrameOpen, activeDiagramObj])
+  }, [contentBox, canvas.width, canvas.height, frameEnabled, activeDiagramObj])
 
   // 排布写完坐标才缩放：模型是异步刷回来的，先立个牌子，等新记法渲染出来再适应窗口。
   const fitAfterLayout = useRef(false)
@@ -3499,6 +3519,67 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     } finally {
       setBusy(false)
     }
+  }
+
+  // ── 图形样式：三处写入都走命令（服务端权威 / 可撤销 / WS Patch 广播） ──
+  /** 当前图上被选中元素对应的记法 id：多选时一次批量命令写完，一步撤销。 */
+  const styleTargetIds = useMemo(() => {
+    const picked = selectionSet
+    return model.notations
+      .filter((notation) => notation.diagramId === activeDiagramId && picked.has(notation.elementId))
+      .map((notation) => notation.id)
+  }, [model.notations, activeDiagramId, selectionSet])
+
+  const currentLineStyle = useMemo(
+    () => relationStyleOf(selectedRelation, activeDiagramId),
+    [selectedRelation, activeDiagramId],
+  )
+
+  const applyNodeStyle = async (patch: StyleMap, replace = false): Promise<void> => {
+    if (styleTargetIds.length === 0) {
+      say('当前图没有可编辑的记法')
+      return
+    }
+    const ok = await runCommand('SET_NOTATION_STYLE', {
+      items: styleTargetIds.map((id) => ({ notationId: id, style: patch })),
+      ...(replace ? { replace: true } : {}),
+    })
+    if (ok) say('已应用图形样式')
+  }
+
+  const applyLineStyle = async (patch: StyleMap, replace = false): Promise<void> => {
+    if (!selectedRelationId || !activeDiagramId) {
+      say('请先选中一条连线')
+      return
+    }
+    // 关系 properties 是整包写入：把增量合并进现有样式，空串键先剔除。
+    const merged: StyleMap = replace ? { ...patch } : { ...currentLineStyle, ...patch }
+    for (const key of Object.keys(merged)) {
+      if (merged[key] === '') delete merged[key]
+    }
+    const key = `style:${activeDiagramId}`
+    const payload: Record<string, unknown> = Object.keys(merged).length === 0
+      ? { id: selectedRelationId, key, remove: true }
+      : { id: selectedRelationId, key, value: merged }
+    const ok = await runCommand('UPDATE_PROPERTY', payload)
+    if (ok) say('已应用连线样式')
+  }
+
+  const applyFrameStyle = async (patch: StyleMap, replace = false): Promise<void> => {
+    if (!activeDiagramObj) return
+    const ok = await runCommand('SET_DIAGRAM_STYLE', {
+      diagramId: activeDiagramObj.id,
+      style: patch,
+      ...(replace ? { replace: true } : {}),
+    })
+    if (ok) say('已应用图框样式')
+  }
+
+  /** 图框开关按当前图落库，同时把选择记成本地新图默认。 */
+  const setFrameVisible = (visible: boolean): void => {
+    setFrameDefaultOpen(visible)
+    if (!activeDiagramObj) return
+    void applyFrameStyle({ frame: visible ? 'on' : 'off' })
   }
 
   const openMenu = (event: ReactMouseEvent, target: MenuTarget) => {
@@ -4424,11 +4505,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const coverageSummary = validationReport?.coverageSummary ?? { total: 0, satisfied: 0, verified: 0, fullyCovered: 0 }
 
   /**
-   * SysML 标准图框几何：矩形边框包住内容包围盒，左上角首页标签（home plate）显示图种 + 图名。
-   * 空图退回名义画布内的默认框，保证新建图也有标准图框。随 SVG 一起导出（非 omit 图元）。
+   * SysML 标准图框几何：矩形边框包住内容包围盒，左上角首页标签（home plate）按
+   * 「图种 [宿主 [图名]]」显示（与 Cameo / M-Design 一致），可在样式面板改标题、
+   * 边框色、标签色与字号。空图退回名义画布内的默认框，随 SVG 一起导出。
    */
   const diagramFrame = useMemo(() => {
-    if (!diagramFrameOpen || !activeDiagramObj) {
+    // 序列图的 sd 图框本身就是图框（UML 只画一层），再套一层通用框会变成双层嵌套。
+    if (!frameEnabled || !activeDiagramObj || seqLayout?.frame) {
       return null
     }
     const margin = FRAME_MARGIN
@@ -4442,17 +4525,28 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const y = Math.round(box.top - margin - headerH)
     const w = Math.round(box.right - box.left + margin * 2)
     const h = Math.round(box.bottom - box.top + margin * 2 + headerH)
-    const kindColor = FRAME_KIND_COLORS[activeDiagramKind] ?? '#2b5cb8'
+    const kindColor = colorOr(frameStyle, 'frameKindColor', FRAME_KIND_COLORS[activeDiagramKind] ?? '#2b5cb8')
+    const border = colorOr(frameStyle, 'frameBorder', '#5a6b7f')
+    const borderW = numberValue(frameStyle, 'frameBorderWidth', 1.4)
+    const titleColor = colorOr(frameStyle, 'frameText', '#1c2430')
+    const nameSize = Math.min(18, numberValue(frameStyle, 'frameFontSize', 12.5))
+    const kindSize = Math.max(8, nameSize - 2)
     const kindLabel = activeSpec ? pick(activeSpec.label, activeSpec.labelEn) : activeDiagramKind
     const kindLine = `${activeDiagramKind}  ${kindLabel}`
-    const name = activeDiagramObj.name
+    const host = activeDiagramObj.ownerId && activeDiagramObj.ownerId !== 'model-root'
+      ? model.elements.find((element) => element.id === activeDiagramObj.ownerId)?.name
+      : null
+    const defaultTitle = host
+      ? `${kindLabel} [${host} [${activeDiagramObj.name}]]`
+      : `${kindLabel} [${activeDiagramObj.name}]`
+    const name = frameStyle.frameTitle?.trim() ? frameStyle.frameTitle : defaultTitle
     const headerW = Math.round(Math.max(
       160,
-      estimateTextWidth(kindLine, 10.5) + 24 + notch,
-      estimateTextWidth(name, 12.5) + 24 + notch,
+      estimateTextWidth(kindLine, kindSize) + 24 + notch,
+      estimateTextWidth(name, nameSize) + 24 + notch,
     ))
-    return { x, y, w, h, headerH, headerW, notch, kindColor, kindLine, name }
-  }, [diagramFrameOpen, activeDiagramObj, activeDiagramKind, activeSpec, contentBox, canvas.width, canvas.height])
+    return { x, y, w, h, headerH, headerW, notch, kindColor, kindLine, name, border, borderW, titleColor, kindSize, nameSize }
+  }, [frameEnabled, activeDiagramObj, activeDiagramKind, activeSpec, contentBox, canvas.width, canvas.height, frameStyle, model.elements, locale, seqLayout])
 
   /**
    * 导出用的独立 SVG：还原整图画布、铺白底、把运行时 CSS 计算样式内联到每个节点
@@ -4841,9 +4935,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const panBox = useMemo(
     () => {
       const base = contentBox ?? { left: 0, top: 0, right: canvas.maxX, bottom: canvas.maxY }
-      return contentBox ? expandBoxForFrame(base, diagramFrameOpen && !!activeDiagramObj) : base
+      return contentBox ? expandBoxForFrame(base, frameEnabled && !!activeDiagramObj) : base
     },
-    [contentBox, canvas.maxX, canvas.maxY, diagramFrameOpen, activeDiagramObj],
+    [contentBox, canvas.maxX, canvas.maxY, frameEnabled, activeDiagramObj],
   )
 
   const viewWidth = canvas.width / zoom
@@ -4876,7 +4970,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
    * 显示出来的永远在范围内，缩放和平移都不怕把图推丢。
    */
   const clampedPan = clampPan(pan.x, pan.y)
-  const viewBox = `${clampedPan.x} ${clampedPan.y} ${viewWidth} ${viewHeight}`
+  /**
+   * 图框首页标签落在内容包围盒上方，内容靠左上时会有负坐标；视口起点向负方向
+   * 外扩这段溢出，标签才不会被裁掉（外扩量同时加进视口宽高，保持缩放不变形）。
+   */
+  const framePadX = diagramFrame ? Math.max(0, -diagramFrame.x) + 8 : 0
+  const framePadY = diagramFrame ? Math.max(0, -diagramFrame.y) + 8 : 0
+  const viewBox = `${clampedPan.x - framePadX} ${clampedPan.y - framePadY} ${viewWidth + framePadX} ${viewHeight + framePadY}`
 
   /** 小地图点击 / 拖动：把视口中心移到落点对应的模型坐标（仍走夹紧）。 */
   const minimapJump = useCallback((clientX: number, clientY: number) => {
@@ -5629,8 +5729,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       }
     }
 
+    // 元素与其名下图互为父子：图 d 的宿主是 Element，d 的成员里又常包含那个 Element
+    // （包图里画包自己）。画布点选会「在模型树中定位」，把两者一起展开，递归就会在
+    // 元素 ↔ 图之间无限往返、把调用栈打爆。用一条路径栈拦住重复进入，行照常输出一次。
+    const path = new Set<string>()
+
     const pushDiagram = (diagram: Diagram, depth: number) => {
-      if (!keep(diagram.id)) {
+      if (!keep(diagram.id) || path.has(diagram.id)) {
         return
       }
       const members = diagramMembersByDiagram.get(diagram.id) ?? []
@@ -5643,13 +5748,15 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       if (!open) {
         return
       }
+      path.add(diagram.id)
       for (const member of members) {
         pushElement(member, depth + 1)
       }
+      path.delete(diagram.id)
     }
 
     function pushElement(element: ModelElement, depth: number): void {
-      if (!keep(element.id)) {
+      if (!keep(element.id) || path.has(element.id)) {
         return
       }
       const kids = childrenByOwner.get(element.id) ?? []
@@ -5665,6 +5772,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       if (!open) {
         return
       }
+      path.add(element.id)
       for (const kid of kids) {
         pushElement(kid, depth + 1)
       }
@@ -5675,6 +5783,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       if (relationItems && !hits) {
         pushRelationGroup(element.id, depth + 1)
       }
+      path.delete(element.id)
     }
 
     for (const node of rootNodes) {
@@ -5951,7 +6060,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     ? (activeSpec?.allowedTypes.includes(codeOf(menuElement.type)) ?? false)
     : false
 
-  const renderNode = (element: ModelElement, x: number, y: number, w: number, h: number): ReactNode => {
+  const renderNode = (element: ModelElement, x: number, y: number, w: number, h: number, style: StyleMap = {}): ReactNode => {
     const shape = shapeOf(element.type)
     const info = typeInfo.get(codeOf(element.type))
     const selected = selectedId === element.id
@@ -5965,9 +6074,24 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const bx = isPort ? x + w / 2 - 13 : lifeline?.x ?? x
     const by = isPort ? y + h / 2 - 13 : lifeline?.y ?? y
     const children = (childrenByOwner.get(element.id) ?? []).map((child) => child.name)
-    const fill = isLinkSource ? '#e6f6f3' : selected ? '#e9f0fc' : '#ffffff'
-    const stroke = isLinkSource ? '#0f766e' : selected ? '#2b5cb8' : '#cbd3dd'
-    const strokeW = isLinkSource || selected ? 2 : 1
+    // 用户样式覆盖默认值；连线起点 / 选中态是临时交互色，优先级更高。
+    const fill = isLinkSource ? '#e6f6f3' : selected ? '#e9f0fc' : colorOr(style, 'fill', '#ffffff')
+    const stroke = isLinkSource ? '#0f766e' : selected ? '#2b5cb8' : colorOr(style, 'stroke', '#cbd3dd')
+    const strokeW = isLinkSource || selected ? 2 : numberValue(style, 'strokeWidth', 1)
+    const fontSize = numberValue(style, 'fontSize', 13)
+    const smallFontSize = Math.max(8, fontSize - 2)
+    const fontColor = colorOr(style, 'fontColor', '')
+    const fontWeight = style.fontWeight === 'bold' ? 700 : undefined
+    // CSS 类里的 fill / font-size 会盖住 SVG presentation attribute，
+    // 因此样式覆盖必须用内联 style（优先级高于类选择器）。
+    const baseTextStyle: CSSProperties = {
+      ...(fontColor ? { fill: fontColor } : {}),
+      ...(fontWeight ? { fontWeight } : {}),
+    }
+    const nameTextStyle: CSSProperties = { ...baseTextStyle, fontSize }
+    const smallTextStyle: CSSProperties = { ...baseTextStyle, fontSize: smallFontSize }
+    const labelX = alignX(style, bx, bw)
+    const labelAnchor = alignAnchor(style)
     const onDown = (event: ReactPointerEvent<SVGGElement>) => handlePointerDown(event, element, bx, by)
 
     let shapeSvg: ReactNode = null
@@ -6012,7 +6136,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         break
       case 'pseudostate':
         shapeSvg = (
-          <circle cx={bx + bw / 2} cy={by + bh / 2} r={11} fill={selected ? '#fdecc8' : '#fff4d6'} stroke="#b7791f" strokeWidth={1.6} />
+          <circle cx={bx + bw / 2} cy={by + bh / 2} r={11} fill={fill} stroke={stroke} strokeWidth={strokeW} />
         )
         break
       case 'actor': {
@@ -6030,25 +6154,25 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         break
       }
       case 'port':
-        shapeSvg = <rect x={bx} y={by} width={bw} height={bh} fill={selected ? '#d6e4ff' : '#eef3fb'} stroke="#2b6cb0" strokeWidth={1.4} />
+        shapeSvg = <rect x={bx} y={by} width={bw} height={bh} fill={fill} stroke={stroke} strokeWidth={strokeW} />
         break
       case 'frame':
         shapeSvg = (
           <g>
             <rect x={bx} y={by + 16} width={bw} height={bh - 16} rx={4} fill={fill} stroke={stroke} strokeWidth={strokeW} />
-            <path d={`M${bx + 6},${by + 16} v-12 h46 v12`} fill="#f1f5f9" stroke={stroke} strokeWidth={strokeW} />
+            <path d={`M${bx + 6},${by + 16} v-12 h46 v12`} fill={colorOr(style, 'fill', '#f1f5f9')} stroke={stroke} strokeWidth={strokeW} />
           </g>
         )
         break
       case 'swimlane': {
         const headerFill = isLinkSource ? '#d8efe9' : selected ? '#dbe7fb' : '#e8edf4'
-        const bodyFill = isLinkSource ? '#f2fbf8' : selected ? '#f3f7fe' : '#fafbfd'
+        const bodyFill = isLinkSource ? '#f2fbf8' : selected ? '#f3f7fe' : colorOr(style, 'fill', '#fafbfd')
         shapeSvg = (
           <g>
             <rect x={bx} y={by} width={bw} height={bh} fill={bodyFill} stroke={stroke} strokeWidth={strokeW} />
             <rect x={bx} y={by} width={bw} height={SWIMLANE_HEADER} fill={headerFill} stroke={stroke} strokeWidth={strokeW} />
-            <text x={bx + bw / 2} y={by + SWIMLANE_HEADER / 2 + 4} textAnchor="middle" className="node-name">
-              {wrapLabel(element.name, bw - 12, 13, 1)[0]}
+            <text x={labelX} y={by + SWIMLANE_HEADER / 2 + 4} textAnchor={labelAnchor} className="node-name" style={nameTextStyle}>
+              {wrapLabel(element.name, bw - 12, fontSize, 1)[0]}
             </text>
           </g>
         )
@@ -6057,7 +6181,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       case 'lifeline': {
         const axisX = bx + bw / 2
         const axisEnd = lifeline?.bottom ?? by + bh
-        const headerFill = isLinkSource ? '#d8efe9' : selected ? '#dbe7fb' : '#f8fafc'
+        const headerFill = isLinkSource ? '#d8efe9' : selected ? '#dbe7fb' : colorOr(style, 'fill', '#f8fafc')
         shapeSvg = (
           <g>
             {/* 先竖线后表头：线从框底边起笔，压在矩形之下不留毛边。 */}
@@ -6069,8 +6193,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <path className="seq-created-mark" d={`M${bx - 8},${by + 4} l8,6 -8,6 z`}
                 fill="#2f855a" stroke="none" pointerEvents="none" />
             )}
-            <text x={axisX} y={by + 17} textAnchor="middle" className="node-type">«{info?.uml ?? 'Lifeline'}»</text>
-            <text x={axisX} y={by + 34} textAnchor="middle" className="node-name">{wrapLabel(element.name, bw - 10, 13, 1)[0]}</text>
+            <text x={axisX} y={by + 17} textAnchor="middle" className="node-type" style={smallTextStyle}>«{info?.uml ?? 'Lifeline'}»</text>
+            <text x={axisX} y={by + 34} textAnchor="middle" className="node-name" style={nameTextStyle}>{wrapLabel(element.name, bw - 10, fontSize, 1)[0]}</text>
             {/* 销毁消息打到的那一行：虚线到此为止，按 UML 画一个大 X 作终止符。 */}
             {lifeline?.destroyedAt !== undefined && (
               <g className="seq-destroy" stroke="#c53030" strokeWidth={2}>
@@ -6087,12 +6211,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       case 'control': {
         const glyph = controlGlyph(element.type)
         if (!glyph) {
-          shapeSvg = <rect x={bx} y={by} width={bw} height={bh} rx={8} fill="#eef6ff" stroke={stroke} strokeWidth={strokeW} />
+          shapeSvg = <rect x={bx} y={by} width={bw} height={bh} rx={8} fill={colorOr(style, 'fill', '#eef6ff')} stroke={stroke} strokeWidth={strokeW} />
           break
         }
         const cx = bx + bw / 2
         const cy = by + bh / 2
-        const ink = selected ? '#2b5cb8' : '#1f2937'
+        const ink = selected ? '#2b5cb8' : colorOr(style, 'stroke', '#1f2937')
         const r = Math.min(bw, bh) / 2 - 1
         let glyphSvg: ReactNode
         switch (glyph) {
@@ -6171,14 +6295,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const nameLines = wrapLabel(
       element.name,
       bw - 24,
-      13,
-      showCompartment ? 1 : Math.max(1, Math.floor((bh - 50) / 15) + 1),
+      fontSize,
+      showCompartment ? 1 : Math.max(1, Math.floor((bh - 50) / (fontSize + 2)) + 1),
     )
 
     return (
       <g
         className={`node ${drag?.elementId === element.id && drag.moved ? 'dragging' : ''} ${isLinkSource ? 'link-source' : ''}`}
         data-element-id={element.id}
+        fillOpacity={numberValue(style, 'fillOpacity', 1)}
+        strokeDasharray={dashArray(style, 'strokeDash')}
         onPointerDown={onDown}
         onContextMenu={(event) => {
           event.preventDefault()
@@ -6202,33 +6328,35 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         )}
         {shapeSvg}
         {glyphKind && (
-          <text x={bx + bw / 2} y={by + bh + 15} textAnchor="middle" className="control-label">
-            {wrapLabel(element.name, 150, 11, 2).map((line, index) => (
-              <tspan key={index} x={bx + bw / 2} dy={index === 0 ? 0 : 12}>{line}</tspan>
+          <text x={labelX} y={by + bh + 15} textAnchor={labelAnchor} className="control-label" style={smallTextStyle} fillOpacity={1}>
+            {wrapLabel(element.name, 150, smallFontSize, 2).map((line, index) => (
+              <tspan key={index} x={labelX} dy={index === 0 ? 0 : smallFontSize + 1}>{line}</tspan>
             ))}
           </text>
         )}
         {showText && (
           <>
-            <text x={bx + 12} y={by + 22} className="node-type">{wrapLabel(`«${info?.uml ?? element.type}»`, bw - 24, 11, 1)[0]}</text>
-            <text x={bx + 12} y={by + 42} className="node-name">
+            <text x={labelX} y={by + 22} textAnchor={labelAnchor} className="node-type" style={smallTextStyle} fillOpacity={1}>
+              {wrapLabel(`«${info?.uml ?? element.type}»`, bw - 24, smallFontSize, 1)[0]}
+            </text>
+            <text x={labelX} y={by + 42} textAnchor={labelAnchor} className="node-name" style={nameTextStyle} fillOpacity={1}>
               {nameLines.map((line, index) => (
-                <tspan key={index} x={bx + 12} dy={index === 0 ? 0 : 15}>{line}</tspan>
+                <tspan key={index} x={labelX} dy={index === 0 ? 0 : fontSize + 2}>{line}</tspan>
               ))}
             </text>
           </>
         )}
         {showLabel && (
-          <text x={bx + bw / 2} y={by + bh - 4} textAnchor="middle" className="node-name">{element.name}</text>
+          <text x={labelX} y={by + bh - 4} textAnchor={labelAnchor} className="node-name" style={nameTextStyle} fillOpacity={1}>{element.name}</text>
         )}
         {showCompartment && (
           <>
             <line x1={bx + 6} y1={by + 50} x2={bx + bw - 6} y2={by + 50} stroke="#d4dae3" strokeWidth={1} />
             {children.slice(0, 3).map((name, index) => (
-              <text key={index} x={bx + 12} y={by + 66 + index * 12} className="node-child">{name}</text>
+              <text key={index} x={labelX} y={by + 66 + index * (smallFontSize + 1)} textAnchor={labelAnchor} className="node-child" style={smallTextStyle} fillOpacity={1}>{name}</text>
             ))}
             {children.length > 3 && (
-              <text x={bx + 12} y={by + 66 + 3 * 12} className="node-child">+{children.length - 3}</text>
+              <text x={labelX} y={by + 66 + 3 * (smallFontSize + 1)} textAnchor={labelAnchor} className="node-child" style={smallTextStyle} fillOpacity={1}>+{children.length - 3}</text>
             )}
           </>
         )}
@@ -6245,8 +6373,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const style = messageSortStyle(message.sort)
     const notation = message.virtual ? { ...style, color: '#8a97a8' } : style
     const isSelected = selectedRelationId === message.relation.id || seqDrag?.relationId === message.relation.id
-    const strokeWidth = isSelected ? 2.2 : 1.4
-    const dash = notation.dashed ? (notation.dash || '6 4') : undefined
+    // 序列消息与通用连线共用同一份「按图的连线样式」。
+    const lineStyle = relationStyleOf(message.relation, activeDiagramId)
+    const lineColor = colorOr(lineStyle, 'lineColor', notation.color)
+    const labelSize = numberValue(lineStyle, 'labelFontSize', 10.5)
+    const strokeWidth = isSelected ? 2.2 : numberValue(lineStyle, 'lineWidth', 1.4)
+    const dash = dashArray(lineStyle, 'lineDash') ?? (notation.dashed ? (notation.dash || '6 4') : undefined)
     const bar = message.activation
     // 箭头停在激活条边缘，不扎进条里；没有激活条才贴到生命线中心。
     // createMessage 例外：它斜指新生命线的表头顶边，终点不能被激活条挤偏。
@@ -6267,7 +6399,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const stereotype = notation.stereotype ? `«${notation.stereotype}»` : ''
     const lines: { text: string; baseline: number; color: string }[] = []
     if (stereotype) {
-      lines.push({ text: stereotype, baseline: rowY - 22, color: notation.color })
+      lines.push({ text: stereotype, baseline: rowY - 22, color: lineColor })
     }
     if (name) {
       // 前缀时间轴序号：读图的人据此确认「谁先谁后」，与拖动改顺序直接对应。
@@ -6276,7 +6408,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     // 自消息往右折出，标签起笔在折线右侧；横向消息标签居中对齐到箭头中点。
     const anchorStart = message.self
     const labelX = anchorStart ? startX + SEQ_SELF_BUMP + 8 : (startX + endX) / 2
-    const boxWidth = Math.max(0, ...lines.map((line) => line.text.length * 6.4)) + 10
+    const boxWidth = Math.max(0, ...lines.map((line) => line.text.length * labelSize * 0.61)) + 10
     const boxX = anchorStart ? labelX - 4 : labelX - boxWidth / 2
     const boxY = (lines[0]?.baseline ?? rowY) - 12
     const sourceName = seqLifelineById.get(message.relation.sourceId)?.element.name ?? ''
@@ -6337,24 +6469,24 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           />
         )}
         {message.self ? (
-          <polyline className="seq-line" points={points} fill="none" stroke={notation.color} strokeWidth={strokeWidth} strokeDasharray={dash} />
+          <polyline className="seq-line" points={points} fill="none" stroke={lineColor} strokeWidth={strokeWidth} strokeDasharray={dash} />
         ) : (
-          <line className="seq-line" x1={startX} y1={rowY} x2={endX} y2={endY} stroke={notation.color} strokeWidth={strokeWidth} strokeDasharray={dash} />
+          <line className="seq-line" x1={startX} y1={rowY} x2={endX} y2={endY} stroke={lineColor} strokeWidth={strokeWidth} strokeDasharray={dash} />
         )}
         {notation.arrow === 'filled' && (
-          <polygon points={arrow.points} fill={notation.color} stroke="none" />
+          <polygon points={arrow.points} fill={lineColor} stroke="none" />
         )}
         {notation.arrow === 'open' && (
           <polyline
             points={`${arrow.v1} ${message.self ? startX : endX},${message.self ? selfY : endY} ${arrow.v2}`}
             fill="none"
-            stroke={notation.color}
+            stroke={lineColor}
             strokeWidth={strokeWidth}
           />
         )}
         {lines.length > 0 && (
           <>
-            <rect className="seq-label" x={boxX} y={boxY} width={boxWidth} height={lines.length * 14 + 3} rx={3} fill="#ffffff" opacity={0.92} />
+            <rect className="seq-label" x={boxX} y={boxY} width={boxWidth} height={lines.length * (labelSize + 3) + 3} rx={3} fill="#ffffff" opacity={0.92} />
             {lines.map((line) => (
               <text
                 key={line.text}
@@ -6362,7 +6494,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 y={line.baseline}
                 textAnchor={anchorStart ? 'start' : 'middle'}
                 className="edge-label"
-                fill={line.color}
+                style={{ fill: line.color, fontSize: labelSize }}
               >
                 {line.text}
               </text>
@@ -6427,13 +6559,22 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   /**
    * 交互图框：UML 里 Interaction 就是序列图的边框（左上五边形「sd 名称」），
    * 不是画布上可以随便拖的一个方块。图里有 Interaction 就按它框住整张图。
+   *
+   * <p>序列图只有这一层图框（通用图框会让开），所以样式面板里的图框样式在这里消费：
+   * 框线颜色 / 粗细、标签底色、标签文字色、字号、自定义标题。</p>
    */
   const renderSeqFrame = (frame: NonNullable<typeof seqLayout>['frame']): ReactNode => {
     if (!frame) {
       return null
     }
-    const tabHeight = 22
-    const tabWidth = Math.max(84, frame.label.length * 13 + 34)
+    const border = colorOr(frameStyle, 'frameBorder', '#9aa5b1')
+    const borderW = numberValue(frameStyle, 'frameBorderWidth', 1.2)
+    const labelFill = colorOr(frameStyle, 'frameKindColor', '#eef2f7')
+    const labelColor = colorOr(frameStyle, 'frameText', '#1c2430')
+    const labelSize = Math.min(18, numberValue(frameStyle, 'frameFontSize', 12))
+    const title = frameStyle.frameTitle?.trim() ? frameStyle.frameTitle : `sd ${frame.label}`
+    const tabHeight = 22 + Math.max(0, labelSize - 12)
+    const tabWidth = Math.max(84, estimateTextWidth(title, labelSize) + 34)
     const focused = selectedId === frame.element.id
     return (
       <g key="seq-frame" className="seq-frame" pointerEvents="none">
@@ -6444,13 +6585,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           height={frame.height}
           fill="#ffffff"
           fillOpacity={0.5}
-          stroke={focused ? '#2b5cb8' : '#9aa5b1'}
-          strokeWidth={focused ? 2 : 1.2}
+          stroke={focused ? '#2b5cb8' : border}
+          strokeWidth={focused ? 2 : borderW}
         />
         <path
           d={`M${frame.x},${frame.y} h${tabWidth - 12} l12,${tabHeight} h-${tabWidth} z`}
-          fill="#eef2f7"
-          stroke={focused ? '#2b5cb8' : '#9aa5b1'}
+          fill={labelFill}
+          stroke={focused ? '#2b5cb8' : border}
           strokeWidth={1}
           pointerEvents="auto"
           style={{ cursor: 'pointer' }}
@@ -6462,7 +6603,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             setSelectedDiagramId(null)
           }}
         />
-        <text x={frame.x + 9} y={frame.y + 16} className="seq-frame-label">{`sd ${frame.label}`}</text>
+        <text
+          x={frame.x + 9}
+          y={frame.y + 16 + Math.max(0, labelSize - 12) / 2}
+          className="seq-frame-label"
+          style={{ fill: labelColor, fontSize: `${labelSize}px` }}
+        >{title}</text>
       </g>
     )
   }
@@ -6665,7 +6811,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         },
         { label: '适应窗口', run: fitCanvas },
         { label: '小地图', run: () => setMinimapOpen((previous) => !previous), checked: minimapOpen },
-        { label: 'SysML 图框', run: () => setDiagramFrameOpen((previous) => !previous), checked: diagramFrameOpen },
+        {
+          label: 'SysML 图框',
+          run: () => setFrameVisible(!frameEnabled),
+          checked: frameEnabled,
+          disabled: !!seqLayout?.frame,
+          hint: seqLayout?.frame ? '序列图用 sd 图框，不再叠一层' : undefined,
+        },
         { label: '缩放重置 100%', run: () => applyZoom(1), disabled: !canEdit || zoom === 1 && pan.x === 0 && pan.y === 0 },
       ],
     },
@@ -6825,7 +6977,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                           key={`${entry.label}-${index}`}
                           className={`mb-entry${entry.checked ? ' checked' : ''}${entry.danger ? ' danger' : ''}`}
                           disabled={entry.disabled}
-                          title={entry.hint}
+                          title={entry.hint ? t(entry.hint) : undefined}
                           onClick={() => {
                             setMenubarOpen(null)
                             entry.run?.()
@@ -6833,7 +6985,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                         >
                           <span className="mb-check">{entry.checked ? '✓' : ''}</span>
                           <span className="mb-entry-label">{t(entry.label)}</span>
-                          {entry.hint && <span className="mb-hint">{entry.hint}</span>}
+                          {entry.hint && <span className="mb-hint">{t(entry.hint)}</span>}
                         </button>
                       )
                   ))}
@@ -7244,6 +7396,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                         type="button"
                         key={diagram.id}
                         className={`chart-row ${diagram.id === activeDiagramId ? 'active' : ''}`}
+                        data-diagram-id={diagram.id}
                         title={t('{name} · {count} 个元素', { name: diagram.name, count: diagram.elementIds.length })}
                         onClick={() => {
                           setActiveDiagramId(diagram.id)
@@ -8069,24 +8222,32 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               </div>
             </>
           ) : (
-            <div className="tb-scroll">
-              <div className="panel-title">{t('当前图')}</div>
+            <div className="tb-scroll tb-style-scroll">
               <div className="tb-style-head">
                 {activeDiagramKind && <DiagramIcon code={activeDiagramKind} size={18} />}
-                <span>{activeSpec ? pick(activeSpec.label, activeSpec.labelEn) : t('未选择图')}</span>
+                <span>{activeDiagramObj?.name ?? t('未选择图')}</span>
+                <code>{activeSpec?.layout ?? '—'}</code>
               </div>
-              <div className="kv"><span>{t('布局器')}</span><code>{activeSpec?.layout ?? '—'}</code></div>
-              <div className="kv"><span>{t('校验分组')}</span><code>{activeSpec?.validationGroup ?? '—'}</code></div>
-              <div className="kv"><span>{t('画布')}</span><code>{canvas.width}×{canvas.height}</code></div>
-              <div className="kv"><span>{t('节点')}</span><code>{nodeSize.width}×{nodeSize.height}</code></div>
-              <div className="panel-title">{t('语义族图例')}</div>
-              {FAMILIES.map((family) => (
-                <div className="tb-legend" key={family.key}>
-                  <span className="legend-swatch" style={{ background: family.color }} />
-                  <span>{pick(family.label, family.labelEn)}</span>
-                </div>
-              ))}
-              <p className="tb-tip">{t('记法样式由服务端 Notation 对象保存；图形坐标经 WS Patch 广播给所有会话。')}</p>
+              <StylePanel
+                catalog={styleCatalog}
+                canEdit={canEdit}
+                busy={busy}
+                diagram={activeDiagramObj}
+                frameEnabled={frameEnabled}
+                frameToggleDisabled={!!seqLayout?.frame}
+                targetKind={selectedRelationId ? 'relation' : styleTargetIds.length > 0 ? 'elements' : 'none'}
+                selectionLabel={selectedRelationId
+                  ? `${t('关系')} · ${selectedRelation?.name || (selectedRelation ? relationLabel(selectedRelation.type) : '')}`
+                  : selected?.name ?? (styleTargetIds.length > 1 ? t('{count} 个图形', { count: styleTargetIds.length }) : '')}
+                selectionCount={selectedRelationId ? 1 : styleTargetIds.length}
+                nodeStyle={selectionNotation?.style ?? {}}
+                lineStyle={currentLineStyle}
+                frameStyle={frameStyle}
+                onApplyNode={(patch, replace) => void applyNodeStyle(patch, replace)}
+                onApplyLine={(patch, replace) => void applyLineStyle(patch, replace)}
+                onApplyFrame={(patch, replace) => void applyFrameStyle(patch, replace)}
+                onToggleFrame={(visible) => setFrameVisible(visible)}
+              />
             </div>
           )}
           <div className="tb-foot">
@@ -8109,6 +8270,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 <div
                   key={key}
                   className={`doc-tab ${tab.kind} ${active ? 'active' : ''}`}
+                  data-tab-id={tab.id}
+                  data-tab-key={key}
                   role="tab"
                   aria-selected={active}
                   tabIndex={0}
@@ -8155,11 +8318,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               </span>
               <button
                 type="button"
-                className={`dt-frame-toggle${diagramFrameOpen ? ' active' : ''}`}
-                aria-pressed={diagramFrameOpen}
-                title={t('显示 SysML 标准图框（图种与图名）')}
-                onClick={() => setDiagramFrameOpen((prev) => !prev)}
-                disabled={!activeDiagramObj}
+                className={`dt-frame-toggle${frameEnabled && !seqLayout?.frame ? ' active' : ''}`}
+                aria-pressed={frameEnabled && !seqLayout?.frame}
+                title={t(seqLayout?.frame ? '序列图用 sd 图框，不再叠一层' : '显示 SysML 标准图框（图种与图名）')}
+                onClick={() => setFrameVisible(!frameEnabled)}
+                disabled={!activeDiagramObj || !!seqLayout?.frame}
               >
                 {t('SysML 图框')}
               </button>
@@ -8185,7 +8348,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           >
             <defs />
             {diagramFrame ? (
-              <g className="diagram-frame" pointerEvents="none">
+              <g
+                className={`diagram-frame${toolboxTab === 'styles' && !selectedId && !selectedRelationId ? ' frame-focused' : ''}`}
+                pointerEvents="none"
+                data-frame="true"
+                data-frame-title={diagramFrame.name}
+              >
                 <rect
                   x={diagramFrame.x}
                   y={diagramFrame.y}
@@ -8193,21 +8361,34 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   height={diagramFrame.h}
                   fill="#ffffff"
                   fillOpacity={0.55}
-                  stroke="#5a6b7f"
-                  strokeWidth={1.4}
+                  stroke={diagramFrame.border}
+                  strokeWidth={diagramFrame.borderW}
                 />
+                {/* 首页标签可点：选中图框并切到「样式」页签，标题与配色可直接编辑。 */}
                 <path
                   d={`M ${diagramFrame.x} ${diagramFrame.y} H ${diagramFrame.x + diagramFrame.headerW - diagramFrame.notch} L ${diagramFrame.x + diagramFrame.headerW} ${diagramFrame.y + diagramFrame.headerH} H ${diagramFrame.x} Z`}
                   fill={diagramFrame.kindColor}
                   fillOpacity={0.1}
-                  stroke="#5a6b7f"
-                  strokeWidth={1.4}
+                  stroke={diagramFrame.border}
+                  strokeWidth={diagramFrame.borderW}
                   strokeLinejoin="round"
+                  pointerEvents="all"
+                  data-frame-header="true"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => {
+                    event.stopPropagation()
+                    setSelectedId(null)
+                    setSelectedIds(new Set())
+                    setSelectedRelationId(null)
+                    setSelectedDiagramId(null)
+                    setToolboxTab('styles')
+                    say('已选中图框，可在「样式」页签调整')
+                  }}
                 />
                 <text
                   x={diagramFrame.x + 12}
                   y={diagramFrame.y + 16}
-                  fontSize={10.5}
+                  fontSize={diagramFrame.kindSize}
                   fontWeight={700}
                   fill={diagramFrame.kindColor}
                 >
@@ -8216,9 +8397,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 <text
                   x={diagramFrame.x + 12}
                   y={diagramFrame.y + 32}
-                  fontSize={12.5}
+                  fontSize={diagramFrame.nameSize}
                   fontWeight={700}
-                  fill="#1c2430"
+                  fill={diagramFrame.titleColor}
                 >
                   {diagramFrame.name}
                 </text>
@@ -8239,10 +8420,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             ))}
             {seqLayout?.frame ? renderSeqFrame(seqLayout.frame) : null}
             {seqLayout?.fragments.map((fragment) => renderSeqFragment(fragment))}
-            {positions.map(({ element, x, y, w, h }) => (
+            {positions.map(({ element, x, y, w, h, style }) => (
               // 序列图的交互是图框、组合片段是区间框，都不再画成画布上的普通方块。
               (seqLayout?.frame && seqLayout.frame.element.id === element.id) || seqFragmentIds.has(element.id)
-                ? null : renderNode(element, x, y, w, h)
+                ? null : renderNode(element, x, y, w, h, style)
             ))}
             {seqLayout?.activations.map((activation) => renderSeqActivation(activation))}
             {seqDrag?.moved && seqLayout?.messages[seqDrag.targetIndex] && (
@@ -8318,6 +8499,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               const tEdge = route[route.length - 1]
               const prevPoint = route[route.length - 2] ?? sEdge
               const style = relationshipStyle(relation.type)
+              // 用户连线样式按图挂在关系 properties 上，覆盖规范默认线型。
+              const lineStyle = relationStyleOf(relation, activeDiagramId)
+              const lineColor = colorOr(lineStyle, 'lineColor', style.color)
+              const lineWidth = numberValue(lineStyle, 'lineWidth', style.width ?? 1.4)
+              const lineDash = dashArray(lineStyle, 'lineDash') ?? (style.dashed ? '5 4' : undefined)
+              const labelSize = numberValue(lineStyle, 'labelFontSize', 10.5)
               const arrow = arrowGeometry(prevPoint.x, prevPoint.y, tEdge.x, tEdge.y)
               const mid = routeMidpoint(route)
               const midX = mid.x
@@ -8352,7 +8539,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       points={routePoints}
                       fill="none"
                       stroke="#2b5cb8"
-                      strokeWidth={(style.width ?? 1.4) + 7}
+                      strokeWidth={lineWidth + 7}
                       strokeOpacity={0.18}
                       strokeLinecap="round"
                       data-export="omit"
@@ -8361,31 +8548,32 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   <polyline
                     points={routePoints}
                     fill="none"
-                    stroke={style.color}
-                    strokeWidth={isSelected ? (style.width ?? 1.4) + 0.8 : style.width}
-                    strokeDasharray={style.dashed ? '5 4' : undefined}
+                    stroke={lineColor}
+                    strokeWidth={isSelected ? lineWidth + 0.8 : lineWidth}
+                    strokeDasharray={lineDash}
                   />
                   {style.arrow === 'filled' && (
-                    <polygon points={arrow.points} fill={style.color} stroke="none" />
+                    <polygon points={arrow.points} fill={lineColor} stroke="none" />
                   )}
                   {style.arrow === 'hollow' && (
-                    <polygon points={arrow.points} fill="#ffffff" stroke={style.color} strokeWidth={1.4} />
+                    <polygon points={arrow.points} fill="#ffffff" stroke={lineColor} strokeWidth={1.4} />
                   )}
                   {style.arrow === 'open' && (
-                    <polyline points={`${arrow.v1} ${tEdge.x},${tEdge.y} ${arrow.v2}`} fill="none" stroke={style.color} strokeWidth={style.width} />
+                    <polyline points={`${arrow.v1} ${tEdge.x},${tEdge.y} ${arrow.v2}`} fill="none" stroke={lineColor} strokeWidth={lineWidth} />
                   )}
                   {style.label && (
                     <g>
                       <rect
-                        x={midX - style.label.length * 3.4 - 3}
-                        y={midY - 9}
-                        width={style.label.length * 6.8 + 6}
-                        height={15}
+                        x={midX - style.label.length * labelSize * 0.32 - 3}
+                        y={midY - labelSize * 0.85}
+                        width={style.label.length * labelSize * 0.64 + 6}
+                        height={labelSize + 4.5}
                         rx={3}
                         fill="#ffffff"
                         opacity={0.92}
                       />
-                      <text x={midX} y={midY + 2} textAnchor="middle" className="edge-label" fill={style.color}>
+                      <text x={midX} y={midY + labelSize / 3} textAnchor="middle" className="edge-label"
+                        style={{ fill: lineColor, fontSize: labelSize }}>
                         «{style.label}»
                       </text>
                     </g>

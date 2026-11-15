@@ -90,6 +90,19 @@ export interface PropertyCatalogInfo {
   specification: string
 }
 
+/** 服务端下发的图形样式字典：控件范围与写入校验同源，界面不会给出服务端拒收的键。 */
+export interface StyleCatalog {
+  keys: string[]
+  colors: string[]
+  numbers: Record<string, [number, number]>
+  enums: Record<string, string[]>
+  text: string[]
+  maxTitle: number
+}
+
+/** 样式值统一是字符串：颜色 / 数字 / 枚举，空串表示删除该键。 */
+export type StyleMap = Record<string, string>
+
 export interface Diagram {
   id: string
   kind: string
@@ -97,6 +110,8 @@ export interface Diagram {
   ownerId: string | null
   elementIds: string[]
   relationshipIds: string[]
+  /** 图的表示层配置（图框开关 / 边框 / 标题），由 SET_DIAGRAM_STYLE 写入。 */
+  style?: StyleMap
 }
 
 /** 关系也是模型对象：与元素同构地带名称、文档、构造型与规范元属性。 */

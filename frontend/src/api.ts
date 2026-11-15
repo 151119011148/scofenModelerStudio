@@ -12,6 +12,7 @@ import type {
   PropertyCatalogInfo,
   RelationshipTypeInfo,
   Session,
+  StyleCatalog,
   ValidationReport,
   WorkspaceDirectoryInfo,
 } from './types'
@@ -114,6 +115,7 @@ export const getProperties = () =>
   request<PropertyCatalogInfo>(`${BASE}api/metamodel/properties`)
 export const getExtensionPackages = () =>
   request<ExtensionCatalog>(`${BASE}api/metamodel/extension`)
+export const getStyleCatalog = () => request<StyleCatalog>(`${BASE}api/metamodel/styles`)
 export const getWorkspaces = () => request<WorkspaceDirectoryInfo>(`${BASE}api/workspaces`)
 export const createProject = (payload: { spaceCode: string; name: string; description: string }) =>
   request<{ id: string; name: string; spaceCode: string }>(`${BASE}api/workspaces/projects`, {
