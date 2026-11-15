@@ -276,6 +276,42 @@ export interface Patch {
   clientCmdId: string
 }
 
+/** 一条结构化校验问题（服务端 /api/validation 权威下发）。 */
+export interface ValidationIssue {
+  severity: 'error' | 'warning' | 'info'
+  code: string
+  message: string
+  /** 定位目标种类：element → 选中并定位；diagram → 打开图。 */
+  targetType: 'element' | 'diagram'
+  targetId: string
+  targetName: string
+}
+
+/** 覆盖来源元素的最小投影。 */
+export interface CoverageRef {
+  id: string
+  name: string
+}
+
+/** 一条需求的 satisfy / verify 覆盖明细。 */
+export interface RequirementCoverage {
+  id: string
+  name: string
+  satisfied: boolean
+  verified: boolean
+  satisfiedBy: CoverageRef[]
+  verifiedBy: CoverageRef[]
+}
+
+/** 全量校验报告：问题列表 + 严重度计数 + 需求覆盖矩阵 + 覆盖汇总。 */
+export interface ValidationReport {
+  revision: number
+  issues: ValidationIssue[]
+  counts: { error: number; warning: number; info: number }
+  coverage: RequirementCoverage[]
+  coverageSummary: { total: number; satisfied: number; verified: number; fullyCovered: number }
+}
+
 export interface CommandRequest {
   type: string
   payload: Record<string, unknown>

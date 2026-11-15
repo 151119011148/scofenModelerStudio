@@ -4,7 +4,9 @@ import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.core.Patch;
 import com.scofen.model.core.ProjectRoot;
+import com.scofen.model.core.RequirementCoverage;
 import com.scofen.model.core.ValidationEngine;
+import com.scofen.model.core.ValidationIssue;
 import com.scofen.model.metamodel.ContainmentRules;
 import com.scofen.model.metamodel.DiagramKind;
 import com.scofen.model.metamodel.ElementType;
@@ -92,6 +94,57 @@ public class ModelController {
     public ModelSnapshot model(
             @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
         return forProject(projectId).snapshot();
+    }
+
+    public Map<String, Object> validation() {
+        return validation("");
+    }
+
+    /**
+     * 全量校验报告：结构 ERROR + 需求追溯 WARNING，附按严重度计数。
+     * 前端校验问题面板与需求覆盖矩阵共用这一份服务端权威结果，不在浏览器里重算规则。
+     */
+    @GetMapping("/validation")
+    @RequiresPermission(Permission.MODEL_VIEW)
+    public Map<String, Object> validation(
+            @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
+        CommandExecutor current = forProject(projectId);
+        List<ValidationIssue> issues = current.validateFull();
+        List<RequirementCoverage> coverage = current.requirementCoverage();
+        int error = 0;
+        int warning = 0;
+        int info = 0;
+        for (ValidationIssue issue : issues) {
+            switch (issue.severity()) {
+                case ValidationIssue.ERROR -> error++;
+                case ValidationIssue.WARNING -> warning++;
+                default -> info++;
+            }
+        }
+        int satisfied = 0;
+        int verified = 0;
+        int fullyCovered = 0;
+        for (RequirementCoverage item : coverage) {
+            if (item.satisfied()) {
+                satisfied++;
+            }
+            if (item.verified()) {
+                verified++;
+            }
+            if (item.satisfied() && item.verified()) {
+                fullyCovered++;
+            }
+        }
+        return Map.of(
+                "revision", current.revision(),
+                "issues", issues,
+                "counts", Map.of("error", error, "warning", warning, "info", info),
+                "coverage", coverage,
+                "coverageSummary", Map.of(
+                        "total", coverage.size(),
+                        "satisfied", satisfied,
+                        "verified", verified,
+                        "fullyCovered", fullyCovered));
     }
 
     @GetMapping("/metamodel/diagrams")

@@ -794,6 +794,12 @@ revision = (await snapshot()).revision
 await cmd('DELETE_ELEMENT', { id: 'sq-frag' })
 
 console.log('\n[9] 界面建序列图：自动补 Interaction 宿主，工具箱建生命线不再被容器规则拒')
+// [1]~[12] 多为 API 直驱，前端 revisionRef 可能落后服务端一拍，界面提交会撞
+// "Stale baseRevision: client=N-1, server=N"。走 UI 前重载一次对齐；登录态与项目
+// 指针都在 localStorage，刷新不会丢，也不会改变已灌好的模型数据。
+await page.goto(APP_URL)
+await waitFor(page, `!!document.querySelector('.props-dock')`, 80, 250)
+await sleep(1200)
 const revBeforeUi = (await snapshot()).revision
 check('打开「新建图…」对话框', await waitFor(page,
   `(()=>{const b=[...document.querySelectorAll('button.tbi')].find(x=>x.title.includes('新建图'));if(!b)return false;b.click();return true})()`, 20, 150)
@@ -801,7 +807,10 @@ check('打开「新建图…」对话框', await waitFor(page,
 const uiDiagramName = 'UI 建的序列图'
 check('类型选序列图、填名', await page.evaluate(`(()=>{
   const sel=document.querySelector('.modal select'), inp=document.querySelector('.modal input')
-  const setV=(el,v,proto)=>{const s=Object.getOwnPropertyDescriptor(proto,'value').set;s.call(el,v);el.dispatchEvent(new Event('change',{bubbles:true}))}
+  // React 19 受控输入框认 input 事件；只派发 change 会让 DOM 值变了但 state 没变，
+  // 提交按钮仍按空名称保持 disabled。两种事件都派发，select 与 input 才都能同步。
+  const setV=(el,v,proto)=>{const s=Object.getOwnPropertyDescriptor(proto,'value').set;s.call(el,v);
+    el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}))}
   setV(sel,'seq',HTMLSelectElement.prototype)
   setV(inp,${JSON.stringify(uiDiagramName)},HTMLInputElement.prototype)
   return (sel.value==='seq'&&inp.value===${JSON.stringify(uiDiagramName)})})()`))
@@ -880,16 +889,16 @@ for (let i = toolLines.length; i < 3; i++) {
   if (!knownToolIds.has(id)) {
     await cmd('CREATE_ELEMENT', {
       id, type: 'Lifeline', name: `工具箱生命线${i + 1}`, ownerId: toolHost,
-      documentation: '', diagramId: uiDiaForTools.id, x: 40 + i * 190, y: 80,
+      documentation: '', diagramId: uiDiaForTools?.id, x: 40 + i * 190, y: 80,
     })
   }
 }
 const afterToolSeed = await snapshot()
-const freshRefs = new Set((afterToolSeed.diagrams.find((d) => d.id === uiDiaForTools.id)?.elementIds) ?? [])
+const freshRefs = new Set((afterToolSeed.diagrams.find((d) => d.id === uiDiaForTools?.id)?.elementIds) ?? [])
 const allToolLines = afterToolSeed.elements.filter((e) =>
   freshRefs.has(e.id) && e.type.toLowerCase().includes('lifeline'))
 await cmd('SET_NOTATIONS', { items: allToolLines.map((e, i) => ({
-  diagramId: uiDiaForTools.id, elementId: e.id, x: 40 + i * 190, y: 80, width: 132, height: 44,
+  diagramId: uiDiaForTools?.id, elementId: e.id, x: 40 + i * 190, y: 80, width: 132, height: 44,
 })) })
 check('工具箱实测图有 3 条生命线（表头 + 虚线）', await waitFor(page,
   `document.querySelectorAll('.lifeline-axis').length >= 3`, 80, 200))

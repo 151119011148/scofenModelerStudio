@@ -12,6 +12,7 @@ import type {
   PropertyCatalogInfo,
   RelationshipTypeInfo,
   Session,
+  ValidationReport,
   WorkspaceDirectoryInfo,
 } from './types'
 
@@ -103,6 +104,8 @@ export function patchSocketUrl(): string {
 export const getHealth = () =>
   request<Health>(`${BASE}api/health`, { headers: { 'X-Scofen-Session': 'web-ui' } })
 export const getModel = () => request<ModelSnapshot>(`${BASE}api/model`)
+/** 全量校验报告：结构问题 + 需求覆盖矩阵，服务端权威计算。 */
+export const getValidation = () => request<ValidationReport>(`${BASE}api/validation`)
 export const getDiagrams = () => request<DiagramSpec[]>(`${BASE}api/metamodel/diagrams`)
 export const getRelationships = () =>
   request<RelationshipTypeInfo[]>(`${BASE}api/metamodel/relationships`)

@@ -204,6 +204,89 @@ public final class ValidationEngine {
                     pending.put(id, element);
                 }
             }
+            case "PASTE_ELEMENTS" -> {
+                // 粘贴 / 副本：元素 + 批内关系 + 记法一条命令落库，一个 revision、一步撤销。
+                // 元素沿用 CREATE_ELEMENTS 的「批内可见」校验；记法额外校验目标图的类型白名单与坐标。
+                List<Map<String, Object>> rows = cmd.mapList("elements");
+                if (rows.isEmpty()) {
+                    throw new ValidationException("Missing required field: elements");
+                }
+                String pasteDiagramId = cmd.str("diagramId");
+                Diagram pasteDiagram = null;
+                if (pasteDiagramId != null && !pasteDiagramId.isBlank()) {
+                    pasteDiagram = repository.findDiagram(pasteDiagramId)
+                            .orElseThrow(() -> new ValidationException("Unknown diagram: " + pasteDiagramId));
+                }
+                Map<String, ModelElement> pending = new LinkedHashMap<>();
+                for (Map<String, Object> row : rows) {
+                    String id = rowString(row, "id");
+                    require(id, "id");
+                    if (pending.containsKey(id) || repository.elementExists(id)) {
+                        throw new ValidationException("Element already exists: " + id);
+                    }
+                    String typeName = rowString(row, "type");
+                    require(typeName, "type");
+                    String name = rowString(row, "name");
+                    require(name, "name");
+                    ElementType child = ElementType.fromAny(typeName)
+                            .orElseThrow(() -> new ValidationException("Unknown element type: " + typeName));
+                    assertNameFormat(name);
+                    assertContainment(repository, pending, rowString(row, "ownerId"), child);
+                    assertNameIsUnique(repository, pending, rowString(row, "ownerId"), name, null);
+                    ModelElement element = new ModelElement(id, typeName, name,
+                            rowStringList(row, "stereotypes"), blankToNull(rowString(row, "ownerId")),
+                            rowString(row, "documentation") == null ? "" : rowString(row, "documentation"),
+                            rowStringMap(row, "taggedValues"), blankToNull(rowString(row, "xmiId")),
+                            rowObjectMap(row, "properties"));
+                    assertElementProperties(repository, pending, element);
+                    pending.put(id, element);
+                }
+                Set<String> notated = new LinkedHashSet<>();
+                for (Map<String, Object> row : cmd.mapList("notations")) {
+                    String elementId = rowString(row, "elementId");
+                    require(elementId, "elementId");
+                    ModelElement element = pending.get(elementId);
+                    if (element == null) {
+                        throw new ValidationException("Pasted notation references unknown element: " + elementId);
+                    }
+                    if (!notated.add(elementId)) {
+                        throw new ValidationException("Duplicate notation in paste: " + elementId);
+                    }
+                    if (pasteDiagram == null) {
+                        throw new ValidationException("Pasted notation requires diagramId");
+                    }
+                    assertDiagramAllows(pasteDiagram.kind(), ElementType.fromAny(element.type()).orElseThrow());
+                    assertPosition(rowDecimal(row, "x"), rowDecimal(row, "y"));
+                    assertOptionalSize(row, "width");
+                    assertOptionalSize(row, "height");
+                }
+                Set<String> pasteRelationIds = new LinkedHashSet<>();
+                for (Map<String, Object> row : cmd.mapList("relationships")) {
+                    String id = rowString(row, "id");
+                    require(id, "id");
+                    if (!pasteRelationIds.add(id) || repository.findRelationship(id).isPresent()) {
+                        throw new ValidationException("Relationship already exists: " + id);
+                    }
+                    String type = rowString(row, "type");
+                    require(type, "type");
+                    RelationshipType relType = RelationshipType.fromAny(type)
+                            .orElseThrow(() -> new ValidationException("Unknown relationship type: " + type));
+                    String source = rowString(row, "sourceId");
+                    String target = rowString(row, "targetId");
+                    require(source, "sourceId");
+                    require(target, "targetId");
+                    if (!pending.containsKey(source) && !repository.elementExists(source)) {
+                        throw new ValidationException("Relationship endpoint missing: " + source);
+                    }
+                    if (!pending.containsKey(target) && !repository.elementExists(target)) {
+                        throw new ValidationException("Relationship endpoint missing: " + target);
+                    }
+                    if (pasteDiagram != null && !MetamodelRegistry.allowsRelationship(pasteDiagram.kind(), relType)) {
+                        throw new ValidationException("Relationship «" + relType.code()
+                                + "» is not allowed on " + pasteDiagram.kind().label());
+                    }
+                }
+            }
             case "IMPORT_MODEL" -> {
                 // 整包替换：一次性导入整套模型，元素、关系、图与记号只产生一个
                 // revision 与一个 Patch。逐条 CREATE_ELEMENT 会把 revision 顶高、
@@ -476,6 +559,172 @@ public final class ValidationEngine {
             }
         }
         return issues.isEmpty() ? "ok" : String.join("; ", issues);
+    }
+
+    /**
+     * 全量校验：结构完整性（ERROR）+ 需求追溯覆盖（WARNING），供校验问题面板与覆盖矩阵共用。
+     *
+     * <p>结构 ERROR 与 {@link #validateIncremental} 同源，但不按 affectedIds 过滤，一次扫完整快照；
+     * 命名唯一性用规范化字符串分组，避免 O(n²)。系统提供的通用扩展包子树不计入重名与需求覆盖——
+     * 那是元模型内容，不是用户模型质量问题。</p>
+     *
+     * <p>追溯 WARNING：需求未被 satisfy（无满足元素）或未被 verify（无验证）。方向沿用 SysML 约定——
+     * satisfy/verify 的 source 是满足/验证元素、target 是需求；同时承认 satisfiedBy/verifiedBy 元属性
+     * 与 TestCase.verifies 两种等价建模，任一成立即视为已覆盖。</p>
+     */
+    public List<ValidationIssue> validateFull(ModelSnapshot snapshot) {
+        List<ValidationIssue> issues = new ArrayList<>();
+        Set<String> extensionIds = ExtensionLibrary.subtreeIds(snapshot.elements());
+
+        Map<String, ModelElement> elementById = new LinkedHashMap<>();
+        for (ModelElement element : snapshot.elements()) {
+            elementById.put(element.id(), element);
+        }
+        Set<String> elementIds = elementById.keySet();
+        Map<String, Diagram> diagramById = new LinkedHashMap<>();
+        for (Diagram diagram : snapshot.diagrams()) {
+            diagramById.put(diagram.id(), diagram);
+        }
+        Set<String> diagramIds = diagramById.keySet();
+
+        // 图引用了不存在的元素：定位到图本身，点击即开图。
+        for (Diagram diagram : snapshot.diagrams()) {
+            for (String ref : diagram.elementIds()) {
+                if (!elementIds.contains(ref)) {
+                    issues.add(ValidationIssue.error("DANGLING_DIAGRAM_ELEMENT",
+                            "图「" + diagram.name() + "」引用了不存在的元素 " + ref,
+                            "diagram", diagram.id(), diagram.name()));
+                }
+            }
+        }
+        // 记法悬空：指向不存在的元素或图，定位到所属图。
+        for (Notation notation : snapshot.notations()) {
+            Diagram owner = diagramById.get(notation.diagramId());
+            String locateId = owner != null ? owner.id() : notation.diagramId();
+            String locateName = owner != null ? owner.name() : notation.diagramId();
+            if (!elementIds.contains(notation.elementId())) {
+                issues.add(ValidationIssue.error("DANGLING_NOTATION_ELEMENT",
+                        "记法 " + notation.id() + " 指向不存在的元素 " + notation.elementId(),
+                        "diagram", locateId, locateName));
+            }
+            if (!diagramIds.contains(notation.diagramId())) {
+                issues.add(ValidationIssue.error("DANGLING_NOTATION_DIAGRAM",
+                        "记法 " + notation.id() + " 指向不存在的图 " + notation.diagramId(),
+                        "diagram", locateId, locateName));
+            }
+        }
+        // 关系端点悬空：定位到仍存在的另一端元素，便于直接跳转。
+        for (Relationship relationship : snapshot.relationships()) {
+            if (!elementIds.contains(relationship.sourceId())) {
+                ModelElement anchor = elementById.get(relationship.targetId());
+                issues.add(ValidationIssue.error("DANGLING_REL_SOURCE",
+                        "关系「" + relationship.displayName() + "」的源端不存在 " + relationship.sourceId(),
+                        "element",
+                        anchor != null ? anchor.id() : relationship.id(),
+                        anchor != null ? anchor.name() : relationship.displayName()));
+            }
+            if (!elementIds.contains(relationship.targetId())) {
+                ModelElement anchor = elementById.get(relationship.sourceId());
+                issues.add(ValidationIssue.error("DANGLING_REL_TARGET",
+                        "关系「" + relationship.displayName() + "」的目标端不存在 " + relationship.targetId(),
+                        "element",
+                        anchor != null ? anchor.id() : relationship.id(),
+                        anchor != null ? anchor.name() : relationship.displayName()));
+            }
+        }
+        // 同命名空间重名（跳过系统扩展包）：按规范化 owner+name 分组，组内 >1 即逐个报。
+        Map<String, List<ModelElement>> byNamespaceName = new LinkedHashMap<>();
+        for (ModelElement element : snapshot.elements()) {
+            if (extensionIds.contains(element.id())) {
+                continue;
+            }
+            String key = normalizeOwner(element.ownerId()) + "\u0000" + normalize(element.name());
+            byNamespaceName.computeIfAbsent(key, k -> new ArrayList<>()).add(element);
+        }
+        for (List<ModelElement> group : byNamespaceName.values()) {
+            if (group.size() < 2) {
+                continue;
+            }
+            for (ModelElement element : group) {
+                issues.add(ValidationIssue.error("DUPLICATE_NAME",
+                        "同命名空间内重名：" + element.name(),
+                        "element", element.id(), element.name()));
+            }
+        }
+
+        // 需求追溯覆盖：与覆盖矩阵同源，未满足 / 未验证各报一条 WARNING。
+        for (RequirementCoverage coverage : requirementCoverage(snapshot)) {
+            if (!coverage.satisfied()) {
+                issues.add(ValidationIssue.warning("REQ_NOT_SATISFIED",
+                        "需求「" + coverage.name() + "」尚未被任何元素满足（satisfy）",
+                        "element", coverage.id(), coverage.name()));
+            }
+            if (!coverage.verified()) {
+                issues.add(ValidationIssue.warning("REQ_NOT_VERIFIED",
+                        "需求「" + coverage.name() + "」尚未被验证（verify / TestCase）",
+                        "element", coverage.id(), coverage.name()));
+            }
+        }
+        return issues;
+    }
+
+    /**
+     * 需求覆盖明细：每条需求的 satisfy / verify 覆盖来源元素，供覆盖矩阵渲染。
+     *
+     * <p>方向沿用 SysML 约定——satisfy/verify 的 source 是满足/验证元素、target 是需求；
+     * 同时承认 satisfiedBy/verifiedBy 元属性与 TestCase.verifies 两种等价建模，按 id 去重合并。
+     * 系统扩展包子树不含需求实例，跳过。与 {@link #validateFull} 的追溯 WARNING 共用这一份计算。</p>
+     */
+    public List<RequirementCoverage> requirementCoverage(ModelSnapshot snapshot) {
+        Set<String> extensionIds = ExtensionLibrary.subtreeIds(snapshot.elements());
+        Map<String, ModelElement> elementById = new LinkedHashMap<>();
+        for (ModelElement element : snapshot.elements()) {
+            elementById.put(element.id(), element);
+        }
+        Map<String, Set<String>> satisfySources = new LinkedHashMap<>();
+        Map<String, Set<String>> verifySources = new LinkedHashMap<>();
+        for (Relationship relationship : snapshot.relationships()) {
+            RelationshipType type = RelationshipType.fromAny(relationship.type()).orElse(null);
+            if (type == RelationshipType.SATISFY) {
+                satisfySources.computeIfAbsent(relationship.targetId(), k -> new LinkedHashSet<>())
+                        .add(relationship.sourceId());
+            } else if (type == RelationshipType.VERIFY) {
+                verifySources.computeIfAbsent(relationship.targetId(), k -> new LinkedHashSet<>())
+                        .add(relationship.sourceId());
+            }
+        }
+        for (ModelElement element : snapshot.elements()) {
+            if (ElementType.fromAny(element.type()).orElse(null) == ElementType.TEST_CASE) {
+                for (String reqId : referenceValues(element.properties().get("verifies"))) {
+                    verifySources.computeIfAbsent(reqId, k -> new LinkedHashSet<>()).add(element.id());
+                }
+            }
+        }
+        List<RequirementCoverage> result = new ArrayList<>();
+        for (ModelElement element : snapshot.elements()) {
+            if (extensionIds.contains(element.id())
+                    || ElementType.fromAny(element.type()).orElse(null) != ElementType.REQUIREMENT) {
+                continue;
+            }
+            Set<String> satisfiedBy = new LinkedHashSet<>(satisfySources.getOrDefault(element.id(), Set.of()));
+            satisfiedBy.addAll(referenceValues(element.properties().get("satisfiedBy")));
+            Set<String> verifiedBy = new LinkedHashSet<>(verifySources.getOrDefault(element.id(), Set.of()));
+            verifiedBy.addAll(referenceValues(element.properties().get("verifiedBy")));
+            result.add(new RequirementCoverage(element.id(), element.name(),
+                    !satisfiedBy.isEmpty(), !verifiedBy.isEmpty(),
+                    toCoverageRefs(satisfiedBy, elementById), toCoverageRefs(verifiedBy, elementById)));
+        }
+        return result;
+    }
+
+    private static List<RequirementCoverage.CoverageRef> toCoverageRefs(
+            Set<String> ids, Map<String, ModelElement> byId) {
+        List<RequirementCoverage.CoverageRef> refs = new ArrayList<>();
+        for (String id : ids) {
+            ModelElement element = byId.get(id);
+            refs.add(new RequirementCoverage.CoverageRef(id, element != null ? element.name() : id));
+        }
+        return refs;
     }
 
 /** 所有权规则：根节点只能是顶层容器；非根节点必须挂在允许包含该类型的父元素下。 */

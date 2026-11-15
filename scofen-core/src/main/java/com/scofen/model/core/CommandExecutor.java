@@ -115,6 +115,16 @@ public final class CommandExecutor {
         return repository.snapshot();
     }
 
+    /** 全量校验当前快照：结构 ERROR + 需求追溯 WARNING，供校验问题面板拉取。 */
+    public java.util.List<ValidationIssue> validateFull() {
+        return validation.validateFull(repository.snapshot());
+    }
+
+    /** 需求 satisfy / verify 覆盖明细，供需求覆盖矩阵渲染（与校验 WARNING 同源）。 */
+    public java.util.List<RequirementCoverage> requirementCoverage() {
+        return validation.requirementCoverage(repository.snapshot());
+    }
+
     public InMemoryModelRepository repository() {
         return repository;
     }

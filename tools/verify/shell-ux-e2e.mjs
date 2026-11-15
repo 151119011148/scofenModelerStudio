@@ -133,7 +133,9 @@ const level = await page.evaluate(`(()=>{
   const pad=(e)=>parseFloat(getComputedStyle(e).paddingLeft);
   return {
     rootPad:pad(root), groupPad:pad(group),
-    insideRoot: root.parentElement.contains(group),
+    // 要判的是「分组是不是项目根的后代」，不是「是否与根共享父容器」。
+    // 树改成统一容器后两者本就是兄弟，用 parentElement.contains 会恒为 true。
+    insideRoot: root.contains(group),
     rootId: root.getAttribute('data-tree-id'),
   }})()`)
 check('扩展包分组缩进与项目根一致', !!level && Math.abs(level.rootPad - level.groupPad) <= 1, JSON.stringify(level))

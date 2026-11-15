@@ -291,6 +291,63 @@ public final class InMemoryModelRepository {
                     inverse = Command.of("DELETE_ELEMENTS", revision, "create-elements:inverse",
                             Map.of("ids", List.copyOf(created)));
                 }
+                case "PASTE_ELEMENTS" -> {
+                    // 粘贴 / 副本原子落库：元素、图归属、记法、批内关系一条命令完成，
+                    // 逆命令是一条 DELETE_ELEMENTS（级联收回关系 / 记法 / 图归属），撤销一步回到粘贴前。
+                    List<String> created = new ArrayList<>();
+                    for (Map<String, Object> row : cmd.mapList("elements")) {
+                        String id = str(row, "id");
+                        ModelElement element = new ModelElement(id, str(row, "type"), str(row, "name"),
+                                strList(row, "stereotypes"), blankToNull(str(row, "ownerId")),
+                                orEmpty(str(row, "documentation")), strMap(row, "taggedValues"),
+                                blankToNull(str(row, "xmiId")), objectMap(row, "properties"));
+                        elements.put(id, element);
+                        changes.add(new Change("add", "element", id, null, element));
+                        affected.add(id);
+                        created.add(id);
+                    }
+                    String diagramId = cmd.str("diagramId");
+                    List<Map<String, Object>> notationRows = cmd.mapList("notations");
+                    if (diagramId != null && !diagramId.isBlank() && !notationRows.isEmpty()) {
+                        Diagram before = diagrams.get(diagramId);
+                        List<String> refs = new ArrayList<>(before.elementIds());
+                        for (Map<String, Object> row : notationRows) {
+                            String elementId = str(row, "elementId");
+                            if (!refs.contains(elementId)) {
+                                refs.add(elementId);
+                            }
+                        }
+                        Diagram after = withRefs(before, List.copyOf(refs));
+                        diagrams.put(diagramId, after);
+                        changes.add(new Change("update", "diagram", diagramId, before, after));
+                        affected.add(diagramId);
+                        for (Map<String, Object> row : notationRows) {
+                            String elementId = str(row, "elementId");
+                            String id = notationId(diagramId, elementId);
+                            Notation notation = new Notation(id, diagramId, elementId, dbl(row, "x"), dbl(row, "y"),
+                                    dbl(row, "width", NODE_WIDTH), dbl(row, "height", NODE_HEIGHT), Map.of());
+                            notations.put(id, notation);
+                            changes.add(new Change("add", "notation", id, null, notation));
+                            affected.add(id);
+                            affected.add(elementId);
+                        }
+                    }
+                    for (Map<String, Object> row : cmd.mapList("relationships")) {
+                        String id = str(row, "id");
+                        Relationship relationship = new Relationship(id, str(row, "type"),
+                                str(row, "sourceId"), str(row, "targetId"),
+                                orEmpty(str(row, "name")), orEmpty(str(row, "documentation")),
+                                strList(row, "stereotypes"), null,
+                                strMap(row, "taggedValues"), objectMap(row, "properties"));
+                        relationships.put(id, relationship);
+                        changes.add(new Change("add", "relationship", id, null, relationship));
+                        affected.add(id);
+                        affected.add(relationship.sourceId());
+                        affected.add(relationship.targetId());
+                    }
+                    inverse = Command.of("DELETE_ELEMENTS", revision, "paste:inverse",
+                            Map.of("ids", List.copyOf(created)));
+                }
                 case "DELETE_ELEMENTS" -> {
                     List<String> ids = cmd.strList("ids");
                     if (ids.isEmpty()) {

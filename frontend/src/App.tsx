@@ -1,5 +1,5 @@
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { CSSProperties, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent, PointerEvent as ReactPointerEvent, ReactNode, UIEvent as ReactUIEvent } from 'react'
 import {
   clearSession,
   createProject,
@@ -15,6 +15,7 @@ import {
   getProjectId,
   getProperties,
   getRelationships,
+  getValidation,
   getWorkspaces,
   importXmi,
   loadSession,
@@ -35,12 +36,16 @@ import type {
   Health,
   ModelElement,
   ModelSnapshot,
+  Patch,
   PropertyCatalogInfo,
   PropertySpec,
   PropertyView,
   Relationship,
   RelationshipTypeInfo,
+  RequirementCoverage,
   Session,
+  ValidationIssue,
+  ValidationReport,
   WorkspaceDirectoryInfo,
   WorkspaceProject,
 } from './types'
@@ -57,6 +62,8 @@ import { pick, setLocale, t, useLocale } from './i18n'
 import LocaleSwitch from './LocaleSwitch'
 import LoginView from './LoginView'
 import AdminPanel from './AdminPanel'
+import { buildModelReportHtml } from './report'
+import TaggedValuesEditor from './TaggedValuesEditor'
 
 const EMPTY_MODEL: ModelSnapshot = {
   revision: 0,
@@ -69,6 +76,37 @@ const EMPTY_MODEL: ModelSnapshot = {
 const FALLBACK_CANVAS = { maxX: 4000, maxY: 2600, width: 640, height: 420 }
 const FALLBACK_NODE = { width: 168, height: 84 }
 const ROOT_KEY = '__root__'
+
+/** SysML 图框首页标签的图种色：九种图各取一个可辨识色相，边框统一中性色，避免满屏彩虹。 */
+const FRAME_KIND_COLORS: Record<string, string> = {
+  pkg: '#6b46c1', req: '#2b6cb0', bdd: '#2c7a7b', ibd: '#2f855a', par: '#805ad5',
+  act: '#b7791f', seq: '#3182ce', stm: '#c05621', uc: '#b23c3c',
+}
+/** 估算单行文本宽度：CJK / 全角字符按整字号，其余按 0.58 字号，用于图框首页标签自适应宽度。 */
+function estimateTextWidth(text: string, size: number): number {
+  let width = 0
+  for (const ch of text) {
+    width += /[\u3400-\u9fff\u3000-\u303f\uff00-\uffef]/.test(ch) ? size : size * 0.58
+  }
+  return width
+}
+/** SysML 图框几何：内容四周外扩边距、首页标签高度与切角，渲染与「适应窗口 / 平移夹紧」共用同一套数。 */
+const FRAME_MARGIN = 28
+const FRAME_HEADER_H = 40
+const FRAME_NOTCH = 16
+type FrameBox = { left: number; top: number; right: number; bottom: number }
+/** 图框开启时把内容包围盒外扩成含首页标签的包围盒：否则适应窗口会裁掉顶部图种 / 图名标签。 */
+function expandBoxForFrame(box: FrameBox, frameOpen: boolean): FrameBox {
+  if (!frameOpen) {
+    return box
+  }
+  return {
+    left: box.left - FRAME_MARGIN,
+    top: box.top - FRAME_MARGIN - FRAME_HEADER_H,
+    right: box.right + FRAME_MARGIN,
+    bottom: box.bottom + FRAME_MARGIN,
+  }
+}
 /**
  * 没有打开任何图时，画布把整个模型铺开成一张总览。一个元素约 6 个 SVG 节点，
  * 5159 个（含标准库）就是 2.8 万节点，左侧任意一次折叠/选中都要为它重排一轮布局
@@ -99,6 +137,87 @@ const FIT_PADDING = 40
  * 留点余量按图切批：宁可多一次撤销步，也不要大项目一次排布直接失败。
  */
 const LAYOUT_BATCH_MAX = 4000
+
+/**
+ * 模型树虚拟化：行数超过阈值才启用窗口渲染。行高在虚拟模式下由 CSS 强制统一，
+ * 上下用占位 div 撑出总高度，滚动只渲染视口附近几十行——几千行的树折叠 / 定位
+ * 不再整树挂载。阈值以下保持原样，小树的 scrollIntoView 等行为完全不变。
+ */
+const TREE_VIRTUAL_THRESHOLD = 400
+const TREE_ROW_H = 28
+/** 全局搜索：输入防抖与结果上限，避免大项目每敲一个字全量打分渲染上百行。 */
+const SEARCH_DEBOUNCE_MS = 120
+const SEARCH_MAX_RESULTS = 50
+
+/** 服务端 Patch.changes 的一条明细（before/after 与快照条目同构）。 */
+interface PatchChange {
+  op: 'add' | 'update' | 'remove'
+  objectType: 'element' | 'relationship' | 'diagram' | 'notation'
+  id: string
+  before: unknown
+  after: unknown
+}
+
+/** 全局搜索的一条命中：元素 / 图 / 关系，sub 是类型或端点摘要。 */
+interface SearchResult {
+  kind: 'element' | 'diagram' | 'relation'
+  id: string
+  name: string
+  sub: string
+  score: number
+}
+
+/**
+ * 把命令返回的变更明细就地应用到快照，省掉一次全量 GET /api/model。
+ *
+ * <p>服务端按操作顺序逐条发出 add/update/remove，Map 的插入序与仓库一致，
+ * 应用后的排列与下一次全量刷新相同。任何一条明细形状不符（未知类型、update
+ * 找不到原对象、after 缺失）都返回 null，调用方退回全量刷新——增量是优化，
+ * 正确性永远由权威快照兜底。</p>
+ */
+function applyPatchChanges(base: ModelSnapshot, raw: unknown[]): ModelSnapshot | null {
+  if (!Array.isArray(raw) || raw.length === 0) {
+    return null
+  }
+  const tables: Record<PatchChange['objectType'], Map<string, unknown>> = {
+    element: new Map(base.elements.map((item) => [item.id, item])),
+    relationship: new Map(base.relationships.map((item) => [item.id, item])),
+    diagram: new Map(base.diagrams.map((item) => [item.id, item])),
+    notation: new Map(base.notations.map((item) => [item.id, item])),
+  }
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') {
+      return null
+    }
+    const change = item as Partial<PatchChange>
+    if (typeof change.id !== 'string' || !change.objectType || !(change.objectType in tables)) {
+      return null
+    }
+    const table = tables[change.objectType]
+    if (change.op === 'remove') {
+      table.delete(change.id)
+      continue
+    }
+    if (change.op !== 'add' && change.op !== 'update') {
+      return null
+    }
+    const value = change.after
+    if (!value || typeof value !== 'object' || (value as { id?: unknown }).id !== change.id) {
+      return null
+    }
+    if (change.op === 'update' && !table.has(change.id)) {
+      return null
+    }
+    table.set(change.id, value)
+  }
+  return {
+    revision: base.revision,
+    elements: [...tables.element.values()] as ModelSnapshot['elements'],
+    relationships: [...tables.relationship.values()] as ModelSnapshot['relationships'],
+    diagrams: [...tables.diagram.values()] as ModelSnapshot['diagrams'],
+    notations: [...tables.notation.values()] as ModelSnapshot['notations'],
+  }
+}
 
 /** 两栏拖拽宽度的边界：太窄放不下属性表，太宽会把画布挤没。 */
 const DOCK_LEFT_MIN = 200
@@ -503,6 +622,8 @@ interface DeleteDialogState {
   elementId: string
   name: string
   count: number
+  /** 批量删除的根 id 列表（多选时）；缺省按单元素删除。 */
+  ids?: string[]
 }
 
 interface DiagramDialogState {
@@ -528,7 +649,27 @@ interface DragState {
   x: number
   y: number
   moved: boolean
+  /** 多选整体拖动：其余选中图形的起手坐标，随主图形同一增量平移，落库一条 SET_NOTATIONS。 */
+  group?: { id: string; originX: number; originY: number }[]
 }
+
+/** Shift+空白拖拽的框选矩形（模型坐标）。 */
+interface MarqueeState {
+  startX: number
+  startY: number
+  x: number
+  y: number
+}
+
+/** 画布剪贴板：复制时冻结元素 / 批内关系 / 记法，粘贴时整体重建为新 id 的副本。 */
+interface ClipboardSnapshot {
+  diagramId: string
+  elements: ModelElement[]
+  relationships: Relationship[]
+  notations: { elementId: string; x: number; y: number; w: number; h: number }[]
+}
+
+type AlignMode = 'left' | 'right' | 'top' | 'bottom' | 'centerH' | 'centerV' | 'distH' | 'distV'
 
 /** 连线走线拖拽：按住某一段沿垂直方向平移，orig 保留起手路由供增量计算。 */
 interface EdgeDragState {
@@ -718,6 +859,14 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [selectedDiagramId, setSelectedDiagramId] = useState<string | null>(null)
   // 关系是独立模型对象：选中连线后在属性窗口按关系类型的元类链编辑属性。
   const [selectedRelationId, setSelectedRelationId] = useState<string | null>(null)
+  // 画布多选：selectedId 仍是主选中（属性窗口 / 树定位的对象），selectedIds 是完整选择集。
+  // Shift/Ctrl+点选切换成员，Shift+空白拖拽框选；主选中变化且不在集合内时集合收敛为单选。
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [marquee, setMarquee] = useState<MarqueeState | null>(null)
+  const [clipboard, setClipboard] = useState<ClipboardSnapshot | null>(null)
+  // 方向键微调：先本地偏移实时预览，停顿 350ms 后一条 SET_NOTATIONS 落库（一次 bursts 一步撤销）。
+  const [nudge, setNudge] = useState<{ dx: number; dy: number } | null>(null)
+  const nudgeTimer = useRef<number | null>(null)
   // 状态栏消息只存「词条 + 变量」，渲染时才翻译：切换语言后历史消息会跟着重译。
   const [message, setMessage] = useState<MessageState>({ key: '正在连接服务端…' })
   const say = useCallback((key: string, vars?: Record<string, unknown>) => {
@@ -781,7 +930,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       setSeqMessageTool(null)
     }
   }, [relationTool])
-  const [propsTab, setPropsTab] = useState<'attrs' | 'tags' | 'relations' | 'notation'>('attrs')
+  const [propsTab, setPropsTab] = useState<'attrs' | 'tags' | 'relations' | 'whereused' | 'notation'>('attrs')
   // 属性窗口：UML 2.5.1 / SysML 1.6 元属性目录由服务端下发，三档只影响展示数量。
   const [propCatalog, setPropCatalog] = useState<PropertyCatalogInfo | null>(null)
   const [propView, setPropView] = useState<PropertyView>('STANDARD')
@@ -897,6 +1046,60 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     moved: boolean
   } | null>(null)
 
+  // ── B2 导航与性能：全局搜索 / 小地图 / 模型树虚拟化 ──
+  /** Ctrl/⌘+K 全局搜索面板：输入防抖后按名称 / 文档 / 标签 / 属性值打分。 */
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [searchNeedle, setSearchNeedle] = useState('')
+  const [searchIndex, setSearchIndex] = useState(0)
+  /** 小地图开关：默认打开，偏好落 localStorage。 */
+  const [minimapOpen, setMinimapOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem('scofen.modeler.minimap') !== '0'
+    } catch {
+      return true
+    }
+  })
+  /** 底部校验坞：问题面板 / 需求覆盖矩阵。开关持久化，默认收起以免挤占画布。 */
+  const [bottomDockOpen, setBottomDockOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem('scofen.modeler.bottomDock') === '1'
+    } catch {
+      return false
+    }
+  })
+  const [bottomDockTab, setBottomDockTab] = useState<'problems' | 'coverage'>('problems')
+  const [validationReport, setValidationReport] = useState<ValidationReport | null>(null)
+  const [validationLoading, setValidationLoading] = useState(false)
+  const [validationError, setValidationError] = useState<string | null>(null)
+  const [problemFilter, setProblemFilter] = useState<'all' | 'error' | 'warning'>('all')
+  const [coverageFilter, setCoverageFilter] = useState<'all' | 'unsatisfied' | 'unverified' | 'uncovered'>('all')
+  /** SysML 标准图框（图种首页标签 + 图名）：默认开，导出随之带上。 */
+  const [diagramFrameOpen, setDiagramFrameOpen] = useState(() => {
+    try {
+      return window.localStorage.getItem('scofen.modeler.diagramFrame') !== '0'
+    } catch {
+      return true
+    }
+  })
+  /** 模型树滚动视口（虚拟化窗口取行用）：高度由 ResizeObserver 实测。 */
+  const [treeViewport, setTreeViewport] = useState({ top: 0, height: 600 })
+
+  // ── B4 版本与交付：模型报告预览 / 导出 ──
+  /** 报告 overlay 开关；reportHtml 为空表示正在装配（拉权威校验 + 生成）。 */
+  const [reportOpen, setReportOpen] = useState(false)
+  const [reportHtml, setReportHtml] = useState('')
+  const [reportError, setReportError] = useState<string | null>(null)
+  const reportFrameRef = useRef<HTMLIFrameElement | null>(null)
+
+  const openSearch = useCallback(() => {
+    setSearchQuery('')
+    setSearchNeedle('')
+    setSearchIndex(0)
+    setSearchOpen(true)
+  }, [])
+  const closeSearch = useCallback(() => setSearchOpen(false), [])
+
   // 所有 /api 请求都带当前项目头；在渲染期同步，避免切换项目时首帧请求串到旧项目。
   setProjectId(activeProjectId)
 
@@ -908,6 +1111,21 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   // 命令的 baseRevision 必须取「最新已知 revision」而非渲染闭包里的 model.revision：
   // 同一次事件里连续发两条命令时，state 尚未更新，旧值会触发 409 乐观锁冲突。
   const revisionRef = useRef(0)
+  /** 最新快照的同步镜像：增量应用要在 setState 生效前就能读到上一次的结果。 */
+  const modelRef = useRef(model)
+  modelRef.current = model
+  /** WS Patch 合并窗口：远端连续命令只触发一次全量刷新。 */
+  const patchTimer = useRef(0)
+  /** 合并窗口里待刷新的最高 revision：自己的命令回声先于 HTTP 响应到达时会排一次
+   *  全量刷新，增量应用追上这个 revision 后该刷新就是多余的，取消掉。 */
+  const pendingRefreshRevision = useRef(0)
+  /** 模型树滚动容器与虚拟化取行：定位大行号时直接算 scrollTop，不依赖行已挂载。 */
+  const browserRef = useRef<HTMLDivElement | null>(null)
+  const treeScrollRaf = useRef(0)
+  const visibleRowsRef = useRef<TreeRowProps[]>([])
+  /** 小地图：点击 / 拖动把视口中心移到落点。 */
+  const minimapRef = useRef<SVGSVGElement | null>(null)
+  const minimapDragRef = useRef(false)
 
   /** 拉取当前项目的权威快照；失败返回 false，由 bootstrap 统一调度重试。 */
   const refresh = useCallback(async (): Promise<boolean> => {
@@ -943,6 +1161,73 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }, [])
 
+  /** 轻量刷新：只取健康与空间目录（撤销深度 / 项目计数），不拉全量模型。 */
+  const refreshLight = useCallback(async () => {
+    const [nextHealth, nextWorkspace] = await Promise.all([
+      getHealth().catch(() => null),
+      getWorkspaces().catch(() => null),
+    ])
+    if (nextHealth) {
+      setHealth(nextHealth)
+    }
+    if (nextWorkspace) {
+      setWorkspace(nextWorkspace)
+    }
+  }, [])
+
+  /** 校验报告请求序号：丢弃过期响应，避免快速切项目 / 连续命令时旧结果覆盖新结果。 */
+  const validationReqRef = useRef(0)
+  /** 拉取服务端权威校验报告（结构问题 + 需求覆盖）。状态栏计数与底部坞共用这一份。 */
+  const loadValidation = useCallback(async (): Promise<void> => {
+    const token = ++validationReqRef.current
+    const projectAtStart = getProjectId()
+    setValidationLoading(true)
+    try {
+      const report = await getValidation()
+      if (token !== validationReqRef.current || getProjectId() !== projectAtStart) {
+        return
+      }
+      setValidationReport(report)
+      setValidationError(null)
+    } catch (error) {
+      if (token !== validationReqRef.current || getProjectId() !== projectAtStart) {
+        return
+      }
+      setValidationError(errorMessage(error))
+    } finally {
+      if (token === validationReqRef.current) {
+        setValidationLoading(false)
+      }
+    }
+  }, [])
+
+  /**
+   * 命令成功后的增量落地：revision 恰好 +1 且明细完整时就地应用，省掉全量
+   * GET /api/model（大项目几 MB）；否则退回权威快照。健康信息（撤销 / 重做深度）
+   * 与空间计数仍要刷新，但它们是轻量接口。
+   */
+  const applyLocalPatch = useCallback(async (patch: Patch, baseRevision: number): Promise<void> => {
+    const base = modelRef.current
+    const next = patch.revision === baseRevision + 1 && base.revision === baseRevision
+      ? applyPatchChanges(base, patch.changes)
+      : null
+    if (next) {
+      next.revision = patch.revision
+      modelRef.current = next
+      setModel(next)
+      // 自己的命令回声可能已排了一次全量刷新；本地增量已追平该 revision，取消它。
+      // 只取消「不高于本次」的待刷新：更高的 revision 属于别的会话，仍要拉权威快照。
+      if (patchTimer.current !== 0 && pendingRefreshRevision.current <= patch.revision) {
+        window.clearTimeout(patchTimer.current)
+        patchTimer.current = 0
+        pendingRefreshRevision.current = 0
+      }
+      await refreshLight()
+    } else {
+      await refresh()
+    }
+  }, [refresh, refreshLight])
+
   /**
    * 元模型目录与项目无关，但失败必须能重试：containment 为 null 时「新建元素」
    * 对话框会退化成「该父类型不允许再包含子元素」这种误导性的空状态。
@@ -954,6 +1239,29 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       // 隐私模式 / 禁用存储时忽略，功能本身不受影响。
     }
   }, [showExtensions])
+
+  // 校验报告随 revision 变化 debounce 刷新：一连串拖拽 / 微调只触发一次全量校验，
+  // 状态栏计数与底部坞都读这一份服务端权威结果，不在浏览器里重算规则。
+  useEffect(() => {
+    const handle = window.setTimeout(() => { void loadValidation() }, 350)
+    return () => window.clearTimeout(handle)
+  }, [model.revision, loadValidation])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('scofen.modeler.bottomDock', bottomDockOpen ? '1' : '0')
+    } catch {
+      // 忽略存储失败，开关本身仍可用。
+    }
+  }, [bottomDockOpen])
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('scofen.modeler.diagramFrame', diagramFrameOpen ? '1' : '0')
+    } catch {
+      // 忽略存储失败。
+    }
+  }, [diagramFrameOpen])
 
   /** 图表分组的折叠状态落 localStorage：刷新后保持上次展开/折叠的类型。 */
   useEffect(() => {
@@ -986,6 +1294,37 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       // 隐私模式 / 禁用存储时忽略。
     }
   }, [propsHeight])
+
+  /** 搜索输入防抖：停顿后才全量打分，连续敲键不触发中间态渲染。 */
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearchNeedle(searchQuery.trim().toLowerCase()), SEARCH_DEBOUNCE_MS)
+    return () => window.clearTimeout(timer)
+  }, [searchQuery])
+
+  /** 小地图开关偏好落 localStorage。 */
+  useEffect(() => {
+    try {
+      window.localStorage.setItem('scofen.modeler.minimap', minimapOpen ? '1' : '0')
+    } catch {
+      // 隐私模式 / 禁用存储时忽略。
+    }
+  }, [minimapOpen])
+
+  /** 模型树视口实测：左栏拖拽 / 窗口缩放都会改变可视高度，虚拟化窗口随之取行。 */
+  useEffect(() => {
+    const node = browserRef.current
+    if (!node || typeof ResizeObserver === 'undefined') {
+      return
+    }
+    const observer = new ResizeObserver(() => {
+      setTreeViewport((current) => (
+        current.height === node.clientHeight ? current : { top: node.scrollTop, height: node.clientHeight }
+      ))
+    })
+    observer.observe(node)
+    setTreeViewport({ top: node.scrollTop, height: node.clientHeight })
+    return () => observer.disconnect()
+  }, [leftTab])
 
   /**
    * 窗口变矮时把自定义高度收进可用范围：否则模型树会被挤到 0 高，
@@ -1132,9 +1471,25 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       socket.onopen = () => { attempt = 0 }
       socket.onmessage = (event: MessageEvent<string>) => {
         try {
-          const payload = JSON.parse(event.data) as { type?: string }
+          const payload = JSON.parse(event.data) as { type?: string; revision?: number }
           if (payload.type === 'patch') {
-            void refresh()
+            // 自己命令的回声：增量应用已把 revision 推进到位，再拉一次全量纯属浪费。
+            const revision = typeof payload.revision === 'number' ? payload.revision : 0
+            if (revision > 0 && revision <= revisionRef.current) {
+              return
+            }
+            // 远端连续命令合并成一次刷新：广播只带 id 不带明细，权威快照仍是兜底。
+            if (revision > pendingRefreshRevision.current) {
+              pendingRefreshRevision.current = revision
+            }
+            if (patchTimer.current !== 0) {
+              window.clearTimeout(patchTimer.current)
+            }
+            patchTimer.current = window.setTimeout(() => {
+              patchTimer.current = 0
+              pendingRefreshRevision.current = 0
+              void refresh()
+            }, 120)
           }
         } catch {
           // 忽略非 JSON 心跳帧
@@ -1153,6 +1508,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return () => {
       stopped = true
       window.clearTimeout(timer)
+      if (patchTimer.current !== 0) {
+        window.clearTimeout(patchTimer.current)
+        patchTimer.current = 0
+        pendingRefreshRevision.current = 0
+      }
       socket?.close()
     }
   }, [refresh, activeProjectId, session.token])
@@ -1585,6 +1945,28 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     [model.elements, selectedId],
   )
 
+  /** 画布操作使用的选择集：多选状态为空时退回主选中，保证单选路径行为不变。 */
+  const selectionSet = useMemo(() => {
+    if (selectedIds.size > 0) {
+      return selectedIds
+    }
+    return selectedId ? new Set([selectedId]) : new Set<string>()
+  }, [selectedIds, selectedId])
+
+  // 主选中切换到集合外的对象（树点选 / 新建 / 定位）时，多选收敛为单选；
+  // Shift+点选先把新主选中写进集合再改 selectedId，这里看到 has=true 就保留整组。
+  useEffect(() => {
+    setSelectedIds((previous) => {
+      if (!selectedId) {
+        return previous.size === 0 ? previous : new Set()
+      }
+      if (previous.has(selectedId)) {
+        return previous
+      }
+      return new Set([selectedId])
+    })
+  }, [selectedId])
+
   /** 元素 id → 元素：引用型属性据此把 id 还原成「缩略图 + 名称」。 */
   const elementById = useMemo(
     () => new Map(model.elements.map((element) => [element.id, element])),
@@ -1811,6 +2193,49 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       : null),
     [model.notations, activeDiagramId, selectedId],
   )
+
+  /**
+   * Where-used：选中对象被哪些图、关系、属性引用。与「关系」页签的出 / 入边不同，
+   * 这里回答的是「谁依赖我」——所在图、指向我的关系、引用型属性指到我的对象、所有者。
+   * 关系的引用面是两端元素与同时包含两端的图。属性扫描只在选中对象变化时跑一次。
+   */
+  const whereUsed = useMemo(() => {
+    const target = selected ?? selectedRelation
+    if (!target) {
+      return null
+    }
+    const targetId = target.id
+    const diagrams = selected
+      ? model.diagrams.filter((diagram) => diagram.elementIds.includes(targetId))
+      : model.diagrams.filter((diagram) =>
+        diagram.elementIds.includes(selectedRelation!.sourceId) && diagram.elementIds.includes(selectedRelation!.targetId))
+    const incoming = selected ? model.relationships.filter((relation) => relation.targetId === targetId) : []
+    const referrers: { id: string; name: string; kind: 'element' | 'relation'; key: string }[] = []
+    const scan = (object: ModelElement | Relationship, kind: 'element' | 'relation') => {
+      if (object.id === targetId) {
+        return
+      }
+      for (const [key, value] of Object.entries(object.properties ?? {})) {
+        const values = Array.isArray(value) ? value : [value]
+        if (values.some((item) => item === targetId)) {
+          referrers.push({ id: object.id, name: object.name, kind, key })
+        }
+      }
+    }
+    for (const element of model.elements) {
+      scan(element, 'element')
+    }
+    for (const relation of model.relationships) {
+      scan(relation, 'relation')
+    }
+    const owner = selected?.ownerId ? elementById.get(selected.ownerId) ?? null : null
+    const endpoints = selectedRelation
+      ? [elementById.get(selectedRelation.sourceId), elementById.get(selectedRelation.targetId)]
+        .filter((item): item is ModelElement => item !== undefined)
+      : []
+    const total = diagrams.length + incoming.length + referrers.length + (owner ? 1 : 0) + endpoints.length
+    return { diagrams, incoming, referrers, owner, endpoints, total }
+  }, [selected, selectedRelation, model.diagrams, model.relationships, model.elements, elementById])
 
   const renderRelationLink = (relation: Relationship, direction: 'out' | 'in') => {
     const otherId = direction === 'out' ? relation.targetId : relation.sourceId
@@ -2736,16 +3161,27 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       const baseX = (notation?.x ?? 36 + (index % 3) * 196) + (glyph && notation ? (oldW - glyph.w) / 2 : 0)
       const baseY = (notation?.y ?? 36 + Math.floor(index / 3) * 128) + (glyph && notation ? (oldH - glyph.h) / 2 : 0)
       const active = drag?.elementId === element.id ? drag : null
+      const groupMember = !active && drag?.group ? drag.group.find((member) => member.id === element.id) : undefined
+      let px = active?.x ?? baseX
+      let py = active?.y ?? baseY
+      if (groupMember && drag) {
+        px = clamp(groupMember.originX + (drag.x - drag.originX), 0, canvas.maxX)
+        py = clamp(groupMember.originY + (drag.y - drag.originY), 0, canvas.maxY)
+      }
+      if (nudge && selectionSet.has(element.id)) {
+        px += nudge.dx
+        py += nudge.dy
+      }
       return {
         element,
-        x: active?.x ?? baseX,
-        y: active?.y ?? baseY,
+        x: px,
+        y: py,
         w: glyph?.w ?? oldW,
         h: glyph?.h ?? oldH,
       }
     // 垫底形状（泳道、生命线）先画：SVG 后画的盖在先画的上面，不透明底必须垫在动作/消息之下。
     }).sort((a, b) => Number(isBackdropShape(shapeOf(b.element.type))) - Number(isBackdropShape(shapeOf(a.element.type))))
-  }, [visibleElements, model.notations, activeDiagramId, drag, nodeSize.width, nodeSize.height])
+  }, [visibleElements, model.notations, activeDiagramId, drag, nodeSize.width, nodeSize.height, selectionSet, nudge, canvas.maxX, canvas.maxY])
 
   /**
    * 序列图的图面计算：生命线列、消息时间槽、激活条与内容盒。
@@ -2805,17 +3241,18 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       setPan({ x: 0, y: 0 })
       return
     }
-    const left = contentBox.left
-    const top = contentBox.top
-    const width = contentBox.right - left + FIT_PADDING * 2
-    const height = contentBox.bottom - top + FIT_PADDING * 2
+    const box = expandBoxForFrame(contentBox, diagramFrameOpen && !!activeDiagramObj)
+    const left = box.left
+    const top = box.top
+    const width = box.right - left + FIT_PADDING * 2
+    const height = box.bottom - top + FIT_PADDING * 2
     const next = clamp(Math.min(canvas.width / width, canvas.height / height), ZOOM_MIN, 1)
     setZoom(Number(next.toFixed(3)))
     setPan({
       x: Math.round(left - FIT_PADDING - (canvas.width / next - width) / 2),
       y: Math.round(top - FIT_PADDING - (canvas.height / next - height) / 2),
     })
-  }, [contentBox, canvas.width, canvas.height])
+  }, [contentBox, canvas.width, canvas.height, diagramFrameOpen, activeDiagramObj])
 
   // 排布写完坐标才缩放：模型是异步刷回来的，先立个牌子，等新记法渲染出来再适应窗口。
   const fitAfterLayout = useRef(false)
@@ -3044,15 +3481,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
     setBusy(true)
     try {
+      const baseRevision = revisionRef.current
       const patch = await postCommand({
         type,
         payload,
-        baseRevision: revisionRef.current,
+        baseRevision,
         clientCmdId: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       })
       revisionRef.current = patch.revision
       say('已应用 rev {revision} · {count} 个对象受影响 · 校验：{delta}', { revision: patch.revision, count: patch.affectedIds.length, delta: patch.validationDelta })
-      await refresh()
+      await applyLocalPatch(patch, baseRevision)
       return true
     } catch (error) {
       say('操作失败：{error}', { error: errorMessage(error) })
@@ -3235,10 +3673,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     if (!deleteDialog) {
       return
     }
-    const removedIds = new Set([deleteDialog.elementId, ...descendants(deleteDialog.elementId)])
-    const ok = await runCommand('DELETE_ELEMENT', { id: deleteDialog.elementId })
-    if (ok && selectedId && removedIds.has(selectedId)) {
-      setSelectedId(null)
+    const ids = deleteDialog.ids && deleteDialog.ids.length > 0 ? deleteDialog.ids : [deleteDialog.elementId]
+    const removedIds = new Set(ids.flatMap((id) => [id, ...descendants(id)]))
+    const ok = ids.length > 1
+      ? await runCommand('DELETE_ELEMENTS', { ids })
+      : await runCommand('DELETE_ELEMENT', { id: ids[0] })
+    if (ok) {
+      if (selectedId && removedIds.has(selectedId)) {
+        setSelectedId(null)
+      }
+      setSelectedIds((previous) => new Set([...previous].filter((id) => !removedIds.has(id))))
     }
     setDeleteDialog(null)
   }
@@ -3260,30 +3704,32 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const handleUndo = useCallback(async () => {
     setBusy(true)
     try {
+      const baseRevision = revisionRef.current
       const patch = await undo()
       revisionRef.current = patch.revision
       say('已撤销至 rev {revision}', { revision: patch.revision })
-      await refresh()
+      await applyLocalPatch(patch, baseRevision)
     } catch (error) {
       say('撤销失败：{error}', { error: errorMessage(error) })
     } finally {
       setBusy(false)
     }
-  }, [refresh])
+  }, [applyLocalPatch])
 
   const handleRedo = useCallback(async () => {
     setBusy(true)
     try {
+      const baseRevision = revisionRef.current
       const patch = await redo()
       revisionRef.current = patch.revision
       say('已重做至 rev {revision}', { revision: patch.revision })
-      await refresh()
+      await applyLocalPatch(patch, baseRevision)
     } catch (error) {
       say('重做失败：{error}', { error: errorMessage(error) })
     } finally {
       setBusy(false)
     }
-  }, [refresh])
+  }, [applyLocalPatch])
 
   /**
    * 上移 / 下移一条序列图消息：整条时间轴归一化后由一条 SET_MESSAGE_ORDER 写完，
@@ -3322,6 +3768,296 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }, [canEdit, seqLayout, runCommand])
 
+  /* ---------------- 画布多选编辑：复制 / 粘贴 / 对齐 / 微调 ---------------- */
+
+  /** 方向键微调落库：positions 已含偏移量，直接写绝对坐标；刷新完成后再清偏移避免回跳。 */
+  const commitNudge = () => {
+    if (nudgeTimer.current !== null) {
+      window.clearTimeout(nudgeTimer.current)
+      nudgeTimer.current = null
+    }
+    if (!nudge || !activeDiagramId) {
+      setNudge(null)
+      return
+    }
+    const items = positions
+      .filter((item) => selectionSet.has(item.element.id) && !isBackdropShape(shapeOf(item.element.type)))
+      .map((item) => ({
+        diagramId: activeDiagramId,
+        elementId: item.element.id,
+        x: clamp(Math.round(item.x), 0, canvas.maxX),
+        y: clamp(Math.round(item.y), 0, canvas.maxY),
+        width: item.w,
+        height: item.h,
+      }))
+    if (items.length === 0) {
+      setNudge(null)
+      return
+    }
+    void runCommand('SET_NOTATIONS', { items }).then(() => setNudge(null))
+  }
+  const commitNudgeRef = useRef(commitNudge)
+  commitNudgeRef.current = commitNudge
+  // 删除 / 重命名声明在组件后段，键盘 effect 的依赖数组在渲染期求值会踩 TDZ，用 ref 转发。
+  const deleteSelectionRef = useRef<() => void>(() => {})
+  const renameSelectionRef = useRef<() => void>(() => {})
+  useEffect(() => () => {
+    if (nudgeTimer.current !== null) {
+      window.clearTimeout(nudgeTimer.current)
+    }
+  }, [])
+  // 切图时丢弃未提交的框选与微调偏移，避免把上一张图的选择状态带进新画布。
+  useEffect(() => {
+    setMarquee(null)
+    setNudge(null)
+    setSelectedIds(new Set())
+    if (nudgeTimer.current !== null) {
+      window.clearTimeout(nudgeTimer.current)
+      nudgeTimer.current = null
+    }
+  }, [activeDiagramId])
+
+  /** 冻结当前选择为剪贴板快照：含选中元素的后代（深拷贝语义）与两端都在批内的关系。 */
+  const buildSnapshot = (): ClipboardSnapshot | null => {
+    const onCanvas = positions.filter((item) =>
+      selectionSet.has(item.element.id) && !isBackdropShape(shapeOf(item.element.type)))
+    if (onCanvas.length === 0) {
+      return null
+    }
+    const full = new Set(onCanvas.map((item) => item.element.id))
+    for (const id of [...full]) {
+      for (const child of descendants(id)) {
+        full.add(child)
+      }
+    }
+    const elements = [...full]
+      .map((id) => elementById.get(id))
+      .filter((element): element is ModelElement => element !== undefined)
+    const relationships = model.relationships.filter((relation) =>
+      full.has(relation.sourceId) && full.has(relation.targetId))
+    const notations = onCanvas.map((item) => ({ elementId: item.element.id, x: item.x, y: item.y, w: item.w, h: item.h }))
+    return { diagramId: activeDiagramId, elements, relationships, notations }
+  }
+
+  const copySelection = () => {
+    const snapshot = buildSnapshot()
+    if (!snapshot) {
+      say('请先在画布上选中图形（泳道 / 生命线是垫底形状，不随图形复制）')
+      return
+    }
+    setClipboard(snapshot)
+    say('已复制 {count} 个图形 · Ctrl/⌘+V 粘贴为副本', { count: snapshot.notations.length })
+  }
+
+  /**
+   * 粘贴为副本：一条 PASTE_ELEMENTS 原子落库（元素 + 图归属 + 记法 + 批内关系），一步撤销。
+   * 新 id 避开原对象；同命名空间重名自动加「副本 / 副本 2」；引用属性随 id 映射重写；
+   * 手动走线 route: 不复制（副本按新位置自动路由）。跨图粘贴只放置当前图允许的类型。
+   */
+  const pasteFrom = async (snapshot: ClipboardSnapshot) => {
+    if (!canEdit) {
+      say('当前角色为只读，无法编辑模型')
+      return
+    }
+    if (busy || snapshot.elements.length === 0) {
+      return
+    }
+    const stamp = Date.now().toString(36)
+    const idMap = new Map<string, string>()
+    snapshot.elements.forEach((element, index) => {
+      idMap.set(element.id, `e-${stamp}-${index}-${Math.random().toString(36).slice(2, 6)}`)
+    })
+    const remap = (value: unknown): unknown => {
+      if (typeof value === 'string') {
+        return idMap.get(value) ?? value
+      }
+      if (Array.isArray(value)) {
+        return value.map(remap)
+      }
+      return value
+    }
+    const usedNames = new Set(model.elements.map((element) => `${element.ownerId ?? ''}\u0000${element.name}`))
+    const suffix = locale === 'zh' ? '副本' : 'copy'
+    const rows = snapshot.elements.map((element) => {
+      const base = `${element.name} ${suffix}`
+      let name = base
+      let seq = 2
+      while (usedNames.has(`${element.ownerId ?? ''}\u0000${name}`)) {
+        name = `${base} ${seq}`
+        seq += 1
+      }
+      usedNames.add(`${element.ownerId ?? ''}\u0000${name}`)
+      const properties = Object.fromEntries(
+        Object.entries(element.properties ?? {})
+          .filter(([key]) => !key.startsWith('route:'))
+          .map(([key, value]) => [key, remap(value)]),
+      )
+      return {
+        id: idMap.get(element.id) as string,
+        type: element.type,
+        name,
+        // 后代的所有者也要 remap，否则副本的子块会挂回原件下面。
+        ownerId: (remap(element.ownerId) as string | null) ?? '',
+        stereotypes: element.stereotypes,
+        documentation: element.documentation,
+        taggedValues: element.taggedValues,
+        properties,
+      }
+    })
+    // 只放置当前图允许的类型；跨图粘贴保留语义，不硬塞不兼容的图形。
+    const allowed = activeSpec?.allowedTypes ?? []
+    const targetDiagramId = activeDiagramId
+    const notations = targetDiagramId
+      ? snapshot.notations
+        .filter((item) => {
+          const element = snapshot.elements.find((candidate) => candidate.id === item.elementId)
+          return element ? allowed.includes(codeOf(element.type)) : false
+        })
+        .map((item) => ({
+          elementId: idMap.get(item.elementId) as string,
+          x: clamp(Math.round(item.x + 24), 0, canvas.maxX),
+          y: clamp(Math.round(item.y + 24), 0, canvas.maxY),
+          width: item.w,
+          height: item.h,
+        }))
+      : []
+    const relationships = snapshot.relationships
+      .filter((relation) => !targetDiagramId || (activeSpec?.allowedRelationships ?? []).includes(relation.type))
+      .map((relation, index) => ({
+        id: `rel-${stamp}-${index}-${Math.random().toString(36).slice(2, 6)}`,
+        type: relation.type,
+        sourceId: idMap.get(relation.sourceId) as string,
+        targetId: idMap.get(relation.targetId) as string,
+        name: relation.name,
+        documentation: relation.documentation,
+        stereotypes: relation.stereotypes,
+        properties: Object.fromEntries(
+          Object.entries(relation.properties ?? {})
+            .filter(([key]) => !key.startsWith('route:'))
+            .map(([key, value]) => [key, remap(value)]),
+        ),
+      }))
+    const ok = await runCommand('PASTE_ELEMENTS', {
+      diagramId: targetDiagramId,
+      elements: rows,
+      relationships,
+      notations,
+    })
+    if (ok) {
+      const newIds = notations.map((item) => item.elementId)
+      if (newIds.length > 0) {
+        setSelectedIds(new Set(newIds))
+        setSelectedId(newIds[0])
+        setSelectedRelationId(null)
+      }
+      say('已粘贴 {count} 个副本{relations}', {
+        count: rows.length,
+        relations: relationships.length > 0 ? t('（含 {count} 条关系）', { count: relationships.length }) : '',
+      })
+    }
+  }
+
+  const pasteClipboard = () => {
+    if (!clipboard) {
+      say('剪贴板为空：先选中图形按 Ctrl/⌘+C')
+      return
+    }
+    void pasteFrom(clipboard)
+  }
+
+  const duplicateSelection = () => {
+    const snapshot = buildSnapshot()
+    if (!snapshot) {
+      say('请先在画布上选中图形')
+      return
+    }
+    void pasteFrom(snapshot)
+  }
+
+  const selectAllInDiagram = () => {
+    const ids = positions
+      .filter((item) => !isBackdropShape(shapeOf(item.element.type))
+        && !(seqLayout?.frame && seqLayout.frame.element.id === item.element.id)
+        && !seqFragmentIds.has(item.element.id))
+      .map((item) => item.element.id)
+    if (ids.length === 0) {
+      return
+    }
+    setSelectedIds(new Set(ids))
+    setSelectedId(ids[0])
+    setSelectedRelationId(null)
+    say('已全选当前图 {count} 个图形', { count: ids.length })
+  }
+
+  /** 对齐 / 分布：只动记法坐标，一条 SET_NOTATIONS 一步撤销。分布要求至少 3 个图形。 */
+  const alignSelection = (mode: AlignMode) => {
+    if (!activeDiagramId || busy) {
+      return
+    }
+    const sel = positions.filter((item) =>
+      selectionSet.has(item.element.id) && !isBackdropShape(shapeOf(item.element.type)))
+    const minCount = mode === 'distH' || mode === 'distV' ? 3 : 2
+    if (sel.length < minCount) {
+      return
+    }
+    const left = Math.min(...sel.map((item) => item.x))
+    const right = Math.max(...sel.map((item) => item.x + item.w))
+    const top = Math.min(...sel.map((item) => item.y))
+    const bottom = Math.max(...sel.map((item) => item.y + item.h))
+    const targets = new Map<string, { x: number; y: number }>()
+    if (mode === 'left') {
+      sel.forEach((item) => targets.set(item.element.id, { x: left, y: item.y }))
+    } else if (mode === 'right') {
+      sel.forEach((item) => targets.set(item.element.id, { x: right - item.w, y: item.y }))
+    } else if (mode === 'top') {
+      sel.forEach((item) => targets.set(item.element.id, { x: item.x, y: top }))
+    } else if (mode === 'bottom') {
+      sel.forEach((item) => targets.set(item.element.id, { x: item.x, y: bottom - item.h }))
+    } else if (mode === 'centerH') {
+      sel.forEach((item) => targets.set(item.element.id, { x: (left + right) / 2 - item.w / 2, y: item.y }))
+    } else if (mode === 'centerV') {
+      sel.forEach((item) => targets.set(item.element.id, { x: item.x, y: (top + bottom) / 2 - item.h / 2 }))
+    } else if (mode === 'distH') {
+      const sorted = [...sel].sort((a, b) => a.x - b.x)
+      // 包围盒装不下全部图形时（例如先左对齐再分布）负间距会把图形叠在一起，
+      // 此时间距取下限 16，从最左端向右展开。
+      const gap = Math.max(16, (right - left - sorted.reduce((sum, item) => sum + item.w, 0)) / (sorted.length - 1))
+      let cursor = left
+      for (const item of sorted) {
+        targets.set(item.element.id, { x: cursor, y: item.y })
+        cursor += item.w + gap
+      }
+    } else {
+      const sorted = [...sel].sort((a, b) => a.y - b.y)
+      const gap = Math.max(16, (bottom - top - sorted.reduce((sum, item) => sum + item.h, 0)) / (sorted.length - 1))
+      let cursor = top
+      for (const item of sorted) {
+        targets.set(item.element.id, { x: item.x, y: cursor })
+        cursor += item.h + gap
+      }
+    }
+    const items = sel.map((item) => {
+      const target = targets.get(item.element.id) as { x: number; y: number }
+      return {
+        diagramId: activeDiagramId,
+        elementId: item.element.id,
+        x: clamp(Math.round(target.x), 0, canvas.maxX),
+        y: clamp(Math.round(target.y), 0, canvas.maxY),
+        width: item.w,
+        height: item.h,
+      }
+    })
+    void runCommand('SET_NOTATIONS', { items })
+    say('已对齐 {count} 个图形', { count: items.length })
+  }
+
+  /** 当前选中的可编辑图形数（排除垫底形状）：对齐菜单与浮动工具条的启用依据。 */
+  const alignableCount = useMemo(
+    () => positions.filter((item) =>
+      selectionSet.has(item.element.id) && !isBackdropShape(shapeOf(item.element.type))).length,
+    [positions, selectionSet],
+  )
+
   /**
    * 全局快捷键：Ctrl/⌘+Z 撤销、Ctrl/⌘+Shift+Z 或 Ctrl+Y 重做、Esc 退出连线模式。
    * 序列图里 Alt+↑/↓ 调整选中消息的时间槽位置。
@@ -3338,6 +4074,20 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       return tag === 'input' || tag === 'textarea' || tag === 'select' || node.isContentEditable
     }
     const onKeyDown = (event: KeyboardEvent) => {
+      // Ctrl/⌘+K 全局搜索：在输入框里也生效（覆盖浏览器默认地址栏搜索）。
+      if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.repeat && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        if (searchOpen) {
+          closeSearch()
+        } else {
+          openSearch()
+        }
+        return
+      }
+      if (event.key === 'Escape' && searchOpen) {
+        closeSearch()
+        return
+      }
       if (event.key === 'Escape' && propDialog) {
         setPropDialog(null)
         setRefPicker(null)
@@ -3349,6 +4099,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         setRelationSource(null)
         say('已退出连线模式')
         return
+      }
+      if (event.key === 'Escape') {
+        if (marquee) {
+          setMarquee(null)
+          return
+        }
+        if (selectedIds.size > 1) {
+          setSelectedIds(selectedId ? new Set([selectedId]) : new Set())
+          return
+        }
       }
       // 序列图：Alt + ↑/↓ 改选中消息的时间槽位置（只对 message 关系生效）。
       if (event.altKey && !event.ctrlKey && !event.metaKey && !event.repeat
@@ -3362,34 +4122,83 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         }
         return
       }
+      // 无 Ctrl/⌘/Alt 的编辑键：Del 删除、F2 重命名、方向键微调（Shift 步长 ×10）。
+      if (!event.ctrlKey && !event.metaKey && !event.altKey && !isTextEntry(event.target)) {
+        if (event.key === 'Delete' || event.key === 'Backspace') {
+          if (canEdit && (selected || selectedDiagram || selectedRelation || selectionSet.size > 0)) {
+            event.preventDefault()
+            deleteSelectionRef.current()
+          }
+          return
+        }
+        if (event.key === 'F2') {
+          event.preventDefault()
+          renameSelectionRef.current()
+          return
+        }
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight' || event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+          const movable = canEdit && !busy && activeDiagramId
+            && positions.some((item) => selectionSet.has(item.element.id) && !isBackdropShape(shapeOf(item.element.type)))
+          if (!movable) {
+            return
+          }
+          event.preventDefault()
+          const step = event.shiftKey ? 10 : 1
+          const dx = event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0
+          const dy = event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0
+          setNudge((previous) => ({ dx: (previous?.dx ?? 0) + dx, dy: (previous?.dy ?? 0) + dy }))
+          if (nudgeTimer.current !== null) {
+            window.clearTimeout(nudgeTimer.current)
+          }
+          // 连按只累积偏移，停顿后一条命令落库：一次微调 bursts 一步撤销，不刷几十条 revision。
+          nudgeTimer.current = window.setTimeout(() => commitNudgeRef.current(), 350)
+          return
+        }
+      }
       if (!(event.ctrlKey || event.metaKey) || event.altKey || event.repeat || isTextEntry(event.target)) {
         return
       }
       const key = event.key.toLowerCase()
       const wantsUndo = key === 'z' && !event.shiftKey
       const wantsRedo = key === 'y' || (key === 'z' && event.shiftKey)
-      if (!wantsUndo && !wantsRedo) {
-        return
-      }
-      event.preventDefault()
-      if (busy) {
-        return
-      }
-      if (wantsUndo) {
-        if ((health?.undoDepth ?? 0) === 0) {
-          say('没有可撤销的操作 · Ctrl/⌘ + Z')
-        } else {
-          void handleUndo()
+      if (wantsUndo || wantsRedo) {
+        event.preventDefault()
+        if (busy) {
+          return
         }
-      } else if ((health?.redoDepth ?? 0) === 0) {
-        say('没有可重做的操作 · Ctrl/⌘ + Shift + Z 或 Ctrl + Y')
-      } else {
-        void handleRedo()
+        if (wantsUndo) {
+          if ((health?.undoDepth ?? 0) === 0) {
+            say('没有可撤销的操作 · Ctrl/⌘ + Z')
+          } else {
+            void handleUndo()
+          }
+        } else if ((health?.redoDepth ?? 0) === 0) {
+          say('没有可重做的操作 · Ctrl/⌘ + Shift + Z 或 Ctrl + Y')
+        } else {
+          void handleRedo()
+        }
+        return
+      }
+      if (key === 'c') {
+        event.preventDefault()
+        copySelection()
+      } else if (key === 'v') {
+        event.preventDefault()
+        pasteClipboard()
+      } else if (key === 'd') {
+        event.preventDefault()
+        duplicateSelection()
+      } else if (key === 'a') {
+        event.preventDefault()
+        selectAllInDiagram()
       }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [handleUndo, handleRedo, relationTool, busy, health, propDialog, moveMessage, selectedRelationId])
+  }, [handleUndo, handleRedo, relationTool, busy, health, propDialog, moveMessage, selectedRelationId,
+    marquee, selectedIds, selectedId, selectionSet, canEdit, selected, selectedDiagram, selectedRelation,
+    activeDiagramId, positions, copySelection, pasteClipboard,
+    duplicateSelection, selectAllInDiagram, searchOpen, openSearch, closeSearch])
 
   // 「树上高亮」的标记在 2.4 秒后自动消隐：用户看一眼就知道定位到了哪儿，
   // 又不会被一直高亮干扰后续操作。
@@ -3416,6 +4225,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
    * 此时把那张图也展开），保证目标行确实渲染在树上。画布点选时用它做静默跟随定位。</p>
    */
   const revealInTree = (elementId: string) => {
+    // 定位即让模型树可见：搜索 / 引用面板可能在「图表」「模型库」页触发，
+    // 不切回「项目」页的话目标行根本不在 DOM 里，高亮与滚动都会落空。
+    setLeftTab('project')
     const chain: string[] = []
     let cursor = elementById.get(elementId)
     while (cursor?.ownerId) {
@@ -3438,6 +4250,17 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     setTreeLocateId(elementId)
     // 展开是异步渲染，等一帧再滚动，避免目标行尚未挂载。
     window.setTimeout(() => {
+      const browser = browserRef.current
+      const rows = visibleRowsRef.current
+      // 虚拟化模式下目标行可能根本没挂载：行高统一，直接按行号算 scrollTop，
+      // 滚动事件会把窗口移到目标附近，行随之渲染出来。
+      if (browser && rows.length > TREE_VIRTUAL_THRESHOLD) {
+        const index = rows.findIndex((row) => row.id === elementId && row.kind !== 'relation' && row.kind !== 'relationGroup')
+        if (index >= 0) {
+          browser.scrollTop = Math.max(0, 14 + index * TREE_ROW_H - (browser.clientHeight - TREE_ROW_H) / 2)
+          return
+        }
+      }
       document
         .querySelector(`[data-tree-id="${CSS.escape(elementId)}"]`)
         ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
@@ -3493,31 +4316,344 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     setMenu(null)
   }
 
-  const exportSvg = () => {
+  /**
+   * 搜索 / 引用面板的跳转：打开元素所在的图并把视口中心对准它的记法。
+   * 优先留在当前图（元素就在当前图时不切图），否则取第一张包含它的图。
+   * 主选中走 selectedId（selectionSet 会自动回退成单选），切图清多选的
+   * 副作用不会把刚定位的对象冲掉。
+   */
+  const focusElementInDiagram = (elementId: string, diagramId?: string) => {
+    const diagram = diagramId
+      ? model.diagrams.find((item) => item.id === diagramId)
+      : (activeDiagramId && model.diagrams.find((item) => item.id === activeDiagramId && item.elementIds.includes(elementId)))
+        ?? model.diagrams.find((item) => item.elementIds.includes(elementId))
+    setSelectedId(elementId)
+    setSelectedDiagramId(null)
+    revealInTree(elementId)
+    if (!diagram) {
+      return
+    }
+    setActiveDiagramId(diagram.id)
+    openTab({ kind: 'diagram', id: diagram.id })
+    const notation = model.notations.find((item) => item.diagramId === diagram.id && item.elementId === elementId)
+    if (notation) {
+      setPan(clampPan(
+        notation.x + notation.width / 2 - canvas.width / (2 * zoom),
+        notation.y + notation.height / 2 - canvas.height / (2 * zoom),
+      ))
+    }
+  }
+
+  /** 搜索面板回车 / 点击：按命中类型跳转，随后关闭面板。 */
+  const activateSearchResult = (result: SearchResult) => {
+    closeSearch()
+    if (result.kind === 'element') {
+      focusElementInDiagram(result.id)
+      say('已定位到「{name}」', { name: result.name })
+      return
+    }
+    if (result.kind === 'diagram') {
+      activateTreeDiagram(result.id, true)
+      say('已打开图「{name}」', { name: result.name })
+      return
+    }
+    const relation = model.relationships.find((item) => item.id === result.id)
+    if (!relation) {
+      return
+    }
+    setSelectedRelationId(relation.id)
+    setSelectedId(null)
+    setSelectedDiagramId(null)
+    const diagram = (activeDiagramId
+      && model.diagrams.find((item) => item.id === activeDiagramId
+        && item.elementIds.includes(relation.sourceId) && item.elementIds.includes(relation.targetId)))
+      ?? model.diagrams.find((item) => item.elementIds.includes(relation.sourceId) && item.elementIds.includes(relation.targetId))
+    if (diagram) {
+      setActiveDiagramId(diagram.id)
+      openTab({ kind: 'diagram', id: diagram.id })
+    }
+    say('已选中关系「{name}」', { name: result.name })
+  }
+
+  /* ── B3 校验与追溯：底部坞（问题面板 / 需求覆盖矩阵），数据全部来自服务端 /api/validation ── */
+
+  /** 打开底部坞并立即拉一次权威校验报告（不等 debounce）。 */
+  const openBottomDock = useCallback((tab: 'problems' | 'coverage') => {
+    setBottomDockTab(tab)
+    setBottomDockOpen(true)
+    void loadValidation()
+  }, [loadValidation])
+
+  /** 点击一条校验问题：元素→选中并在图中定位；图→打开该图。 */
+  const locateProblem = (issue: ValidationIssue) => {
+    if (issue.targetType === 'diagram') {
+      activateTreeDiagram(issue.targetId, true)
+      say('已打开图「{name}」', { name: issue.targetName })
+      return
+    }
+    focusElementInDiagram(issue.targetId)
+    say('已定位到「{name}」', { name: issue.targetName })
+  }
+
+  /** 点击覆盖矩阵里的来源元素 / 需求名：选中并在图中定位。 */
+  const locateCoverageRef = (refId: string, refName: string) => {
+    focusElementInDiagram(refId)
+    say('已定位到「{name}」', { name: refName })
+  }
+
+  const validationCounts = validationReport?.counts ?? { error: 0, warning: 0, info: 0 }
+  const totalProblems = validationCounts.error + validationCounts.warning + validationCounts.info
+
+  const filteredProblems = useMemo(() => {
+    const rank = { error: 0, warning: 1, info: 2 } as const
+    const issues = [...(validationReport?.issues ?? [])]
+    issues.sort((a, b) => rank[a.severity] - rank[b.severity] || a.targetName.localeCompare(b.targetName))
+    return problemFilter === 'all' ? issues : issues.filter((issue) => issue.severity === problemFilter)
+  }, [validationReport, problemFilter])
+
+  const filteredCoverage = useMemo(() => {
+    const coverage = validationReport?.coverage ?? []
+    switch (coverageFilter) {
+      case 'unsatisfied': return coverage.filter((item) => !item.satisfied)
+      case 'unverified': return coverage.filter((item) => !item.verified)
+      case 'uncovered': return coverage.filter((item) => !item.satisfied || !item.verified)
+      default: return coverage
+    }
+  }, [validationReport, coverageFilter])
+
+  const coverageSummary = validationReport?.coverageSummary ?? { total: 0, satisfied: 0, verified: 0, fullyCovered: 0 }
+
+  /**
+   * SysML 标准图框几何：矩形边框包住内容包围盒，左上角首页标签（home plate）显示图种 + 图名。
+   * 空图退回名义画布内的默认框，保证新建图也有标准图框。随 SVG 一起导出（非 omit 图元）。
+   */
+  const diagramFrame = useMemo(() => {
+    if (!diagramFrameOpen || !activeDiagramObj) {
+      return null
+    }
+    const margin = FRAME_MARGIN
+    const headerH = FRAME_HEADER_H
+    const notch = FRAME_NOTCH
+    const box = contentBox ?? {
+      left: margin, top: margin + headerH,
+      right: canvas.width - margin, bottom: canvas.height - margin,
+    }
+    const x = Math.round(box.left - margin)
+    const y = Math.round(box.top - margin - headerH)
+    const w = Math.round(box.right - box.left + margin * 2)
+    const h = Math.round(box.bottom - box.top + margin * 2 + headerH)
+    const kindColor = FRAME_KIND_COLORS[activeDiagramKind] ?? '#2b5cb8'
+    const kindLabel = activeSpec ? pick(activeSpec.label, activeSpec.labelEn) : activeDiagramKind
+    const kindLine = `${activeDiagramKind}  ${kindLabel}`
+    const name = activeDiagramObj.name
+    const headerW = Math.round(Math.max(
+      160,
+      estimateTextWidth(kindLine, 10.5) + 24 + notch,
+      estimateTextWidth(name, 12.5) + 24 + notch,
+    ))
+    return { x, y, w, h, headerH, headerW, notch, kindColor, kindLine, name }
+  }, [diagramFrameOpen, activeDiagramObj, activeDiagramKind, activeSpec, contentBox, canvas.width, canvas.height])
+
+  /**
+   * 导出用的独立 SVG：还原整图画布、铺白底、把运行时 CSS 计算样式内联到每个节点
+   * （节点文字 / 连线标签的字体与颜色来自 styles.css，脱离页面会丢样式），
+   * 并剔除选择圈 / 拖拽手柄 / 框选等纯交互图元（data-export="omit"）。
+   */
+  const buildExportSvg = (): SVGSVGElement | null => {
     const svg = svgRef.current
     if (!svg) {
-      return
+      return null
     }
     const clone = svg.cloneNode(true) as SVGSVGElement
     clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg')
-    // 导出的是整张图，不是当前视口：缩放平移后的 viewBox 必须还原成完整画布。
-    clone.setAttribute('viewBox', `0 0 ${canvas.width} ${canvas.height}`)
+    // 导出的是整张图，不是当前视口：缩放平移后的 viewBox 必须还原成完整内容。
+    // 名义画布只有 640×420，自动排布后的图面远超它，按内容包围盒取导出区域才不会裁切。
+    const pad = 32
+    // 选中环 / 拖拽手柄等标记不参与包围盒：先临时隐藏再量，导出区域才不受选择状态影响。
+    const omitted = Array.from(svg.querySelectorAll('[data-export="omit"]')) as SVGElement[]
+    const savedDisplay = omitted.map((node) => node.style.display)
+    omitted.forEach((node) => { node.style.display = 'none' })
+    const liveBox = svg.getBBox()
+    omitted.forEach((node, index) => { node.style.display = savedDisplay[index] })
+    const box = liveBox.width > 0 && liveBox.height > 0
+      ? {
+        x: Math.floor(liveBox.x - pad),
+        y: Math.floor(liveBox.y - pad),
+        w: Math.ceil(liveBox.width + pad * 2),
+        h: Math.ceil(liveBox.height + pad * 2),
+      }
+      : { x: 0, y: 0, w: canvas.width, h: canvas.height }
+    clone.setAttribute('viewBox', `${box.x} ${box.y} ${box.w} ${box.h}`)
+    clone.setAttribute('width', String(box.w))
+    clone.setAttribute('height', String(box.h))
     const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect')
-    rect.setAttribute('x', '0')
-    rect.setAttribute('y', '0')
-    rect.setAttribute('width', String(canvas.width))
-    rect.setAttribute('height', String(canvas.height))
+    rect.setAttribute('x', String(box.x))
+    rect.setAttribute('y', String(box.y))
+    rect.setAttribute('width', String(box.w))
+    rect.setAttribute('height', String(box.h))
     rect.setAttribute('fill', '#ffffff')
+    const styleProps = ['fill', 'fill-opacity', 'stroke', 'stroke-width', 'stroke-opacity',
+      'stroke-dasharray', 'stroke-linecap', 'stroke-linejoin', 'opacity', 'font-family',
+      'font-size', 'font-weight', 'text-anchor', 'dominant-baseline', 'letter-spacing', 'paint-order']
+    const inlineStyles = (live: Element, copy: Element) => {
+      if (copy.getAttribute('data-export') === 'omit') {
+        copy.remove()
+        return
+      }
+      const computed = window.getComputedStyle(live)
+      let css = ''
+      for (const prop of styleProps) {
+        const value = computed.getPropertyValue(prop)
+        if (value) {
+          css += `${prop}:${value};`
+        }
+      }
+      copy.setAttribute('style', css)
+      const liveChildren = Array.from(live.children)
+      const copyChildren = Array.from(copy.children)
+      for (let index = 0; index < liveChildren.length; index += 1) {
+        inlineStyles(liveChildren[index], copyChildren[index])
+      }
+    }
+    inlineStyles(svg, clone)
+    // 白底必须在样式内联之后插入：内联按父子索引配对，提前插入会整体错位一格。
     clone.insertBefore(rect, clone.firstChild)
-    const source = new XMLSerializer().serializeToString(clone)
-    const blob = new Blob([source], { type: 'image/svg+xml' })
+    return clone
+  }
+
+  const downloadBlob = (blob: Blob, filename: string) => {
     const url = URL.createObjectURL(blob)
     const anchor = document.createElement('a')
     anchor.href = url
-    anchor.download = `${activeDiagramObj?.name ?? 'diagram'}.svg`
+    anchor.download = filename
     anchor.click()
     URL.revokeObjectURL(url)
   }
+
+  const exportSvg = () => {
+    const clone = buildExportSvg()
+    if (!clone) {
+      return
+    }
+    const source = new XMLSerializer().serializeToString(clone)
+    downloadBlob(new Blob([source], { type: 'image/svg+xml' }), `${activeDiagramObj?.name ?? 'diagram'}.svg`)
+  }
+
+  /** PNG 导出：独立 SVG 栅格化到 2× 画布，白底，文字与线型与页面一致。 */
+  const exportPng = async () => {
+    const clone = buildExportSvg()
+    if (!clone) {
+      return
+    }
+    const source = new XMLSerializer().serializeToString(clone)
+    const url = URL.createObjectURL(new Blob([source], { type: 'image/svg+xml;charset=utf-8' }))
+    try {
+      const image = new Image()
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve()
+        image.onerror = () => reject(new Error('SVG 栅格化失败'))
+        image.src = url
+      })
+      const scale = 2
+      const raster = document.createElement('canvas')
+      raster.width = Number(clone.getAttribute('width')) * scale
+      raster.height = Number(clone.getAttribute('height')) * scale
+      const context = raster.getContext('2d')
+      if (!context) {
+        throw new Error('当前浏览器不支持 Canvas 2D')
+      }
+      context.fillStyle = '#ffffff'
+      context.fillRect(0, 0, raster.width, raster.height)
+      context.drawImage(image, 0, 0, raster.width, raster.height)
+      const blob = await new Promise<Blob | null>((resolve) => raster.toBlob(resolve, 'image/png'))
+      if (!blob) {
+        throw new Error('PNG 编码失败')
+      }
+      downloadBlob(blob, `${activeDiagramObj?.name ?? 'diagram'}.png`)
+      say('已导出 PNG（{width}×{height}）', { width: raster.width, height: raster.height })
+    } catch (error) {
+      say('导出 PNG 失败：{error}', { error: errorMessage(error) })
+    } finally {
+      URL.revokeObjectURL(url)
+    }
+  }
+
+  /* ---------------- B4 模型交付报告 ---------------- */
+
+  /**
+   * 打开报告：先拉一次服务端权威校验 / 覆盖（保证交付数据最新），再用当前快照装配
+   * 自包含 HTML。校验接口失败不阻断——退回已有缓存继续生成，并在 overlay 上提示。
+   */
+  const openReport = async () => {
+    setReportOpen(true)
+    setReportHtml('')
+    setReportError(null)
+    let validation = validationReport
+    try {
+      validation = await getValidation()
+      setValidationReport(validation)
+    } catch (error) {
+      if (!validation) setReportError(errorMessage(error))
+    }
+    try {
+      const html = buildModelReportHtml({
+        projectName: workspace?.currentProjectName ?? projectRoot?.name ?? t('未命名项目'),
+        model: modelRef.current,
+        elements: projectElements,
+        validation,
+        labels: { type: typeLabel, diagram: diagramLabel, relation: relationLabel },
+        generatedAt: new Date(),
+        persistence: health?.persistence,
+      })
+      setReportHtml(html)
+    } catch (error) {
+      setReportError(errorMessage(error))
+    }
+  }
+
+  const closeReport = useCallback(() => setReportOpen(false), [])
+
+  const exportReportHtml = () => {
+    if (!reportHtml) return
+    const name = workspace?.currentProjectName ?? projectRoot?.name ?? 'model'
+    downloadBlob(new Blob([reportHtml], { type: 'text/html;charset=utf-8' }), `${name}-${t('模型报告')}.html`)
+    say('已导出模型报告 HTML')
+  }
+
+  const printReport = () => {
+    const frame = reportFrameRef.current
+    if (!frame?.contentWindow) {
+      say('报告尚未就绪')
+      return
+    }
+    frame.contentWindow.focus()
+    frame.contentWindow.print()
+  }
+
+  // Esc 关闭报告 overlay（与全局搜索一致的退出方式）。
+  useEffect(() => {
+    if (!reportOpen) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') closeReport()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [reportOpen, closeReport])
+
+  /** 从最新快照读某对象（元素或关系）的标签值：供键值编辑器构造下一张表，避免过期闭包。 */
+  const readLatestTagged = (id: string): Record<string, string> => {
+    const snapshot = modelRef.current
+    const element = snapshot.elements.find((item) => item.id === id)
+    if (element) return element.taggedValues ?? {}
+    const relation = snapshot.relationships.find((item) => item.id === id)
+    return relation?.taggedValues ?? {}
+  }
+
+  /** 整张标签值表一次落库：UPDATE_PROPERTY key=taggedValues，一次命令一步撤销。
+   *  返回命令 Promise，供编辑器把连续编辑串成链——后一次提交等前一次落库后再读最新快照，
+   *  避免快速「失焦改值→点删除」时两条命令共用同一 baseRevision 而第二条 409 丢失。 */
+  const commitTaggedValues = (id: string, next: Record<string, string>) =>
+    runCommand('UPDATE_PROPERTY', { id, key: 'taggedValues', value: next })
 
   /* ---------------- XMI 导入导出 ---------------- */
 
@@ -3637,13 +4773,47 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       void handleRelationPick(element.id)
       return
     }
+    // Shift/Ctrl/⌘+点选：切换多选成员，不起拖拽；阻止冒泡免得画布把 Shift 当平移。
+    if (event.shiftKey || event.ctrlKey || event.metaKey) {
+      event.stopPropagation()
+      const next = new Set(selectionSet)
+      if (next.has(element.id)) {
+        next.delete(element.id)
+      } else {
+        next.add(element.id)
+      }
+      setSelectedIds(next)
+      const remaining = [...next]
+      setSelectedId(next.has(element.id) ? element.id : remaining[remaining.length - 1] ?? null)
+      setSelectedDiagramId(null)
+      setSelectedRelationId(null)
+      return
+    }
     const point = toSvgPoint(event.clientX, event.clientY)
     event.currentTarget.setPointerCapture(event.pointerId)
-    setSelectedId(element.id)
+    // 按住已多选成员：保持整组选择并整体拖动；点普通图形则收敛为单选。
+    const groupDrag = selectionSet.size > 1 && selectionSet.has(element.id)
+    if (!groupDrag) {
+      setSelectedId(element.id)
+    }
     setSelectedDiagramId(null)
+    setSelectedRelationId(null)
     // 点选画布图形即静默定位到模型树：切到「项目」页让树可见，展开祖先链并高亮该行。
     setLeftTab('project')
     revealInTree(element.id)
+    // 未落库的方向键微调并进本次拖拽：起手坐标已含偏移，松手一次写回，避免两条命令竞态。
+    if (nudge) {
+      if (nudgeTimer.current !== null) {
+        window.clearTimeout(nudgeTimer.current)
+        nudgeTimer.current = null
+      }
+      setNudge(null)
+    }
+    const group = groupDrag
+      ? positions
+        .filter((item) => selectionSet.has(item.element.id) && item.element.id !== element.id)
+        .map((item) => ({ id: item.element.id, originX: item.x, originY: item.y }))
+      : undefined
     setDrag({
       elementId: element.id,
       originX: x,
@@ -3653,6 +4823,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       x,
       y,
       moved: false,
+      group,
     })
   }
 
@@ -3668,8 +4839,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
   /** 当前图的内容包围盒；空图退回整张画布，新建图也要能正常平移。序列图用推导出的内容盒（见 contentBox）。 */
   const panBox = useMemo(
-    () => contentBox ?? { left: 0, top: 0, right: canvas.maxX, bottom: canvas.maxY },
-    [contentBox, canvas.maxX, canvas.maxY],
+    () => {
+      const base = contentBox ?? { left: 0, top: 0, right: canvas.maxX, bottom: canvas.maxY }
+      return contentBox ? expandBoxForFrame(base, diagramFrameOpen && !!activeDiagramObj) : base
+    },
+    [contentBox, canvas.maxX, canvas.maxY, diagramFrameOpen, activeDiagramObj],
   )
 
   const viewWidth = canvas.width / zoom
@@ -3703,6 +4877,32 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
    */
   const clampedPan = clampPan(pan.x, pan.y)
   const viewBox = `${clampedPan.x} ${clampedPan.y} ${viewWidth} ${viewHeight}`
+
+  /** 小地图点击 / 拖动：把视口中心移到落点对应的模型坐标（仍走夹紧）。 */
+  const minimapJump = useCallback((clientX: number, clientY: number) => {
+    const svg = minimapRef.current
+    if (!svg) {
+      return
+    }
+    const point = svg.createSVGPoint()
+    point.x = clientX
+    point.y = clientY
+    const matrix = svg.getScreenCTM()
+    if (!matrix) {
+      return
+    }
+    const anchor = point.matrixTransform(matrix.inverse())
+    setPan(clampPan(anchor.x - viewWidth / 2, anchor.y - viewHeight / 2))
+  }, [clampPan, viewWidth, viewHeight])
+
+  /** 小地图取样范围：内容包围盒外扩 20 单位；空图退回名义画布。 */
+  const minimapViewBox = (() => {
+    const left = (contentBox?.left ?? 0) - 20
+    const top = (contentBox?.top ?? 0) - 20
+    const width = (contentBox ? contentBox.right - contentBox.left : canvas.width) + 40
+    const height = (contentBox ? contentBox.bottom - contentBox.top : canvas.height) + 40
+    return `${left} ${top} ${width} ${height}`
+  })()
 
   /** 以光标为锚点缩放：光标下的模型点保持不动，缩放后不会丢掉正在看的目标。 */
   const zoomAtCursor = useCallback((clientX: number, clientY: number, deltaY: number) => {
@@ -3754,12 +4954,19 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }, [zoomAtCursor, panByPixels])
 
   /**
-   * 平移起手：空白画布上左键直接拖，任意位置 Shift+左键 / 中键拖。
-   * 左键按在图形上时不动视口，交给图形自己的拖拽。
+   * 画布起手：空白左键拖 = 平移；Shift+空白拖 = 框选；中键拖 = 任意位置平移。
+   * 左键按在图形上时不动视口，交给图形自己的拖拽 / 多选。
    */
   const handleCanvasPanStart = (event: ReactPointerEvent<SVGSVGElement>) => {
     const onBackground = event.target === event.currentTarget
-    if (event.button !== 1 && !(event.button === 0 && (onBackground || event.shiftKey))) {
+    if (event.button === 0 && event.shiftKey && onBackground && !relationTool) {
+      event.preventDefault()
+      event.currentTarget.setPointerCapture(event.pointerId)
+      const start = toSvgPoint(event.clientX, event.clientY)
+      setMarquee({ startX: start.x, startY: start.y, x: start.x, y: start.y })
+      return
+    }
+    if (event.button !== 1 && !(event.button === 0 && onBackground)) {
       return
     }
     event.preventDefault()
@@ -3776,6 +4983,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }
 
   const handlePointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (marquee) {
+      const point = toSvgPoint(event.clientX, event.clientY)
+      setMarquee({ ...marquee, x: point.x, y: point.y })
+      return
+    }
     if (seqDrag) {
       const moved = seqDrag.moved || Math.abs(event.clientY - seqDrag.startY) > 4
       const point = toSvgPoint(event.clientX, event.clientY)
@@ -3830,6 +5042,33 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }
 
   const handlePointerUp = () => {
+    if (marquee) {
+      const finished = marquee
+      setMarquee(null)
+      const left = Math.min(finished.startX, finished.x)
+      const right = Math.max(finished.startX, finished.x)
+      const top = Math.min(finished.startY, finished.y)
+      const bottom = Math.max(finished.startY, finished.y)
+      if (right - left < 3 && bottom - top < 3) {
+        return
+      }
+      // 框选只收前景图形：垫底的泳道 / 生命线、序列图框与片段不参与，否则一框一个准。
+      const hits = positions
+        .filter((item) => !isBackdropShape(shapeOf(item.element.type))
+          && !(seqLayout?.frame && seqLayout.frame.element.id === item.element.id)
+          && !seqFragmentIds.has(item.element.id)
+          && item.x < right && item.x + item.w > left
+          && item.y < bottom && item.y + item.h > top)
+        .map((item) => item.element.id)
+      setSelectedIds(new Set(hits))
+      setSelectedId(hits[0] ?? null)
+      setSelectedRelationId(null)
+      setSelectedDiagramId(null)
+      if (hits.length > 0) {
+        say('已框选 {count} 个图形 · 拖动整体移动，Ctrl/⌘+C 复制', { count: hits.length })
+      }
+      return
+    }
     if (edgeDrag) {
       const finished = edgeDrag
       setEdgeDrag(null)
@@ -3873,7 +5112,28 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     setDrag(null)
     if (finished.moved && activeDiagramId) {
       const glyph = controlSizeOf(elementById.get(finished.elementId)?.type ?? '')
-      if (glyph) {
+      if (finished.group && finished.group.length > 0) {
+        // 整体拖动：主图形与组员同一增量，一条 SET_NOTATIONS 落库 = 一步撤销。
+        const dx = finished.x - finished.originX
+        const dy = finished.y - finished.originY
+        const items = [{
+          diagramId: activeDiagramId,
+          elementId: finished.elementId,
+          x: clamp(Math.round(finished.x), 0, canvas.maxX),
+          y: clamp(Math.round(finished.y), 0, canvas.maxY),
+          ...(glyph ? { width: glyph.w, height: glyph.h } : {}),
+        }, ...finished.group.map((member) => {
+          const memberGlyph = controlSizeOf(elementById.get(member.id)?.type ?? '')
+          return {
+            diagramId: activeDiagramId,
+            elementId: member.id,
+            x: clamp(Math.round(member.originX + dx), 0, canvas.maxX),
+            y: clamp(Math.round(member.originY + dy), 0, canvas.maxY),
+            ...(memberGlyph ? { width: memberGlyph.w, height: memberGlyph.h } : {}),
+          }
+        })]
+        void runCommand('SET_NOTATIONS', { items })
+      } else if (glyph) {
         // 控制节点图形宽高锁规范值：MOVE_NOTATION 会沿用旧大框，下次渲染居中收缩会再漂一次。
         void runCommand('SET_NOTATIONS', {
           items: [{
@@ -4448,6 +5708,40 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     extensionChildrenByOwner, extensionRoots, relationsByOwner, rootNodes, selectedDiagramId,
     selectedId, selectedRelationId, showExtensions, treeDropTarget, treeFilterHits, treeLocateId,
   ])
+  // 定位大行号时按这份最新行表算 scrollTop（revealInTree 的定时器闭包读 ref，不读旧渲染）。
+  visibleRowsRef.current = visibleRows
+
+  /**
+   * 模型树虚拟化：仅项目视图且行数超阈值时启用。上下占位 div 撑出总高度，
+   * 只渲染视口附近（含 10 行余量）的行；行高由 CSS 强制统一为 TREE_ROW_H。
+   * 小树保持整表渲染，scrollIntoView 等既有行为不受影响。
+   */
+  const treeVirtual = leftTab === 'project' && visibleRows.length > TREE_VIRTUAL_THRESHOLD
+  const treeWindow = useMemo(() => {
+    if (!treeVirtual) {
+      return { start: 0, end: visibleRows.length, rows: visibleRows }
+    }
+    const start = Math.max(0, Math.floor(treeViewport.top / TREE_ROW_H) - 10)
+    const end = Math.min(visibleRows.length, Math.ceil((treeViewport.top + treeViewport.height) / TREE_ROW_H) + 10)
+    return { start, end, rows: visibleRows.slice(start, end) }
+  }, [treeVirtual, visibleRows, treeViewport])
+
+  /** 滚动取行：rAF 节流，一次滚动帧只 setState 一次。 */
+  const handleTreeScroll = useCallback((event: ReactUIEvent<HTMLDivElement>) => {
+    const node = event.currentTarget
+    if (treeScrollRaf.current !== 0) {
+      return
+    }
+    treeScrollRaf.current = window.requestAnimationFrame(() => {
+      treeScrollRaf.current = 0
+      setTreeViewport({ top: node.scrollTop, height: node.clientHeight })
+    })
+  }, [])
+  useEffect(() => () => {
+    if (treeScrollRaf.current !== 0) {
+      window.cancelAnimationFrame(treeScrollRaf.current)
+    }
+  }, [])
 
   /**
    * 树行的只读取数表。身份只在模型快照 / 目录 / 权限变化时更换，
@@ -4469,6 +5763,108 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     elementById, diagramById, relationById, extensionElementById, codeOf, typeLabel,
     diagramLabel, relationLabel, projectRootId, extensionRootIds, canEdit,
   ])
+
+  /**
+   * 全局搜索打分：名称权重最高（精确 > 前缀 > 包含），其次构造型，再次文档 /
+   * 标签值 / 属性值 / id。空输入时列出图作为快速导航。结果按分数降序、同分按名称，
+   * 截断到上限——大项目敲一个字不至于渲染上千行。
+   */
+  const searchResults = useMemo<SearchResult[]>(() => {
+    const needle = searchNeedle
+    if (!needle) {
+      return model.diagrams.slice(0, 12).map((diagram) => ({
+        kind: 'diagram' as const,
+        id: diagram.id,
+        name: diagram.name,
+        sub: diagramLabel(diagram.kind),
+        score: 0,
+      }))
+    }
+    const results: SearchResult[] = []
+    const fieldScore = (text: string): number => {
+      const lower = text.toLowerCase()
+      if (lower === needle) {
+        return 100
+      }
+      if (lower.startsWith(needle)) {
+        return 60
+      }
+      return lower.includes(needle) ? 40 : 0
+    }
+    const weakHit = (text: string): boolean => text.toLowerCase().includes(needle)
+    const propertyText = (properties: Record<string, unknown> | undefined): string => {
+      if (!properties) {
+        return ''
+      }
+      return Object.values(properties).map((value) => {
+        if (value == null) {
+          return ''
+        }
+        if (Array.isArray(value)) {
+          return value.map((item) => String(item)).join(' ')
+        }
+        return typeof value === 'object' ? JSON.stringify(value) : String(value)
+      }).join(' ')
+    }
+    for (const element of projectElements) {
+      let score = fieldScore(element.name)
+      if (score === 0 && element.stereotypes.some((item) => weakHit(item))) {
+        score = 25
+      }
+      if (score === 0 && (
+        weakHit(element.documentation)
+        || Object.entries(element.taggedValues ?? {}).some(([key, value]) => weakHit(key) || weakHit(value))
+        || weakHit(propertyText(element.properties))
+        || weakHit(element.id)
+      )) {
+        score = 15
+      }
+      if (score > 0) {
+        results.push({ kind: 'element', id: element.id, name: element.name, sub: typeLabel(element.type), score })
+      }
+    }
+    for (const diagram of model.diagrams) {
+      const score = fieldScore(diagram.name) || (weakHit(diagram.id) ? 15 : 0)
+      if (score > 0) {
+        results.push({ kind: 'diagram', id: diagram.id, name: diagram.name, sub: diagramLabel(diagram.kind), score })
+      }
+    }
+    for (const relation of model.relationships) {
+      const label = relation.name?.trim() || relationLabel(relation.type)
+      let score = fieldScore(label)
+      if (score === 0 && (
+        weakHit(relation.documentation)
+        || Object.entries(relation.taggedValues ?? {}).some(([key, value]) => weakHit(key) || weakHit(value))
+        || weakHit(propertyText(relation.properties))
+        || weakHit(relation.id)
+      )) {
+        score = 15
+      }
+      if (score > 0) {
+        const source = elementById.get(relation.sourceId)?.name ?? relation.sourceId
+        const target = elementById.get(relation.targetId)?.name ?? relation.targetId
+        results.push({
+          kind: 'relation', id: relation.id, name: label,
+          sub: `${relationLabel(relation.type)} · ${source} → ${target}`, score,
+        })
+      }
+    }
+    results.sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+    return results.slice(0, SEARCH_MAX_RESULTS)
+  }, [searchNeedle, projectElements, model.diagrams, model.relationships, elementById, typeLabel, diagramLabel, relationLabel])
+
+  // 结果集变化时把高亮行收回到第一条，避免停留在越界下标。
+  useEffect(() => {
+    setSearchIndex(0)
+  }, [searchResults])
+
+  // ↑↓ 移动高亮时把当前行滚进可视区（结果列表自身可滚动）。
+  useEffect(() => {
+    if (!searchOpen) {
+      return
+    }
+    document.querySelector(`[data-search-index="${searchIndex}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [searchIndex, searchOpen, searchResults])
 
   const selectTreeElement = (elementId: string) => {
     setSelectedId(elementId)
@@ -4559,6 +5955,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const shape = shapeOf(element.type)
     const info = typeInfo.get(codeOf(element.type))
     const selected = selectedId === element.id
+    const multiSelected = selectedIds.size > 1 && selectedIds.has(element.id)
     const isLinkSource = relationSource === element.id
     const isPort = shape === 'port'
     // 生命线以图面计算为准：表头对齐到同一行，宽度取到放得下名字，竖线一直伸到共享底边。
@@ -4736,7 +6133,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         shapeSvg = (
           <g>
             {selected && (
-              <rect x={bx - 5} y={by - 5} width={bw + 10} height={bh + 10} rx={6} fill="none" stroke="#2b5cb8" strokeWidth={1.2} strokeDasharray="4 3" />
+              <rect x={bx - 5} y={by - 5} width={bw + 10} height={bh + 10} rx={6} fill="none" stroke="#2b5cb8" strokeWidth={1.2} strokeDasharray="4 3" data-export="omit" />
             )}
             {glyphSvg}
             {/* 小图形难点中：透明命中区罩住图形与下方名称。 */}
@@ -4789,6 +6186,20 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           openMenu(event, { kind: 'element', id: element.id })
         }}
       >
+        {multiSelected && !selected && (
+          <rect
+            x={bx - 4}
+            y={by - 4}
+            width={bw + 8}
+            height={bh + 8}
+            rx={6}
+            fill="none"
+            stroke="#2b5cb8"
+            strokeWidth={1.2}
+            strokeDasharray="4 3"
+            data-export="omit"
+          />
+        )}
         {shapeSvg}
         {glyphKind && (
           <text x={bx + bw / 2} y={by + bh + 15} textAnchor="middle" className="control-label">
@@ -5130,6 +6541,22 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }
 
   const deleteSelection = () => {
+    // 画布多选：批量删除选中图形（含后代），一条 DELETE_ELEMENTS、一步撤销。
+    const multi = [...selectionSet].filter((id) => {
+      const element = elementById.get(id)
+      return element !== undefined && !isProjectRoot(element) && !extensionRootIds.has(id)
+        && positions.some((item) => item.element.id === id)
+    })
+    if (multi.length > 1) {
+      const count = multi.reduce((sum, id) => sum + descendants(id).length, 0)
+      setDeleteDialog({
+        elementId: multi[0],
+        name: t('{count} 个对象', { count: multi.length }),
+        count,
+        ids: multi,
+      })
+      return
+    }
     if (selected) {
       if (isProjectRoot(selected)) {
         say('项目根节点不可删除')
@@ -5152,6 +6579,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       void runCommand('DELETE_RELATIONSHIP', { id })
     }
   }
+  deleteSelectionRef.current = deleteSelection
+  renameSelectionRef.current = renameSelection
 
   const menus: MenuDef[] = [
     {
@@ -5170,6 +6599,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         { label: '导出项目快照…', run: () => void runExport('native'), disabled: !canExport },
         'separator',
         { label: '导出当前图为 SVG', run: exportSvg, disabled: !activeDiagramObj },
+        { label: '导出当前图为 PNG', run: () => void exportPng(), disabled: !activeDiagramObj },
+        'separator',
+        { label: '生成模型报告…', run: () => void openReport() },
         'separator',
         { label: '退出登录', run: onLogout, danger: true },
       ],
@@ -5177,6 +6609,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     {
       label: '编辑',
       entries: [
+        { label: '全局搜索…', hint: 'Ctrl/⌘ + K', run: openSearch },
+        'separator',
         {
           label: '撤销',
           hint: 'Ctrl/⌘ + Z',
@@ -5190,14 +6624,28 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           disabled: !canEdit || busy || (health?.redoDepth ?? 0) === 0,
         },
         'separator',
+        { label: '复制选中图形', hint: 'Ctrl/⌘ + C', run: copySelection, disabled: !canEdit || alignableCount === 0 },
+        { label: '粘贴为副本', hint: 'Ctrl/⌘ + V', run: pasteClipboard, disabled: !canEdit || busy || !clipboard },
+        { label: '创建副本', hint: 'Ctrl/⌘ + D', run: duplicateSelection, disabled: !canEdit || busy || alignableCount === 0 },
+        { label: '全选当前图图形', hint: 'Ctrl/⌘ + A', run: selectAllInDiagram, disabled: !activeDiagramObj },
+        'separator',
         { label: '重命名选中对象', hint: 'F2', run: renameSelection, disabled: !canEdit || !selected && !selectedDiagram },
         {
           label: '删除选中对象',
           hint: 'Del',
           run: deleteSelection,
-          disabled: !canEdit || !selected && !selectedDiagram && !selectedRelation,
+          disabled: !canEdit || !selected && !selectedDiagram && !selectedRelation && selectionSet.size === 0,
           danger: true,
         },
+        'separator',
+        { label: '左对齐', run: () => alignSelection('left'), disabled: !canEdit || busy || alignableCount < 2 },
+        { label: '水平居中', run: () => alignSelection('centerH'), disabled: !canEdit || busy || alignableCount < 2 },
+        { label: '右对齐', run: () => alignSelection('right'), disabled: !canEdit || busy || alignableCount < 2 },
+        { label: '顶对齐', run: () => alignSelection('top'), disabled: !canEdit || busy || alignableCount < 2 },
+        { label: '垂直居中', run: () => alignSelection('centerV'), disabled: !canEdit || busy || alignableCount < 2 },
+        { label: '底对齐', run: () => alignSelection('bottom'), disabled: !canEdit || busy || alignableCount < 2 },
+        { label: '横向等间距', run: () => alignSelection('distH'), disabled: !canEdit || busy || alignableCount < 3 },
+        { label: '纵向等间距', run: () => alignSelection('distV'), disabled: !canEdit || busy || alignableCount < 3 },
       ],
     },
     {
@@ -5216,6 +6664,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           run: () => setToolboxCollapsed((previous) => !previous),
         },
         { label: '适应窗口', run: fitCanvas },
+        { label: '小地图', run: () => setMinimapOpen((previous) => !previous), checked: minimapOpen },
+        { label: 'SysML 图框', run: () => setDiagramFrameOpen((previous) => !previous), checked: diagramFrameOpen },
         { label: '缩放重置 100%', run: () => applyZoom(1), disabled: !canEdit || zoom === 1 && pan.x === 0 && pan.y === 0 },
       ],
     },
@@ -5249,6 +6699,18 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       label: '分析',
       entries: [
         {
+          label: '校验问题面板',
+          run: () => openBottomDock('problems'),
+          checked: bottomDockOpen && bottomDockTab === 'problems',
+        },
+        {
+          label: '需求覆盖矩阵',
+          run: () => openBottomDock('coverage'),
+          checked: bottomDockOpen && bottomDockTab === 'coverage',
+        },
+        { label: '生成模型报告…', run: () => void openReport() },
+        'separator',
+        {
           label: '模型统计',
           run: () => say('{elements} 元素 · {relations} 关系 · {diagrams} 图 · rev {revision}', {
             elements: model.elements.length,
@@ -5266,7 +6728,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           }),
         },
         'separator',
-        { label: '重新校验并刷新', run: () => void refresh() },
+        { label: '重新校验并刷新', run: () => { void refresh(); void loadValidation() } },
       ],
     },
     {
@@ -5276,6 +6738,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         { label: '界面语言 · English', run: () => setLocale('en'), checked: locale === 'en' },
         'separator',
         { label: '导出当前图为 SVG', run: exportSvg, disabled: !activeDiagramObj },
+        { label: '导出当前图为 PNG', run: () => void exportPng(), disabled: !activeDiagramObj },
         { label: '适应窗口', run: fitCanvas },
       ],
     },
@@ -5308,7 +6771,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       entries: [
         {
           label: '快捷键',
-          run: () => say('Ctrl/⌘+Z 撤销 · Ctrl+Y 重做 · 双指滚动或拖动空白平移画布 · 捏合或 Ctrl/⌘+滚轮缩放 · Esc 退出连线'),
+          run: () => say('Ctrl/⌘+K 全局搜索 · Ctrl/⌘+Z 撤销 · Ctrl+Y 重做 · Shift+点选多选 · Shift+空白拖拽框选 · Ctrl/⌘+C/V/D 复制/粘贴/副本 · Ctrl/⌘+A 全选 · Del 删除 · F2 重命名 · 方向键微调（Shift ×10） · Esc 取消多选/退出连线 · 空白拖动或双指滚动平移 · 捏合或 Ctrl/⌘+滚轮缩放'),
         },
         {
           label: '关于 Scofen Modeler Studio',
@@ -5686,6 +7149,17 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               onClick={() => setLeftTab('library')}
             >{t('模型库')}</button>
             <span className="tree-head-count" title={t('项目元素数（不含隔离的扩展包）')}>{projectElements.length}</span>
+            <button
+              type="button"
+              className="tree-head-search"
+              title={t('全局搜索（Ctrl/⌘+K）')}
+              aria-label={t('全局搜索')}
+              onClick={openSearch}
+            >
+              <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+                <circle cx="6.8" cy="6.8" r="4.2" /><path d="M10 10l3.6 3.6" />
+              </svg>
+            </button>
           </div>
           {leftTab === 'project' ? (
             <div className="browser-filter">
@@ -5735,7 +7209,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               {t('通用扩展包 · 元类 / 构造型 / 关系')}
             </div>
           )}
-          <div className="browser" onContextMenu={(event) => openMenu(event, { kind: 'root', id: null })}>
+          <div
+            className={`browser${treeVirtual ? ' virtualized' : ''}`}
+            ref={browserRef}
+            onScroll={handleTreeScroll}
+            onContextMenu={(event) => openMenu(event, { kind: 'root', id: null })}
+          >
             {leftTab === 'charts' ? (
               <>
                 {diagramsByKind.map(([kind, list]) => (
@@ -5813,9 +7292,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <>
             <TreeDataContext.Provider value={treeData}>
               <TreeActionsContext.Provider value={treeActions}>
-                {visibleRows.map((row) => (
+                {treeVirtual && <div className="tree-spacer" style={{ height: treeWindow.start * TREE_ROW_H }} aria-hidden="true" />}
+                {treeWindow.rows.map((row) => (
                   <TreeRow key={`${row.kind}:${row.id}:${row.ownerId ?? ''}`} {...row} />
                 ))}
+                {treeVirtual && <div className="tree-spacer" style={{ height: (visibleRows.length - treeWindow.end) * TREE_ROW_H }} aria-hidden="true" />}
               </TreeActionsContext.Provider>
             </TreeDataContext.Provider>
             {rootNodes.length === 0 && <p className="hint">{t('暂无元素，右键空白处新建元素')}</p>}
@@ -5858,6 +7339,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               ['attrs', '属性'],
               ['tags', '标签'],
               ['relations', '关系'],
+              ['whereused', '引用面板'],
               ['notation', '记法'],
             ] as const).map(([code, label]) => (
               <button
@@ -6105,10 +7587,14 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   )}
                   <div className="kv"><span>{t('文档')}</span><code>{(selectedRelation ?? selected)!.documentation || '—'}</code></div>
                   <div className="kv"><span>XMI ID</span><code>{selected?.xmiId || '—'}</code></div>
-                  {Object.entries((selectedRelation ?? selected)!.taggedValues ?? {}).map(([key, value]) => (
-                    <div className="kv" key={key}><span>{key}</span><code>{value}</code></div>
-                  ))}
-                  {Object.keys((selectedRelation ?? selected)!.taggedValues ?? {}).length === 0 && <p className="hint">{t('暂无标签值')}</p>}
+                  <TaggedValuesEditor
+                    targetId={(selectedRelation ?? selected)!.id}
+                    taggedValues={(selectedRelation ?? selected)!.taggedValues ?? {}}
+                    canEdit={canEdit}
+                    readLatest={readLatestTagged}
+                    onCommit={commitTaggedValues}
+                    onNotice={say}
+                  />
                 </>
               ) : (
                 <p className="hint">{t('选择一个模型元素或关系以查看其构造型、文档与标签值')}</p>
@@ -6140,6 +7626,112 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 </>
               ) : (
                 <p className="hint">{t('选择一个元素或关系以查看它的连线')}</p>
+              )}
+            </div>
+          ) : propsTab === 'whereused' ? (
+            <div className="rel-tab whereused-tab">
+              {selected && whereUsed ? (
+                whereUsed.total === 0 ? (
+                  <p className="hint">{t('该元素尚未被任何图、关系或属性引用')}</p>
+                ) : (
+                  <>
+                    {whereUsed.owner && (
+                      <div className="rel-tab-group">
+                        <div className="rel-tab-head">{t('所有者')}</div>
+                        <button type="button" className="rel-link-row" onClick={() => locateInTree(whereUsed.owner!.id)}>
+                          <TypeIcon code={codeOf(whereUsed.owner.type)} size={14} />
+                          <span className="rel-link-other">{whereUsed.owner.name}</span>
+                        </button>
+                      </div>
+                    )}
+                    {whereUsed.diagrams.length > 0 && (
+                      <div className="rel-tab-group">
+                        <div className="rel-tab-head">{t('所在图 {count}', { count: whereUsed.diagrams.length })}</div>
+                        {whereUsed.diagrams.map((diagram) => (
+                          <button
+                            type="button"
+                            key={diagram.id}
+                            className="rel-link-row"
+                            title={t('在「{diagram}」中定位', { diagram: diagram.name })}
+                            onClick={() => focusElementInDiagram(selected.id, diagram.id)}
+                          >
+                            <DiagramIcon code={diagram.kind} size={14} />
+                            <span className="rel-link-other">{diagram.name}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                    {whereUsed.incoming.length > 0 && (
+                      <div className="rel-tab-group">
+                        <div className="rel-tab-head">{t('被引用 {count}', { count: whereUsed.incoming.length })}</div>
+                        {whereUsed.incoming.map((relation) => renderRelationLink(relation, 'in'))}
+                      </div>
+                    )}
+                    {whereUsed.referrers.length > 0 && (
+                      <div className="rel-tab-group">
+                        <div className="rel-tab-head">{t('属性引用 {count}', { count: whereUsed.referrers.length })}</div>
+                        {whereUsed.referrers.map((referrer) => (
+                          <button
+                            type="button"
+                            key={`${referrer.kind}-${referrer.id}-${referrer.key}`}
+                            className="rel-link-row"
+                            title={t('{name} 的属性「{key}」引用了此对象', { name: referrer.name, key: referrer.key })}
+                            onClick={() => {
+                              if (referrer.kind === 'relation') {
+                                setSelectedRelationId(referrer.id)
+                                setSelectedId(null)
+                                setSelectedDiagramId(null)
+                              } else {
+                                locateInTree(referrer.id)
+                              }
+                            }}
+                          >
+                            {referrer.kind === 'relation'
+                              ? <RelationIcon code={model.relationships.find((item) => item.id === referrer.id)?.type ?? 'dependency'} size={14} />
+                              : <TypeIcon code={codeOf(elementById.get(referrer.id)?.type ?? 'BLOCK')} size={14} />}
+                            <span className="rel-link-other">{referrer.name}</span>
+                            <span className="whereused-key">{referrer.key}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )
+              ) : selectedRelation && whereUsed ? (
+                <>
+                  <div className="rel-tab-group">
+                    <div className="rel-tab-head">{t('端点')}</div>
+                    {whereUsed.endpoints.map((endpoint) => (
+                      <button type="button" key={endpoint.id} className="rel-link-row" onClick={() => locateInTree(endpoint.id)}>
+                        <TypeIcon code={codeOf(endpoint.type)} size={14} />
+                        <span className="rel-link-other">{endpoint.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {whereUsed.diagrams.length > 0 && (
+                    <div className="rel-tab-group">
+                      <div className="rel-tab-head">{t('所在图 {count}', { count: whereUsed.diagrams.length })}</div>
+                      {whereUsed.diagrams.map((diagram) => (
+                        <button
+                          type="button"
+                          key={diagram.id}
+                          className="rel-link-row"
+                          onClick={() => {
+                            setActiveDiagramId(diagram.id)
+                            setSelectedDiagramId(diagram.id)
+                            openTab({ kind: 'diagram', id: diagram.id })
+                          }}
+                        >
+                          <DiagramIcon code={diagram.kind} size={14} />
+                          <span className="rel-link-other">{diagram.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {whereUsed.total === 0 && <p className="hint">{t('该关系尚未出现在任何图中')}</p>}
+                </>
+              ) : (
+                <p className="hint">{t('选择一个对象以查看它被哪些图、关系与属性引用')}</p>
               )}
             </div>
           ) : (
@@ -6177,7 +7769,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   ? t('共 {count} 项', { count: propVisibleCount })
                   : propsTab === 'relations'
                     ? t('{count} 条连线', { count: selectionRelations.outgoing.length + selectionRelations.incoming.length })
-                    : selectedDiagram
+                    : propsTab === 'whereused'
+                      ? t('{count} 处引用', { count: whereUsed?.total ?? 0 })
+                      : selectedDiagram
                       ? t('图 · {count} 元素', { count: selectedDiagram.elementIds.length })
                       : selected
                         ? typeLabel(selected.type)
@@ -6559,6 +8153,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   relation: activeSeqTool ? pick(activeSeqTool.label, activeSeqTool.labelEn) : relationLabel(relationTool),
                 })}</span>}
               </span>
+              <button
+                type="button"
+                className={`dt-frame-toggle${diagramFrameOpen ? ' active' : ''}`}
+                aria-pressed={diagramFrameOpen}
+                title={t('显示 SysML 标准图框（图种与图名）')}
+                onClick={() => setDiagramFrameOpen((prev) => !prev)}
+                disabled={!activeDiagramObj}
+              >
+                {t('SysML 图框')}
+              </button>
             </div>
           </div>
           <svg
@@ -6566,7 +8170,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             className={`${relationTool ? 'linking' : ''}${panDrag ? ' panning' : ''}`.trim() || undefined}
             viewBox={viewBox}
             role="img"
-            aria-label={t('模型画布，图形可拖拽；空白处拖动或双指滚动平移，捏合或 Ctrl/⌘+滚轮缩放')}
+            aria-label={t('模型画布，图形可拖拽；Shift+点选多选，Shift+空白拖拽框选；空白处拖动或双指滚动平移，捏合或 Ctrl/⌘+滚轮缩放')}
             onPointerDown={handleCanvasPanStart}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
@@ -6580,6 +8184,46 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             onDrop={handleCanvasDrop}
           >
             <defs />
+            {diagramFrame ? (
+              <g className="diagram-frame" pointerEvents="none">
+                <rect
+                  x={diagramFrame.x}
+                  y={diagramFrame.y}
+                  width={diagramFrame.w}
+                  height={diagramFrame.h}
+                  fill="#ffffff"
+                  fillOpacity={0.55}
+                  stroke="#5a6b7f"
+                  strokeWidth={1.4}
+                />
+                <path
+                  d={`M ${diagramFrame.x} ${diagramFrame.y} H ${diagramFrame.x + diagramFrame.headerW - diagramFrame.notch} L ${diagramFrame.x + diagramFrame.headerW} ${diagramFrame.y + diagramFrame.headerH} H ${diagramFrame.x} Z`}
+                  fill={diagramFrame.kindColor}
+                  fillOpacity={0.1}
+                  stroke="#5a6b7f"
+                  strokeWidth={1.4}
+                  strokeLinejoin="round"
+                />
+                <text
+                  x={diagramFrame.x + 12}
+                  y={diagramFrame.y + 16}
+                  fontSize={10.5}
+                  fontWeight={700}
+                  fill={diagramFrame.kindColor}
+                >
+                  {diagramFrame.kindLine}
+                </text>
+                <text
+                  x={diagramFrame.x + 12}
+                  y={diagramFrame.y + 32}
+                  fontSize={12.5}
+                  fontWeight={700}
+                  fill="#1c2430"
+                >
+                  {diagramFrame.name}
+                </text>
+              </g>
+            ) : null}
             {portLinks.map((link, index) => (
               <line
                 key={`pl-${index}`}
@@ -6711,6 +8355,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       strokeWidth={(style.width ?? 1.4) + 7}
                       strokeOpacity={0.18}
                       strokeLinecap="round"
+                      data-export="omit"
                     />
                   )}
                   <polyline
@@ -6753,6 +8398,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                     strokeWidth={12}
                     strokeLinecap="round"
                     pointerEvents={relationTool ? 'none' : 'stroke'}
+                    data-export="omit"
                     style={{ cursor: relationTool ? 'crosshair' : 'pointer' }}
                     onPointerDown={(event) => {
                       event.stopPropagation()
@@ -6785,6 +8431,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                         strokeOpacity={0}
                         strokeWidth={14}
                         pointerEvents="stroke"
+                        data-export="omit"
                         style={{ cursor: horizontal ? 'row-resize' : 'col-resize' }}
                         onPointerDown={(event) => {
                           event.stopPropagation()
@@ -6818,14 +8465,266 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       stroke="#2b5cb8"
                       strokeWidth={1.4}
                       pointerEvents="none"
+                      data-export="omit"
                     />
                   ))}
                 </g>
               )
             })}
+            {marquee && (
+              <rect
+                x={Math.min(marquee.startX, marquee.x)}
+                y={Math.min(marquee.startY, marquee.y)}
+                width={Math.abs(marquee.x - marquee.startX)}
+                height={Math.abs(marquee.y - marquee.startY)}
+                fill="#2b5cb8"
+                fillOpacity={0.08}
+                stroke="#2b5cb8"
+                strokeWidth={1}
+                strokeDasharray="5 3"
+                pointerEvents="none"
+                data-export="omit"
+              />
+            )}
           </svg>
+          {canEdit && activeDiagramObj && alignableCount >= 2 && (
+            <div className="multi-toolbar" role="toolbar" aria-label={t('多选对齐工具')}>
+              <span className="multi-count">{t('{count} 个图形', { count: alignableCount })}</span>
+              <button type="button" disabled={busy} title={t('左对齐')} onClick={() => alignSelection('left')}>{t('左齐')}</button>
+              <button type="button" disabled={busy} title={t('水平居中')} onClick={() => alignSelection('centerH')}>{t('水平中')}</button>
+              <button type="button" disabled={busy} title={t('右对齐')} onClick={() => alignSelection('right')}>{t('右齐')}</button>
+              <span className="multi-sep" aria-hidden="true" />
+              <button type="button" disabled={busy} title={t('顶对齐')} onClick={() => alignSelection('top')}>{t('顶齐')}</button>
+              <button type="button" disabled={busy} title={t('垂直居中')} onClick={() => alignSelection('centerV')}>{t('垂直中')}</button>
+              <button type="button" disabled={busy} title={t('底对齐')} onClick={() => alignSelection('bottom')}>{t('底齐')}</button>
+              <span className="multi-sep" aria-hidden="true" />
+              <button type="button" disabled={busy || alignableCount < 3} title={t('横向等间距（至少 3 个）')} onClick={() => alignSelection('distH')}>{t('横等距')}</button>
+              <button type="button" disabled={busy || alignableCount < 3} title={t('纵向等间距（至少 3 个）')} onClick={() => alignSelection('distV')}>{t('纵等距')}</button>
+              <span className="multi-sep" aria-hidden="true" />
+              <button type="button" disabled={busy} title={t('复制（Ctrl/⌘+C）')} onClick={copySelection}>{t('复制')}</button>
+              <button type="button" disabled={busy} className="multi-danger" title={t('删除（Del）')} onClick={deleteSelection}>{t('删除')}</button>
+              <button
+                type="button"
+                className="multi-close"
+                title={t('取消多选（Esc）')}
+                onClick={() => setSelectedIds(selectedId ? new Set([selectedId]) : new Set())}
+              >✕</button>
+            </div>
+          )}
+          {activeDiagramObj && positions.length > 0 && (
+            minimapOpen ? (
+              <div className="minimap" aria-label={t('小地图')}>
+                <div className="minimap-head">
+                  <span>{t('小地图')}</span>
+                  <button
+                    type="button"
+                    className="minimap-close"
+                    title={t('关闭小地图')}
+                    aria-label={t('关闭小地图')}
+                    onClick={() => setMinimapOpen(false)}
+                  >×</button>
+                </div>
+                <svg
+                  ref={minimapRef}
+                  viewBox={minimapViewBox}
+                  preserveAspectRatio="xMidYMid meet"
+                  onPointerDown={(event) => {
+                    event.stopPropagation()
+                    event.currentTarget.setPointerCapture(event.pointerId)
+                    minimapDragRef.current = true
+                    minimapJump(event.clientX, event.clientY)
+                  }}
+                  onPointerMove={(event) => {
+                    if (minimapDragRef.current) {
+                      minimapJump(event.clientX, event.clientY)
+                    }
+                  }}
+                  onPointerUp={() => { minimapDragRef.current = false }}
+                  onPointerCancel={() => { minimapDragRef.current = false }}
+                >
+                  {positions.map((item) => (
+                    <rect
+                      key={item.element.id}
+                      x={item.x}
+                      y={item.y}
+                      width={item.w}
+                      height={item.h}
+                      className={`minimap-node${isBackdropShape(shapeOf(item.element.type)) ? ' backdrop' : ''}${selectionSet.has(item.element.id) ? ' selected' : ''}`}
+                      vectorEffect="non-scaling-stroke"
+                    />
+                  ))}
+                  <rect
+                    className="minimap-view"
+                    x={clampedPan.x}
+                    y={clampedPan.y}
+                    width={viewWidth}
+                    height={viewHeight}
+                    vectorEffect="non-scaling-stroke"
+                  />
+                </svg>
+              </div>
+            ) : (
+              <button
+                type="button"
+                className="minimap-reopen"
+                title={t('打开小地图')}
+                aria-label={t('打开小地图')}
+                onClick={() => setMinimapOpen(true)}
+              >
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.4" aria-hidden="true">
+                  <rect x="1.5" y="2.5" width="13" height="11" rx="1.5" />
+                  <rect x="8.5" y="7.5" width="5" height="4.5" rx="0.8" fill="currentColor" stroke="none" />
+                </svg>
+              </button>
+            )
+          )}
         </main>
       </div>
+
+      {bottomDockOpen && (
+        <section className="bottom-dock" aria-label={t('校验与追溯')}>
+          <div className="bd-head">
+            <div className="bd-tabs" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={bottomDockTab === 'problems'}
+                className={`bd-tab ${bottomDockTab === 'problems' ? 'active' : ''}`}
+                onClick={() => setBottomDockTab('problems')}
+              >
+                {t('校验问题')}
+                {totalProblems > 0 && <span className="bd-tab-count">{totalProblems}</span>}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={bottomDockTab === 'coverage'}
+                className={`bd-tab ${bottomDockTab === 'coverage' ? 'active' : ''}`}
+                onClick={() => setBottomDockTab('coverage')}
+              >
+                {t('需求覆盖')}
+                {coverageSummary.total > 0 && <span className="bd-tab-count">{coverageSummary.total}</span>}
+              </button>
+            </div>
+            <div className="bd-actions">
+              {bottomDockTab === 'problems' ? (
+                <div className="bd-filter" role="group" aria-label={t('按严重度筛选')}>
+                  <button type="button" className={`bd-chip ${problemFilter === 'all' ? 'active' : ''}`} onClick={() => setProblemFilter('all')}>{t('全部')} {totalProblems}</button>
+                  <button type="button" className={`bd-chip err ${problemFilter === 'error' ? 'active' : ''}`} onClick={() => setProblemFilter('error')}>{t('错误')} {validationCounts.error}</button>
+                  <button type="button" className={`bd-chip warn ${problemFilter === 'warning' ? 'active' : ''}`} onClick={() => setProblemFilter('warning')}>{t('警告')} {validationCounts.warning}</button>
+                </div>
+              ) : (
+                <div className="bd-filter" role="group" aria-label={t('按覆盖筛选')}>
+                  <button type="button" className={`bd-chip ${coverageFilter === 'all' ? 'active' : ''}`} onClick={() => setCoverageFilter('all')}>{t('全部')}</button>
+                  <button type="button" className={`bd-chip warn ${coverageFilter === 'unsatisfied' ? 'active' : ''}`} onClick={() => setCoverageFilter('unsatisfied')}>{t('未满足')}</button>
+                  <button type="button" className={`bd-chip warn ${coverageFilter === 'unverified' ? 'active' : ''}`} onClick={() => setCoverageFilter('unverified')}>{t('未验证')}</button>
+                  <button type="button" className={`bd-chip err ${coverageFilter === 'uncovered' ? 'active' : ''}`} onClick={() => setCoverageFilter('uncovered')}>{t('有缺口')}</button>
+                </div>
+              )}
+              <button type="button" className="bd-icon" title={t('重新校验')} disabled={validationLoading} onClick={() => void loadValidation()}>⟳</button>
+              <button type="button" className="bd-icon" title={t('收起面板')} onClick={() => setBottomDockOpen(false)}>▾</button>
+            </div>
+          </div>
+
+          <div className="bd-body">
+            {validationError ? (
+              <div className="bd-empty err">{t('校验加载失败：{error}', { error: validationError })}</div>
+            ) : bottomDockTab === 'problems' ? (
+              filteredProblems.length === 0 ? (
+                <div className={`bd-empty ${totalProblems === 0 && !validationLoading ? 'ok' : ''}`}>
+                  {validationLoading
+                    ? t('正在校验…')
+                    : totalProblems === 0
+                      ? t('模型校验通过，没有发现问题')
+                      : t('当前筛选下没有问题')}
+                </div>
+              ) : (
+                <ul className="problem-list">
+                  {filteredProblems.map((issue, index) => (
+                    <li key={`${issue.code}-${issue.targetId}-${index}`}>
+                      <button type="button" className={`problem-row ${issue.severity}`} title={issue.message} onClick={() => locateProblem(issue)}>
+                        <span className={`problem-sev ${issue.severity}`} aria-hidden="true">
+                          {issue.severity === 'error' ? '✕' : issue.severity === 'warning' ? '⚠' : 'ℹ'}
+                        </span>
+                        <span className="problem-msg">{issue.message}</span>
+                        <span className="problem-target">{issue.targetType === 'diagram' ? t('图') : t('元素')} · {issue.targetName}</span>
+                        <span className="problem-go" aria-hidden="true">→</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : (
+              <div className="coverage-wrap">
+                <table className="coverage-table">
+                  <thead>
+                    <tr>
+                      <th className="cov-req">{t('需求')}</th>
+                      <th className="cov-col">{t('满足 satisfy')}</th>
+                      <th className="cov-col">{t('验证 verify')}</th>
+                      <th className="cov-state">{t('状态')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredCoverage.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className={`bd-empty ${coverageSummary.total === 0 && !validationLoading ? 'ok' : ''}`}>
+                          {validationLoading
+                            ? t('正在校验…')
+                            : coverageSummary.total === 0
+                              ? t('模型中没有需求元素')
+                              : t('当前筛选下没有需求')}
+                        </td>
+                      </tr>
+                    ) : filteredCoverage.map((item) => (
+                      <tr key={item.id} className={!item.satisfied || !item.verified ? 'gap' : ''}>
+                        <td className="cov-req">
+                          <button type="button" className="cov-link" onClick={() => locateCoverageRef(item.id, item.name)}>{item.name}</button>
+                        </td>
+                        <td className="cov-col">
+                          {item.satisfied ? (
+                            <span className="cov-refs">
+                              {item.satisfiedBy.map((ref) => (
+                                <button key={ref.id} type="button" className="cov-ref sat" onClick={() => locateCoverageRef(ref.id, ref.name)}>{ref.name}</button>
+                              ))}
+                            </span>
+                          ) : <span className="cov-none">{t('未满足')}</span>}
+                        </td>
+                        <td className="cov-col">
+                          {item.verified ? (
+                            <span className="cov-refs">
+                              {item.verifiedBy.map((ref) => (
+                                <button key={ref.id} type="button" className="cov-ref ver" onClick={() => locateCoverageRef(ref.id, ref.name)}>{ref.name}</button>
+                              ))}
+                            </span>
+                          ) : <span className="cov-none">{t('未验证')}</span>}
+                        </td>
+                        <td className="cov-state">
+                          <span className={`cov-badge ${item.satisfied && item.verified ? 'full' : item.satisfied || item.verified ? 'partial' : 'none'}`}>
+                            {item.satisfied && item.verified ? t('已覆盖') : item.satisfied || item.verified ? t('部分') : t('缺口')}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {bottomDockTab === 'coverage' && !validationError && coverageSummary.total > 0 && (
+            <div className="bd-foot">
+              <span className="cov-stat">{t('需求 {n}', { n: coverageSummary.total })}</span>
+              <span className="cov-stat sat">{t('满足 {n}/{total}', { n: coverageSummary.satisfied, total: coverageSummary.total })}</span>
+              <span className="cov-stat ver">{t('验证 {n}/{total}', { n: coverageSummary.verified, total: coverageSummary.total })}</span>
+              <span className="cov-stat full">{t('全覆盖 {n}/{total}', { n: coverageSummary.fullyCovered, total: coverageSummary.total })}</span>
+              <span className="cov-bar" aria-hidden="true">
+                <span className="cov-bar-fill" style={{ width: `${coverageSummary.total ? Math.round(coverageSummary.fullyCovered / coverageSummary.total * 100) : 0}%` }} />
+              </span>
+            </div>
+          )}
+        </section>
+      )}
 
       <footer className="statusbar">
         <div className="sb-group sb-left">
@@ -6848,6 +8747,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           <button type="button" className="sb-btn wide" title={t('适应窗口')} onClick={fitCanvas}>{t('适应窗口')}</button>
         </div>
         <div className="sb-group sb-right">
+          <button
+            type="button"
+            className={`sb-problems${validationCounts.error > 0 ? ' has-error' : validationCounts.warning > 0 ? ' has-warning' : ' clean'}${bottomDockOpen ? ' active' : ''}`}
+            title={t('校验问题面板')}
+            onClick={() => (bottomDockOpen ? setBottomDockOpen(false) : openBottomDock('problems'))}
+          >
+            {validationCounts.error > 0 && <span className="sb-badge err">✕ {validationCounts.error}</span>}
+            {validationCounts.warning > 0 && <span className="sb-badge warn">⚠ {validationCounts.warning}</span>}
+            {totalProblems === 0 && <span className="sb-badge ok">✓ {t('校验通过')}</span>}
+          </button>
           {relationTool && (
             <span className="sb-item link-status">
               {t('连线 «{relation}» · {hint} · Esc 退出', {
@@ -6994,6 +8903,109 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <button type="button" onClick={() => openDiagramDialog(null)}>{t('在项目根下新建图…')}</button>
             </>
           )}
+        </div>
+      )}
+
+      {/* Ctrl/⌘+K 全局搜索：名称 / 文档 / 标签 / 属性值打分，↑↓ 选择、Enter 跳转 */}
+      {searchOpen && (
+        <div className="search-overlay" onPointerDown={(event) => { if (event.target === event.currentTarget) closeSearch() }}>
+          <div className="search-palette" role="dialog" aria-label={t('全局搜索')} onPointerDown={(event) => event.stopPropagation()}>
+            <div className="search-input-row">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true">
+                <circle cx="6.8" cy="6.8" r="4.2" /><path d="M10 10l3.6 3.6" />
+              </svg>
+              <input
+                autoFocus
+                value={searchQuery}
+                spellCheck={false}
+                placeholder={t('搜索元素、图、关系：名称 / 文档 / 标签 / 属性值…')}
+                aria-label={t('全局搜索')}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  const count = searchResults.length
+                  if (event.key === 'ArrowDown' && count > 0) {
+                    event.preventDefault()
+                    setSearchIndex((previous) => (previous + 1) % count)
+                  } else if (event.key === 'ArrowUp' && count > 0) {
+                    event.preventDefault()
+                    setSearchIndex((previous) => (previous - 1 + count) % count)
+                  } else if (event.key === 'Enter') {
+                    event.preventDefault()
+                    const result = searchResults[searchIndex]
+                    if (result) {
+                      activateSearchResult(result)
+                    }
+                  }
+                }}
+              />
+              <kbd className="search-esc">Esc</kbd>
+            </div>
+            <div className="search-results" role="listbox" aria-label={t('搜索结果')}>
+              {searchResults.map((result, index) => (
+                <button
+                  type="button"
+                  key={`${result.kind}:${result.id}`}
+                  role="option"
+                  aria-selected={index === searchIndex}
+                  data-search-index={index}
+                  className={`search-row${index === searchIndex ? ' active' : ''}`}
+                  onMouseEnter={() => setSearchIndex(index)}
+                  onClick={() => activateSearchResult(result)}
+                >
+                  {result.kind === 'diagram'
+                    ? <DiagramIcon code={model.diagrams.find((item) => item.id === result.id)?.kind ?? 'bdd'} size={15} />
+                    : result.kind === 'relation'
+                      ? <RelationIcon code={model.relationships.find((item) => item.id === result.id)?.type ?? 'dependency'} size={15} />
+                      : <TypeIcon code={codeOf(elementById.get(result.id)?.type ?? 'BLOCK')} size={15} />}
+                  <span className="search-name">{result.name}</span>
+                  <span className="search-sub">{result.sub}</span>
+                  <span className="search-kind">{t(result.kind === 'diagram' ? '图' : result.kind === 'relation' ? '关系' : '元素')}</span>
+                </button>
+              ))}
+              {searchNeedle && searchResults.length === 0 && (
+                <p className="hint search-empty">{t('没有匹配「{keyword}」的模型对象', { keyword: searchQuery.trim() })}</p>
+              )}
+              {!searchNeedle && searchResults.length === 0 && (
+                <p className="hint search-empty">{t('暂无图可快速打开')}</p>
+              )}
+            </div>
+            <div className="search-foot">
+              <span><kbd>↑</kbd><kbd>↓</kbd> {t('选择')}</span>
+              <span><kbd>Enter</kbd> {t('打开')}</span>
+              <span className="search-count">{t('{count} 个结果', { count: searchResults.length })}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* B4 模型交付报告：iframe srcDoc 预览自包含 HTML，导出即同一份字符串。 */}
+      {reportOpen && (
+        <div className="report-overlay" onPointerDown={(event) => { if (event.target === event.currentTarget) closeReport() }}>
+          <div className="report-shell" role="dialog" aria-label={t('模型交付报告')} onPointerDown={(event) => event.stopPropagation()}>
+            <div className="report-bar">
+              <div className="report-bar-title">
+                <span className="report-bar-mark" aria-hidden="true">▤</span>
+                <div className="report-bar-text">
+                  <strong>{t('模型交付报告')}</strong>
+                  <span className="report-bar-sub">{workspace?.currentProjectName ?? projectRoot?.name ?? t('未命名项目')} · rev {model.revision}</span>
+                </div>
+              </div>
+              <div className="report-bar-actions">
+                <button type="button" className="report-btn" onClick={() => void openReport()} title={t('用最新模型与校验数据重新生成')}>↻ {t('刷新')}</button>
+                <button type="button" className="report-btn" onClick={printReport} disabled={!reportHtml} title={t('打印 / 另存为 PDF')}>⎙ {t('打印')}</button>
+                <button type="button" className="report-btn primary" onClick={exportReportHtml} disabled={!reportHtml} title={t('导出自包含 HTML 文件')}>⇩ {t('导出 HTML')}</button>
+                <button type="button" className="report-close" onClick={closeReport} aria-label={t('关闭')}>✕</button>
+              </div>
+            </div>
+            {reportError && <div className="report-error">{t('校验数据加载失败：{error}', { error: reportError })}</div>}
+            <div className="report-body">
+              {reportHtml
+                ? <iframe ref={reportFrameRef} className="report-frame" title={t('模型交付报告')} srcDoc={reportHtml} />
+                : reportError
+                  ? <div className="report-loading">{t('报告生成失败，请点「刷新」重试。')}</div>
+                  : <div className="report-loading"><span className="report-spinner" aria-hidden="true" />{t('正在装配报告…')}</div>}
+            </div>
+          </div>
         </div>
       )}
 
