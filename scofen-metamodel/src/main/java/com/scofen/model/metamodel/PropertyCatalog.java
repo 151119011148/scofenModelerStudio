@@ -1034,6 +1034,9 @@ public final class PropertyCatalog {
         roots(ElementType.STEREOTYPE, UmlMetaclass.STEREOTYPE);
         // 元类即「实例是 Class 的 Class」（UML 2.5.1 §7.5），因此沿用 Class 的属性链。
         roots(ElementType.METACLASS, UmlMetaclass.CLASS);
+        // 用户定制对象：实现层概念，沿用系统属性链，属性面板照常可用。
+        roots(ElementType.DIAGRAM_TYPE, UmlMetaclass.SCOFEN_CORE);
+        roots(ElementType.TAG_DEFINITION, UmlMetaclass.SCOFEN_CORE);
         roots(ElementType.REQUIREMENT, UmlMetaclass.SYSML_REQUIREMENT);
         roots(ElementType.TEST_CASE, UmlMetaclass.SYSML_TEST_CASE);
         roots(ElementType.BLOCK, UmlMetaclass.SYSML_BLOCK);

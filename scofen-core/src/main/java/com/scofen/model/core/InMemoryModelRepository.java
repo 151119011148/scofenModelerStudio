@@ -445,7 +445,7 @@ public final class InMemoryModelRepository {
                         Diagram diagram = new Diagram(id, DiagramKind.fromCode(str(row, "kind")),
                                 str(row, "name"), blankToNull(str(row, "ownerId")),
                                 strList(row, "elementIds"), strList(row, "relationshipIds"),
-                                strMap(row, "style"));
+                                strMap(row, "style"), blankToNull(str(row, "customTypeId")));
                         diagrams.put(id, diagram);
                         changes.add(new Change("add", "diagram", id, null, diagram));
                         affected.add(id);
@@ -525,7 +525,7 @@ public final class InMemoryModelRepository {
                         Diagram diagram = new Diagram(str(row, "id"), DiagramKind.fromCode(str(row, "kind")),
                                 str(row, "name"), blankToNull(str(row, "ownerId")),
                                 strList(row, "elementIds"), strList(row, "relationshipIds"),
-                                strMap(row, "style"));
+                                strMap(row, "style"), blankToNull(str(row, "customTypeId")));
                         diagrams.put(diagram.id(), diagram);
                         changes.add(new Change("add", "diagram", diagram.id(), null, diagram));
                         affected.add(diagram.id());
@@ -748,7 +748,8 @@ public final class InMemoryModelRepository {
                 case "CREATE_DIAGRAM" -> {
                     String id = cmd.str("id");
                     DiagramKind kind = DiagramKind.fromCode(cmd.str("kind"));
-                    Diagram diagram = Diagram.of(id, kind, cmd.str("name"), blankToNull(cmd.str("ownerId")), cmd.strList("elementIds"));
+                    Diagram diagram = Diagram.of(id, kind, cmd.str("name"), blankToNull(cmd.str("ownerId")),
+                            cmd.strList("elementIds"), blankToNull(cmd.str("customTypeId")));
                     diagrams.put(id, diagram);
                     changes.add(new Change("add", "diagram", id, null, diagram));
                     affected.add(id);
@@ -801,9 +802,16 @@ public final class InMemoryModelRepository {
                             affected.add(notationId);
                         }
                     }
-                    inverse = Command.of("CREATE_DIAGRAM", revision, id + ":inverse",
-                            Map.of("id", id, "kind", before.kind().code(), "name", before.name(),
-                                    "elementIds", before.elementIds(), "notations", removed));
+                    Map<String, Object> inverseDiagram = new LinkedHashMap<>();
+                    inverseDiagram.put("id", id);
+                    inverseDiagram.put("kind", before.kind().code());
+                    inverseDiagram.put("name", before.name());
+                    inverseDiagram.put("elementIds", before.elementIds());
+                    inverseDiagram.put("notations", removed);
+                    if (before.customTypeId() != null) {
+                        inverseDiagram.put("customTypeId", before.customTypeId());
+                    }
+                    inverse = Command.of("CREATE_DIAGRAM", revision, id + ":inverse", inverseDiagram);
                 }
                 case "ADD_TO_DIAGRAM" -> {
                     String diagramId = cmd.str("diagramId");
@@ -1037,6 +1045,7 @@ public final class InMemoryModelRepository {
         row.put("elementIds", diagram.elementIds());
         row.put("relationshipIds", diagram.relationshipIds());
         row.put("style", diagram.style());
+        row.put("customTypeId", orEmpty(diagram.customTypeId()));
         return row;
     }
 

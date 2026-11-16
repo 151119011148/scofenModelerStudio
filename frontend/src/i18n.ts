@@ -1269,6 +1269,47 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
     zh: '已创建给自己的消息，可继续连线或按 Esc 退出',
     en: 'Self message created; keep drawing or press Esc to exit',
   },
+
+  /* ── 元模型定制（扩展图 / 构造型 / 标签定义） ── */
+  '定制': { zh: '定制', en: 'Customize' },
+  '扩展图': { zh: '扩展图', en: 'Custom diagrams' },
+  '元模型': { zh: '元模型', en: 'Metamodel' },
+  '新建图类型': { zh: '新建图类型', en: 'New diagram type' },
+  '尚无自定义图类型': { zh: '尚无自定义图类型', en: 'No custom diagram type yet' },
+  '尚无自定义构造型': { zh: '尚无自定义构造型', en: 'No custom stereotype yet' },
+  '新建构造型': { zh: '新建构造型', en: 'New stereotype' },
+  '添加标签定义': { zh: '添加标签定义', en: 'Add tag definition' },
+  '删除图类型': { zh: '删除图类型', en: 'Delete diagram type' },
+  '删除构造型': { zh: '删除构造型', en: 'Delete stereotype' },
+  '英文名称': { zh: '英文名称', en: 'English label' },
+  '布局基底图': { zh: '布局基底图', en: 'Base diagram' },
+  '图框标题模板': { zh: '图框标题模板', en: 'Frame title template' },
+  '如 {图种} · {图名}': { zh: '如 {图种} · {图名}', en: 'e.g. {kind} · {name}' },
+  '允许的元素类型': { zh: '允许的元素类型', en: 'Allowed element types' },
+  '允许的关系类型': { zh: '允许的关系类型', en: 'Allowed relationship types' },
+  '{count} 标签': { zh: '{count} 标签', en: '{count} tags' },
+  '自定义图 {count}': { zh: '自定义图 {count}', en: 'Custom diagram {count}' },
+  '自定义构造型 {count}': { zh: '自定义构造型 {count}', en: 'Custom stereotype {count}' },
+  '标签 {count}': { zh: '标签 {count}', en: 'Tag {count}' },
+  '自定义图以规范图为底，限定可出现的元素与关系；定义随模型保存与交换。': {
+    zh: '自定义图以规范图为底，限定可出现的元素与关系；定义随模型保存与交换。',
+    en: 'A custom diagram builds on a standard one and restricts which elements and relationships may appear; the definition is saved and exchanged with the model.',
+  },
+  '在剖面下定义构造型与标签，元素应用构造型后按标签类型填写值。': {
+    zh: '在剖面下定义构造型与标签，元素应用构造型后按标签类型填写值。',
+    en: 'Define stereotypes and tags under a profile; elements that apply a stereotype then carry values typed by the tag definition.',
+  },
+  '自定义图类型以「图类型」元素保存，构造型与标签定义分别是「构造型」「标签定义」元素。': {
+    zh: '自定义图类型以「图类型」元素保存，构造型与标签定义分别是「构造型」「标签定义」元素。',
+    en: 'A custom diagram type is stored as a "diagram type" element; stereotypes and tag definitions are "stereotype" and "tag definition" elements.',
+  },
+  '剖面标签': { zh: '剖面标签', en: 'Profile tags' },
+  '有必填标签尚未填写。': { zh: '有必填标签尚未填写。', en: 'Some required tags are still empty.' },
+  '标签「{key}」需要数值': { zh: '标签「{key}」需要数值', en: 'Tag "{key}" expects a number' },
+  '字段来自构造型下的标签定义；值失焦即保存，整张表一步撤销。': {
+    zh: '字段来自构造型下的标签定义；值失焦即保存，整张表一步撤销。',
+    en: 'Fields come from the tag definitions of the applied stereotypes; values save on blur, the whole table undoes in one step.',
+  },
 }
 
 /** 语言包缺失时回退到中文原文，保证界面永远可读。 */

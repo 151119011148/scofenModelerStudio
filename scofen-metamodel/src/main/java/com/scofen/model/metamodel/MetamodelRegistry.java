@@ -67,8 +67,9 @@ public final class MetamodelRegistry {
     static {
         // ── 包图：命名空间与可打包分类器，剖面应用 / 包合并也在这张图上画 ──
         register(DiagramKind.PKG,
-                types(ElementType.PACKAGE, ElementType.MODEL, ElementType.MODEL_LIBRARY,
+                types(                        ElementType.PACKAGE, ElementType.MODEL, ElementType.MODEL_LIBRARY,
                         ElementType.PROFILE, ElementType.STEREOTYPE, ElementType.METACLASS,
+                        ElementType.DIAGRAM_TYPE, ElementType.TAG_DEFINITION,
                         ElementType.CLASS, ElementType.INTERFACE, ElementType.SIGNAL,
                         ElementType.DATA_TYPE, ElementType.PRIMITIVE_TYPE, ElementType.ENUMERATION,
                         ElementType.ASSOCIATION_CLASS, ElementType.COMPONENT, ElementType.COLLABORATION,
@@ -223,6 +224,7 @@ public final class MetamodelRegistry {
         primary(DiagramKind.PKG,
                 ElementType.MODEL, ElementType.MODEL_LIBRARY, ElementType.PROFILE,
                 ElementType.PACKAGE, ElementType.METACLASS, ElementType.STEREOTYPE,
+                ElementType.DIAGRAM_TYPE, ElementType.TAG_DEFINITION,
                 ElementType.COMMENT, ElementType.VIEW, ElementType.VIEWPOINT,
                 ElementType.INSTANCE_SPECIFICATION, ElementType.NODE, ElementType.DEVICE,
                 ElementType.EXECUTION_ENVIRONMENT, ElementType.ARTIFACT,

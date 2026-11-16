@@ -169,6 +169,55 @@ public class ModelController {
         return result;
     }
 
+    /**
+     * 用户定制目录：自定义图类型（按项目快照实时计算）与定制属性字典。
+     *
+     * <p>参照 MagicDraw / M-Design 的 Custom Diagram 与 Profile 定制。自定义图类型以
+     * DiagramType 元素存在于项目里，这里把每条定义解析成与规范图同构的 DiagramSpec
+     * （允许集合 = 基底规范 ∩ 用户白名单），前端工具箱与新建图对话框直接用它，
+     * 与服务端校验共用 EffectiveDiagramSpec，杜绝「界面能画但服务端拒绝」。</p>
+     */
+    @GetMapping("/metamodel/customization")
+    @RequiresPermission(Permission.MODEL_VIEW)
+    public Map<String, Object> customization(
+            @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
+        ModelSnapshot snapshot = forProject(projectId).snapshot();
+        List<Map<String, Object>> diagramTypes = new ArrayList<>();
+        for (com.scofen.model.metamodel.ModelElement definition : snapshot.elements()) {
+            if (ElementType.fromAny(definition.type()).orElse(null) != ElementType.DIAGRAM_TYPE) {
+                continue;
+            }
+            String customId = definition.id();
+            com.scofen.model.metamodel.Diagram probe = com.scofen.model.metamodel.Diagram.of(
+                    "probe", DiagramKind.PKG, "", "", List.of(), customId);
+            com.scofen.model.metamodel.EffectiveDiagramSpec spec =
+                    com.scofen.model.metamodel.EffectiveDiagramSpec.of(probe,
+                            id -> snapshot.elements().stream().filter(e -> e.id().equals(id)).findFirst());
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", customId);
+            row.put("code", customId);
+            row.put("name", definition.name());
+            row.put("label", definition.name());
+            row.put("labelEn", spec.labelEn());
+            row.put("baseKind", spec.baseKind().code());
+            row.put("layout", spec.layout());
+            row.put("validationGroup", spec.validationGroup());
+            row.put("allowedTypes", spec.elements().stream().map(ElementType::name).sorted().toList());
+            row.put("allowedRelationships", spec.relationships().stream()
+                    .map(RelationshipType::code).sorted().toList());
+            row.put("elementTypes", spec.elements().size());
+            row.put("custom", Boolean.TRUE);
+            row.put("frameTitle", com.scofen.model.metamodel.EffectiveDiagramSpec.frameTitleTemplate(definition));
+            diagramTypes.add(row);
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("diagramTypes", diagramTypes);
+        result.put("keyLabels", com.scofen.model.metamodel.Customization.keyLabels());
+        result.put("tagTypes", com.scofen.model.metamodel.Customization.tagTypes());
+        result.put("prefix", com.scofen.model.metamodel.Customization.PREFIX);
+        return result;
+    }
+
     /** 关系类型目录：组件工具箱「关系」分组与新建关系弹窗共用，前端不硬编码类型清单。 */
     @GetMapping("/metamodel/relationships")
     @RequiresPermission(Permission.MODEL_VIEW)

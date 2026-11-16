@@ -1,8 +1,10 @@
 package com.scofen.model.core;
 
 import com.scofen.model.metamodel.ContainmentRules;
+import com.scofen.model.metamodel.Customization;
 import com.scofen.model.metamodel.Diagram;
 import com.scofen.model.metamodel.DiagramKind;
+import com.scofen.model.metamodel.EffectiveDiagramSpec;
 import com.scofen.model.metamodel.ElementType;
 import com.scofen.model.metamodel.ExtensionLibrary;
 import com.scofen.model.metamodel.MetamodelRegistry;
@@ -73,7 +75,7 @@ public final class ValidationEngine {
                 if (diagramId != null && !diagramId.isBlank()) {
                     Diagram diagram = repository.findDiagram(diagramId)
                             .orElseThrow(() -> new ValidationException("Unknown diagram: " + diagramId));
-                    assertDiagramAllows(diagram.kind(), child);
+                    assertDiagramAllows(diagram, child, repository);
                 }
             }
             case "RENAME_ELEMENT" -> {
@@ -119,6 +121,26 @@ public final class ValidationEngine {
                     }
                     if (!remove) {
                         assertStylePatch(value);
+                    }
+                    return;
+                }
+                // 用户定制属性 custom:*：自定义图类型 / 标签定义的声明，属表示层之外的
+                // 「元模型扩展」，不进 UML 规范清单，但键与值都必须过 Customization 白名单。
+                if (Customization.isCustomKey(key)) {
+                    ModelElement owner = repository.findElement(targetId)
+                            .orElseThrow(() -> new ValidationException("Unknown model object: " + targetId));
+                    // 元素的 type 存的是创建时的原始字符串（可能是枚举名，也可能是 umlName），
+                    // 因此按 ElementType.fromAny 归一后再比。
+                    ElementType ownerType = ElementType.fromAny(owner.type()).orElse(null);
+                    boolean customization = ownerType == ElementType.DIAGRAM_TYPE
+                            || ownerType == ElementType.TAG_DEFINITION;
+                    if (!customization) {
+                        throw new ValidationException("定制属性只能写在图类型或标签定义上: " + key);
+                    }
+                    try {
+                        Customization.validate(key, value, remove);
+                    } catch (IllegalArgumentException ex) {
+                        throw new ValidationException(ex.getMessage());
                     }
                     return;
                 }
@@ -477,9 +499,10 @@ public final class ValidationEngine {
                 if (diagramId != null && !diagramId.isBlank()) {
                     Diagram diagram = repository.findDiagram(diagramId)
                             .orElseThrow(() -> new ValidationException("Unknown diagram: " + diagramId));
-                    if (!MetamodelRegistry.allowsRelationship(diagram.kind(), relType)) {
+                    EffectiveDiagramSpec spec = EffectiveDiagramSpec.of(diagram, repository::findElement);
+                    if (!spec.allows(relType)) {
                         throw new ValidationException("Relationship «" + relType.code()
-                                + "» is not allowed on " + diagram.kind().label());
+                                + "» is not allowed on " + spec.label());
                     }
                 }
                 if ("generalization".equals(cmd.str("type"))
@@ -533,6 +556,14 @@ public final class ValidationEngine {
                 } catch (IllegalArgumentException ex) {
                     throw new ValidationException("Unknown diagram kind: " + cmd.str("kind"));
                 }
+                String customTypeId = blankToNull(cmd.str("customTypeId"));
+                if (customTypeId != null) {
+                    ModelElement definition = repository.findElement(customTypeId)
+                            .orElseThrow(() -> new ValidationException("Unknown diagram type: " + customTypeId));
+                    if (ElementType.fromAny(definition.type()).orElse(null) != ElementType.DIAGRAM_TYPE) {
+                        throw new ValidationException("不是图类型定义元素: " + customTypeId);
+                    }
+                }
                 for (String ref : cmd.strList("elementIds")) {
                     ModelElement element = repository.findElement(ref)
                             .orElseThrow(() -> new ValidationException("Diagram references missing element: " + ref));
@@ -546,7 +577,7 @@ public final class ValidationEngine {
                         .orElseThrow(() -> new ValidationException("Unknown diagram: " + diagramId));
                 ModelElement element = repository.findElement(elementId)
                         .orElseThrow(() -> new ValidationException("Unknown element: " + elementId));
-                ElementType.fromAny(element.type()).ifPresent(type -> assertDiagramAllows(diagram.kind(), type));
+                ElementType.fromAny(element.type()).ifPresent(type -> assertDiagramAllows(diagram, type, repository));
                 assertOptionalPosition(cmd);
             }
             case "REMOVE_FROM_DIAGRAM" -> require(cmd.str("diagramId"), "diagramId");
@@ -1001,10 +1032,20 @@ public final class ValidationEngine {
         }
     }
 
+    /** 规范图校验（无自定义上下文的批量/导入路径）。 */
     private void assertDiagramAllows(DiagramKind kind, ElementType type) {
         if (!MetamodelRegistry.allows(kind, type)) {
             throw new ValidationException("Element type " + type
                     + " is not allowed on " + kind.label());
+        }
+    }
+
+    /** 校验元素能否进入某张图：自定义图按「有效规范」判，其余等价规范图校验。 */
+    private void assertDiagramAllows(Diagram diagram, ElementType type, InMemoryModelRepository repository) {
+        EffectiveDiagramSpec spec = EffectiveDiagramSpec.of(diagram, repository::findElement);
+        if (!spec.allows(type)) {
+            throw new ValidationException("Element type " + type
+                    + " is not allowed on " + spec.label());
         }
     }
 

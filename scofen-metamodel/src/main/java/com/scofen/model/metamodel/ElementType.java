@@ -33,6 +33,20 @@ public enum ElementType {
      * 于是「元素扩展自哪个元类」「构造型特化哪个元类」都是可指向、可定位的引用。</p>
      */
     METACLASS("Metaclass", "元类", "metaclass"),
+    /**
+     * 用户自定义图类型的定义对象（Scofen 实现层，非 UML 规范元类）。
+     *
+     * <p>参照 MagicDraw / M-Design 的 Custom Diagram：把「这张图允许哪些元素与关系、以哪张
+     * 规范图为底、图框标题如何生成」写成模型里的一等元素，Diagram 用 customTypeId 指过来。
+     * 定义本身挂在用户自己的 Profile / 包下，因此可改名、可定位、可随快照与 XMI 往返。</p>
+     */
+    DIAGRAM_TYPE("DiagramType", "图类型", "", Tier.ADVANCED),
+    /**
+     * 用户自定义构造型上的标签定义（Tagged Value Definition）。
+     * 参照 UML 规范的 TagDefinition，但作为可见的模型元素挂在构造型之下，
+     * 属性面板据此把 taggedValues 从自由键值表升级为带类型的表单。
+     */
+    TAG_DEFINITION("TagDefinition", "标签定义", "", Tier.ADVANCED),
 
     /* ── 分类器（结构） ── */
     CLASS("Class", "类", ""),

@@ -132,6 +132,19 @@ class UmlXmiAdapterTest {
     }
 
     @Test
+    void sidecarCarriesCustomDiagramTypeReference() {
+        ModelSnapshot base = sample();
+        Diagram custom = new Diagram("d-pkg", DiagramKind.PKG, "包图", "pkg-1",
+                base.diagrams().get(0).elementIds(), base.diagrams().get(0).relationshipIds(),
+                base.diagrams().get(0).style(), "dt-1");
+        ModelSnapshot original = new ModelSnapshot(base.revision(), base.elements(), base.relationships(),
+                List.of(custom), base.notations());
+        ModelSnapshot back = adapter.importModel(adapter.exportModel(original));
+
+        assertThat(back.diagrams().get(0).customTypeId()).isEqualTo("dt-1");
+    }
+
+    @Test
     void importWithoutSidecarStillKeepsSemantics() {
         ModelSnapshot original = sample();
         ExchangeBundle bundle = adapter.exportModel(original);

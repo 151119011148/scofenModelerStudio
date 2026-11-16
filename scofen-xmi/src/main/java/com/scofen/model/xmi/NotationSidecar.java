@@ -18,20 +18,28 @@ public final class NotationSidecar {
     public static final String FORMAT = "scofen.di";
     public static final String VERSION = "1.0";
 
-    /** 一张图：类型、名称、宿主、成员与图框样式。 */
+    /** 一张图：类型、名称、宿主、成员、图框样式与自定义图类型引用。 */
     public record DiagramEntry(String id, String kind, String name, String ownerId,
                                List<String> elementIds, List<String> relationshipIds,
-                               Map<String, String> style) {
+                               Map<String, String> style, String customTypeId) {
         public DiagramEntry {
             elementIds = elementIds == null ? List.of() : List.copyOf(elementIds);
             relationshipIds = relationshipIds == null ? List.of() : List.copyOf(relationshipIds);
             style = style == null ? Map.of() : Map.copyOf(style);
+            customTypeId = customTypeId == null || customTypeId.isBlank() ? null : customTypeId;
         }
 
         /** 兼容不带图框样式的旧侧车。 */
         public DiagramEntry(String id, String kind, String name, String ownerId,
                             List<String> elementIds, List<String> relationshipIds) {
-            this(id, kind, name, ownerId, elementIds, relationshipIds, Map.of());
+            this(id, kind, name, ownerId, elementIds, relationshipIds, Map.of(), null);
+        }
+
+        /** 兼容带样式但无自定义图类型的旧侧车。 */
+        public DiagramEntry(String id, String kind, String name, String ownerId,
+                            List<String> elementIds, List<String> relationshipIds,
+                            Map<String, String> style) {
+            this(id, kind, name, ownerId, elementIds, relationshipIds, style, null);
         }
     }
 
@@ -58,7 +66,8 @@ public final class NotationSidecar {
         List<DiagramEntry> diagramEntries = new ArrayList<>();
         for (com.scofen.model.metamodel.Diagram diagram : diagrams) {
             diagramEntries.add(new DiagramEntry(diagram.id(), diagram.kind().code(), diagram.name(),
-                    diagram.ownerId(), diagram.elementIds(), diagram.relationshipIds(), diagram.style()));
+                    diagram.ownerId(), diagram.elementIds(), diagram.relationshipIds(),
+                    diagram.style(), diagram.customTypeId()));
         }
         List<NotationEntry> notationEntries = new ArrayList<>();
         for (com.scofen.model.metamodel.Notation notation : notations) {
@@ -83,6 +92,9 @@ public final class NotationSidecar {
             row.put("elementIds", diagram.elementIds());
             row.put("relationshipIds", diagram.relationshipIds());
             row.put("style", diagram.style());
+            if (diagram.customTypeId() != null) {
+                row.put("customTypeId", diagram.customTypeId());
+            }
             diagrams.add(row);
         }
         result.put("diagrams", diagrams);

@@ -4,6 +4,7 @@ import type {
   AuthUser,
   CommandRequest,
   ContainmentSpec,
+  CustomizationCatalog,
   DiagramSpec,
   ExtensionCatalog,
   Health,
@@ -108,6 +109,8 @@ export const getModel = () => request<ModelSnapshot>(`${BASE}api/model`)
 /** 全量校验报告：结构问题 + 需求覆盖矩阵，服务端权威计算。 */
 export const getValidation = () => request<ValidationReport>(`${BASE}api/validation`)
 export const getDiagrams = () => request<DiagramSpec[]>(`${BASE}api/metamodel/diagrams`)
+/** 用户定制目录：自定义图类型 + 属性字典（按项目实时解析）。 */
+export const getCustomization = () => request<CustomizationCatalog>(`${BASE}api/metamodel/customization`)
 export const getRelationships = () =>
   request<RelationshipTypeInfo[]>(`${BASE}api/metamodel/relationships`)
 export const getContainment = () => request<ContainmentSpec>(`${BASE}api/metamodel/containment`)

@@ -581,7 +581,8 @@ public final class UmlXmiAdapter implements IModelAdapter {
                         String.valueOf(row.getOrDefault("name", "")), asString(row.get("ownerId")),
                         listOf(row.get("elementIds")).stream().map(String::valueOf).toList(),
                         listOf(row.get("relationshipIds")).stream().map(String::valueOf).toList(),
-                        stringMap(row.get("style"))));
+                        stringMap(row.get("style")),
+                        asString(row.get("customTypeId"))));
             }
             for (Object item : listOf(map.get("notations"))) {
                 Map<String, Object> row = asMap(item);

@@ -112,6 +112,8 @@ export interface Diagram {
   relationshipIds: string[]
   /** 图的表示层配置（图框开关 / 边框 / 标题），由 SET_DIAGRAM_STYLE 写入。 */
   style?: StyleMap
+  /** 用户自定义图类型定义元素 id；为空表示规范图。 */
+  customTypeId?: string | null
 }
 
 /** 关系也是模型对象：与元素同构地带名称、文档、构造型与规范元属性。 */
@@ -191,6 +193,26 @@ export interface RelationshipTypeInfo {
   spec?: string
   /** true = 规范里以构造型表达（«satisfy» «trace» …）；false = 本身就是元类。 */
   stereotypeRelationship?: boolean
+}
+
+/** 用户自定义图类型（服务端按「基底规范 ∩ 白名单」实时解析，与规范图同构）。 */
+export interface CustomDiagramType extends DiagramSpec {
+  /** 定义元素 id，同时充当 spec.code（供新建图对话框统一取值）。 */
+  id: string
+  name: string
+  baseKind: string
+  frameTitle: string
+  custom: true
+}
+
+/** 用户定制目录：自定义图类型 + 定制属性字典。 */
+export interface CustomizationCatalog {
+  diagramTypes: CustomDiagramType[]
+  /** custom: 属性键 → 中文标签。 */
+  keyLabels: Record<string, string>
+  /** 标签定义允许的类型枚举。 */
+  tagTypes: string[]
+  prefix: string
 }
 
 export interface ElementTypeInfo {

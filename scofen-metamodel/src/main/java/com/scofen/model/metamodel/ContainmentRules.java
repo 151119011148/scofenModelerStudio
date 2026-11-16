@@ -29,7 +29,7 @@ public final class ContainmentRules {
     static {
         // 命名空间容器：包 / 模型 / 模型库可以容纳全部可打包元素。
         Set<ElementType> namespace = set(
-                MODEL, MODEL_LIBRARY, PACKAGE, PROFILE, STEREOTYPE, METACLASS,
+                MODEL, MODEL_LIBRARY, PACKAGE, PROFILE, STEREOTYPE, METACLASS, DIAGRAM_TYPE,
                 CLASS, INTERFACE, SIGNAL, DATA_TYPE, PRIMITIVE_TYPE, ENUMERATION,
                 ASSOCIATION_CLASS, COMPONENT, COLLABORATION, INFORMATION_ITEM, INSTANCE_SPECIFICATION,
                 NODE, DEVICE, EXECUTION_ENVIRONMENT, ARTIFACT, DEPLOYMENT_SPECIFICATION,
@@ -45,7 +45,8 @@ public final class ContainmentRules {
         allow(MODEL_LIBRARY, namespace);
         allow(PACKAGE, namespace);
         // 剖面（扩展包）容纳元类与构造型：通用扩展包即由此结构落地。
-        allow(PROFILE, METACLASS, STEREOTYPE, PACKAGE, COMMENT);
+        // 用户定制的图类型也挂在剖面下，与规范构造型同级；标签定义挂在构造型下。
+        allow(PROFILE, METACLASS, STEREOTYPE, PACKAGE, DIAGRAM_TYPE, COMMENT);
 
         // ── 分类器成员：操作 / 接收 / 属性 / 端口 / 连接器 / 嵌套分类器 ──
         Set<ElementType> classifierMembers = set(
@@ -133,7 +134,8 @@ public final class ContainmentRules {
         allow(SLOT, COMMENT);
 
         // ── 扩展机制 ──
-        allow(STEREOTYPE, COMMENT);
+        allow(STEREOTYPE, TAG_DEFINITION, COMMENT);
+        allow(TAG_DEFINITION, COMMENT);
         // 元类可容纳其特化的构造型：UML 里 Stereotype 是 Metaclass 的子类。
         allow(METACLASS, STEREOTYPE, COMMENT);
 

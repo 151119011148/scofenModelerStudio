@@ -2787,6 +2787,107 @@ body.col-resizing * { cursor: col-resize !important; }
 @media (max-width: 1180px) {
   .sp-label { width: 50px; }
 }
+
+/* ── 元模型定制面板（工具箱「定制」页签） ── */
+.tb-custom-scroll { padding: 8px 10px 16px; }
+.cust-panel { display: flex; flex-direction: column; gap: 8px; }
+.cust-tabs { display: flex; gap: 4px; }
+.cust-tabs button {
+  flex: 1 1 auto;
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text-2);
+}
+.cust-tabs button.active { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.cust-body { display: flex; flex-direction: column; gap: 7px; }
+.cust-hint { margin: 0; font-size: 10px; line-height: 1.55; color: var(--text-3); }
+.cust-add {
+  align-self: flex-start;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px dashed var(--line-2);
+  background: var(--surface);
+  color: var(--accent);
+}
+.cust-add.subtle { border-style: solid; }
+.cust-empty { margin: 4px 0; font-size: 11px; color: var(--text-3); }
+.cust-card { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); overflow: hidden; }
+.cust-card.open { border-color: var(--line-2); }
+.cust-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.cust-card-head:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
+.cust-name { flex: 1 1 auto; min-width: 0; font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cust-badge { flex: none; font-size: 10px; color: var(--text-3); }
+.cust-card-body { display: flex; flex-direction: column; gap: 7px; padding: 4px 8px 9px; border-top: 1px solid var(--line); }
+.cust-field { display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; color: var(--text-2); }
+.cust-field input, .cust-field select, .cust-tag-row input, .cust-tag-row select {
+  width: 100%;
+  min-width: 0;
+  font-size: 11.5px;
+  padding: 3px 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+}
+.cust-field input:focus, .cust-field select:focus, .cust-tag-row input:focus, .cust-tag-row select:focus {
+  outline: 1px solid var(--accent);
+  border-color: var(--accent);
+}
+.cust-pick { display: flex; flex-direction: column; gap: 3px; }
+.cust-pick-title { font-size: 10.5px; color: var(--text-2); }
+.cust-pick-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 2px 6px;
+  max-height: 140px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-2);
+}
+.cust-check { display: flex; align-items: center; gap: 4px; font-size: 10.5px; color: var(--text-2); cursor: pointer; }
+.cust-check input { accent-color: var(--accent); }
+.cust-del { align-self: flex-start; font-size: 10.5px; padding: 3px 9px; color: var(--danger); }
+.cust-del.tiny { padding: 2px 7px; }
+.cust-tag-row { display: grid; grid-template-columns: 1fr 84px auto; gap: 4px; align-items: center; }
+
+/* ── 剖面标签（构造型驱动的带类型字段） ── */
+.tt-editor { margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.tt-head { display: flex; align-items: baseline; gap: 8px; margin-bottom: 5px; }
+.tt-title { font-size: 12px; font-weight: 650; color: var(--text); }
+.tt-count { font-size: 10px; color: var(--text-3); }
+.tt-rows { display: flex; flex-direction: column; gap: 5px; }
+.tt-row { display: flex; flex-direction: column; gap: 2px; }
+.tt-label { display: flex; align-items: baseline; gap: 4px; font-size: 10.5px; color: var(--text-2); }
+.tt-req { color: var(--danger); font-style: normal; }
+.tt-meta { font-size: 9.5px; color: var(--text-3); }
+.tt-row input, .tt-row select {
+  width: 100%;
+  min-width: 0;
+  font-size: 11.5px;
+  padding: 3px 6px;
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  background: var(--surface);
+  color: var(--text);
+}
+.tt-row input:focus, .tt-row select:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+.tt-warn { margin: 5px 0 0; font-size: 10px; color: var(--danger); }
+.tt-hint { margin: 5px 0 0; font-size: 10px; line-height: 1.5; color: var(--text-3); }
 .diagram-toolbar .dt-frame-toggle {
   flex: none;
   font-size: 11px;

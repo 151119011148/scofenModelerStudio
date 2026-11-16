@@ -8,6 +8,7 @@ import {
   exportSidecar,
   exportXmi,
   getContainment,
+  getCustomization,
   getDiagrams,
   getExtensionPackages,
   getHealth,
@@ -30,6 +31,8 @@ import {
 } from './api'
 import type {
   ContainmentSpec,
+  CustomizationCatalog,
+  CustomDiagramType,
   Diagram,
   DiagramSpec,
   ElementTypeInfo,
@@ -67,7 +70,11 @@ import LoginView from './LoginView'
 import AdminPanel from './AdminPanel'
 import { buildModelReportHtml } from './report'
 import TaggedValuesEditor from './TaggedValuesEditor'
+import TypedTagsEditor from './TypedTagsEditor'
+import CustomizationPanel from './CustomizationPanel'
 import { StylePanel } from './StylePanel'
+import { isExtensionId } from './extensionIds'
+import { isDiagramType, isTagDefinition } from './customTypes'
 import {
   alignAnchor, alignX, colorOr, dashArray, frameEnabledOf, frameStyleOf,
   numberValue, relationStyleOf,
@@ -249,9 +256,9 @@ const PROPS_FALLBACK = 320
  * （旧快照里残留了已被删除的构造型），只按「目录里有没有这个 id」过滤会把残留
  * 当成项目元素、又因为它的父包被隔离而变成孤儿挂到根上。前缀判据是兜底：
  * 用户元素的 id 形如 {@code e-xxx}，不会误伤。</p>
+ *
+ * <p>前缀表与判定函数在 {@code ./extensionIds}，与服务端常量一一对应。</p>
  */
-const EXTENSION_ID_PREFIXES = ['ext-', 'mc-', 'st-', 'rel-', 'prim-', 'val-', 'unit-', 'dim-', 'std-']
-const isExtensionId = (id: string) => EXTENSION_ID_PREFIXES.some((prefix) => id.startsWith(prefix))
 
 /**
  * 模型树的折叠三角：飞书文档那种蓝色实心三角，展开时顺时针转 90°。
@@ -637,6 +644,7 @@ interface DeleteDialogState {
 interface DiagramDialogState {
   ownerId: string | null
   ownerName: string
+  /** 规范图为 code（bdd…），自定义图为定义元素 id；以 allSpecs.code 统一索引。 */
   kind: string
   name: string
   editId: string | null
@@ -861,6 +869,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [health, setHealth] = useState<Health | null>(null)
   const [model, setModel] = useState<ModelSnapshot>(EMPTY_MODEL)
   const [specs, setSpecs] = useState<DiagramSpec[]>([])
+  /** 用户定制目录：自定义图类型 + 属性字典；按项目实时解析。 */
+  const [customization, setCustomization] = useState<CustomizationCatalog | null>(null)
   const [containment, setContainment] = useState<ContainmentSpec | null>(null)
   const [activeDiagramId, setActiveDiagramId] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -918,7 +928,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     moved: boolean
   } | null>(null)
   // 右侧垂直工具箱：组件内容只跟当前图相关（元素 + 关系 + 通用），参考 EA / StarUML。
-  const [toolboxTab, setToolboxTab] = useState<'components' | 'styles'>('components')
+  const [toolboxTab, setToolboxTab] = useState<'components' | 'styles' | 'custom'>('components')
   const [openToolGroups, setOpenToolGroups] = useState<Set<string>>(
     () => new Set(['elements', 'relations', 'generic', 'seqMessages']),
   )
@@ -1127,6 +1137,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   /** 最新快照的同步镜像：增量应用要在 setState 生效前就能读到上一次的结果。 */
   const modelRef = useRef(model)
   modelRef.current = model
+  /** 定制目录的签名：定义元素集合变了才重新拉 /api/metamodel/customization。 */
+  const customSigRef = useRef('')
   /** WS Patch 合并窗口：远端连续命令只触发一次全量刷新。 */
   const patchTimer = useRef(0)
   /** 合并窗口里待刷新的最高 revision：自己的命令回声先于 HTTP 响应到达时会排一次
@@ -1418,6 +1430,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const loadCatalogs = useCallback(async (): Promise<boolean> => {
     const results = await Promise.allSettled([
       getDiagrams().then(setSpecs),
+      // 用户定制目录依赖项目快照，加载失败只降级为空（无自定义图），不让应用连不上。
+      getCustomization().then(setCustomization).catch(() => setCustomization(null)),
       getRelationships().then(setRelationCatalog),
       getContainment().then(setContainment),
       getProperties().then(setPropCatalog),
@@ -1563,10 +1577,21 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     [model.diagrams, activeDiagramId],
   )
   const activeDiagramKind = activeDiagramObj?.kind ?? ''
-  const activeSpec = useMemo(
-    () => specs.find((spec) => spec.code === activeDiagramKind) ?? null,
-    [specs, activeDiagramKind],
+  /** 规范九图 + 用户自定义图类型，统一成 spec 列表供工具箱 / 新建图对话框消费。 */
+  const allSpecs = useMemo<DiagramSpec[]>(
+    () => [...specs, ...(customization?.diagramTypes ?? [])],
+    [specs, customization],
   )
+  /** 自定义图的有效规范由服务端下发（allowedTypes 已求交），与校验完全同源。 */
+  const activeSpec = useMemo(() => {
+    if (activeDiagramObj?.customTypeId) {
+      const custom = customization?.diagramTypes.find((item) => item.id === activeDiagramObj.customTypeId)
+      if (custom) {
+        return custom as DiagramSpec
+      }
+    }
+    return allSpecs.find((spec) => spec.code === activeDiagramKind) ?? null
+  }, [allSpecs, activeDiagramKind, activeDiagramObj, customization])
   /** 图框按每张图单独开关：服务端 Diagram.style.frame 优先，未设置时走本地默认。 */
   const frameEnabled = frameEnabledOf(activeDiagramObj, frameDefaultOpen)
   const frameStyle = frameStyleOf(activeDiagramObj)
@@ -3511,6 +3536,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       revisionRef.current = patch.revision
       say('已应用 rev {revision} · {count} 个对象受影响 · 校验：{delta}', { revision: patch.revision, count: patch.affectedIds.length, delta: patch.validationDelta })
       await applyLocalPatch(patch, baseRevision)
+      syncCustomizationCatalog()
       return true
     } catch (error) {
       say('操作失败：{error}', { error: errorMessage(error) })
@@ -3519,6 +3545,39 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     } finally {
       setBusy(false)
     }
+  }
+
+  /**
+   * 定制目录（自定义图类型）跟着模型走：定义元素增删**或改属性**后要重新拉一次，
+   * 否则「新建图」下拉还停在旧列表上、工具箱也还按旧白名单铺组件。
+   *
+   * <p>签名必须覆盖属性：只比对 id + 名字的话，改了白名单不会触发刷新，
+   * 界面上「勾了没生效」。</p>
+   *
+   * <p>只在签名变化时才发请求：拖拽节点这类高频命令不会带上定制目录的往返。</p>
+   */
+  const customCatalogSig = (elements: ModelElement[]): string =>
+    elements
+      .filter((element) => isDiagramType(element) || isTagDefinition(element))
+      .map((element) => {
+        const props = element.properties ?? {}
+        const relevant = Object.entries(props)
+          .filter(([key]) => key.startsWith('custom:'))
+          .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+          .sort()
+          .join('|')
+        return `${element.id}:${element.name}:${relevant}`
+      })
+      .sort()
+      .join(',')
+
+  const syncCustomizationCatalog = () => {
+    const signature = customCatalogSig(modelRef.current.elements)
+    if (signature === customSigRef.current) {
+      return
+    }
+    customSigRef.current = signature
+    void getCustomization().then(setCustomization).catch(() => undefined)
   }
 
   // ── 图形样式：三处写入都走命令（服务端权威 / 可撤销 / WS Patch 广播） ──
@@ -3624,7 +3683,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     setDiagramDialog({
       ownerId: effective,
       ownerName: owner,
-      kind: edit?.kind ?? specs[0]?.code ?? 'bdd',
+      kind: edit?.customTypeId ?? edit?.kind ?? allSpecs[0]?.code ?? 'bdd',
       name: edit?.name ?? t('新建图 {count}', { count: model.diagrams.length + 1 }),
       editId: edit?.id ?? null,
     })
@@ -3671,17 +3730,25 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       return
     }
     const id = `dg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
-    const hostOwnerId = await ensureDiagramHost(diagramDialog.kind, diagramDialog.ownerId ?? '')
+    // 选中的 spec 可能是用户自定义图类型：真正落到 Diagram 的是基底 kind + customTypeId。
+    const chosen = allSpecs.find((spec) => spec.code === diagramDialog.kind)
+    const custom = customization?.diagramTypes.find((item) => item.id === diagramDialog.kind)
+    const baseKind = custom?.baseKind ?? chosen?.code ?? diagramDialog.kind
+    const hostOwnerId = await ensureDiagramHost(baseKind, diagramDialog.ownerId ?? '')
     if (hostOwnerId === null) {
       return
     }
-    const ok = await runCommand('CREATE_DIAGRAM', {
+    const payload: Record<string, unknown> = {
       id,
-      kind: diagramDialog.kind,
+      kind: baseKind,
       name: diagramDialog.name.trim(),
       ownerId: hostOwnerId,
       elementIds: [],
-    })
+    }
+    if (custom) {
+      payload.customTypeId = custom.id
+    }
+    const ok = await runCommand('CREATE_DIAGRAM', payload)
     if (ok) {
       setActiveDiagramId(id)
       setSelectedDiagramId(id)
@@ -4539,14 +4606,27 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const defaultTitle = host
       ? `${kindLabel} [${host} [${activeDiagramObj.name}]]`
       : `${kindLabel} [${activeDiagramObj.name}]`
-    const name = frameStyle.frameTitle?.trim() ? frameStyle.frameTitle : defaultTitle
+    // 自定义图类型可以给图框标题模板（{图种} / {宿主} / {图名}），优先于规范三段式，
+    // 但仍低于样式面板里手改的标题（图框样式是最后一公里）。
+    const customTemplate = activeDiagramObj.customTypeId
+      ? customization?.diagramTypes.find((item) => item.id === activeDiagramObj.customTypeId)?.frameTitle?.trim()
+      : ''
+    const templated = customTemplate
+      ? customTemplate
+        .replace(/\{图种\}/g, kindLabel)
+        .replace(/\{宿主\}/g, host ?? '')
+        .replace(/\{图名\}/g, activeDiagramObj.name)
+      : ''
+    const name = frameStyle.frameTitle?.trim()
+      ? frameStyle.frameTitle
+      : templated || defaultTitle
     const headerW = Math.round(Math.max(
       160,
       estimateTextWidth(kindLine, kindSize) + 24 + notch,
       estimateTextWidth(name, nameSize) + 24 + notch,
     ))
     return { x, y, w, h, headerH, headerW, notch, kindColor, kindLine, name, border, borderW, titleColor, kindSize, nameSize }
-  }, [frameEnabled, activeDiagramObj, activeDiagramKind, activeSpec, contentBox, canvas.width, canvas.height, frameStyle, model.elements, locale, seqLayout])
+  }, [frameEnabled, activeDiagramObj, activeDiagramKind, activeSpec, contentBox, canvas.width, canvas.height, frameStyle, model.elements, locale, seqLayout, customization])
 
   /**
    * 导出用的独立 SVG：还原整图画布、铺白底、把运行时 CSS 计算样式内联到每个节点
@@ -7740,6 +7820,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   )}
                   <div className="kv"><span>{t('文档')}</span><code>{(selectedRelation ?? selected)!.documentation || '—'}</code></div>
                   <div className="kv"><span>XMI ID</span><code>{selected?.xmiId || '—'}</code></div>
+                  <TypedTagsEditor
+                    targetId={(selectedRelation ?? selected)!.id}
+                    stereotypes={(selectedRelation ?? selected)!.stereotypes ?? []}
+                    elements={model.elements}
+                    taggedValues={(selectedRelation ?? selected)!.taggedValues ?? {}}
+                    canEdit={canEdit}
+                    readLatest={readLatestTagged}
+                    onCommit={commitTaggedValues}
+                    onNotice={say}
+                  />
                   <TaggedValuesEditor
                     targetId={(selectedRelation ?? selected)!.id}
                     taggedValues={(selectedRelation ?? selected)!.taggedValues ?? {}}
@@ -7956,6 +8046,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             >{t('样式')}</button>
             <button
               type="button"
+              className={toolboxTab === 'custom' ? 'active' : ''}
+              onClick={() => setToolboxTab('custom')}
+            >{t('定制')}</button>
+            <button
+              type="button"
               className="tb-collapse"
               title={toolboxCollapsed ? t('展开工具箱') : t('收起工具箱（把宽度还给画布）')}
               onClick={() => setToolboxCollapsed((previous) => !previous)}
@@ -8040,6 +8135,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                               key={type.code}
                               type="button"
                               className="tb-item"
+                              data-tb-type={type.code}
                               draggable={canEdit}
                               disabled={busy}
                               onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
@@ -8221,7 +8317,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 </div>
               </div>
             </>
-          ) : (
+          ) : toolboxTab === 'styles' ? (
             <div className="tb-scroll tb-style-scroll">
               <div className="tb-style-head">
                 {activeDiagramKind && <DiagramIcon code={activeDiagramKind} size={18} />}
@@ -8247,6 +8343,22 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 onApplyLine={(patch, replace) => void applyLineStyle(patch, replace)}
                 onApplyFrame={(patch, replace) => void applyFrameStyle(patch, replace)}
                 onToggleFrame={(visible) => setFrameVisible(visible)}
+              />
+            </div>
+          ) : (
+            <div className="tb-scroll tb-custom-scroll">
+              <CustomizationPanel
+                customization={customization}
+                elements={model.elements}
+                specs={specs}
+                containment={containment}
+                relations={relationCatalog}
+                canEdit={canEdit}
+                busy={busy}
+                runCommand={runCommand}
+                onNotice={say}
+                ownerId={projectRootId ?? ''}
+                onSelectElement={(id) => setSelectedId(id)}
               />
             </div>
           )}
@@ -9493,7 +9605,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         <div className="modal-overlay" onPointerDown={() => setDiagramDialog(null)}>
           <div className="modal" onPointerDown={(event) => event.stopPropagation()}>
             <h2 className="modal-title">
-              <DiagramIcon code={diagramDialog.kind} size={18} />
+              <DiagramIcon
+                code={customization?.diagramTypes.find((item) => item.id === diagramDialog.kind)?.baseKind
+                  ?? diagramDialog.kind}
+                size={18}
+              />
               {t('新建图')}
             </h2>
             <p className="modal-sub">{t('所属：{name}', { name: diagramDialog.ownerName })}</p>
@@ -9503,9 +9619,18 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 value={diagramDialog.kind}
                 onChange={(event) => setDiagramDialog({ ...diagramDialog, kind: event.target.value })}
               >
-                {specs.map((option) => (
-                  <option key={option.code} value={option.code}>{pick(option.label, option.labelEn)}</option>
-                ))}
+                <optgroup label={t('规范图')}>
+                  {specs.map((option) => (
+                    <option key={option.code} value={option.code}>{pick(option.label, option.labelEn)}</option>
+                  ))}
+                </optgroup>
+                {(customization?.diagramTypes.length ?? 0) > 0 && (
+                  <optgroup label={t('自定义图')}>
+                    {customization!.diagramTypes.map((option) => (
+                      <option key={option.id} value={option.id}>{pick(option.label, option.labelEn)}</option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </label>
             <label className="field">

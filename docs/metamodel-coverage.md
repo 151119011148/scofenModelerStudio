@@ -10,7 +10,7 @@
 
 | 维度 | 审计时 | 现在 | 复核方式 |
 | --- | --- | --- | --- |
-| 可建元素类型 `ElementType` | 33 | **157**（核心 89 + 规范扩展 68） | `containment.types[]` 长度；`tier` 字段 |
+| 可建元素类型 `ElementType` | 33 | **159**（核心 89 + 规范扩展 68 + 用户定制 2：图类型 / 标签定义） | `containment.types[]` 长度；`tier` 字段 |
 | 元类 `UmlMetaclass` | 160 | **281**（279 规范 + 2 实现层） | `properties.metaclasses[]` |
 | 元属性定义 | 451 | **597** | `properties.totalDefinitions` |
 | 关系类型 `RelationshipType` | 28 | **37** | `relationships[]` |
@@ -196,16 +196,53 @@ FAIL ENUMERATION_LITERAL    owner=Block        → Containment rule violation（
 
 ---
 
+## 6.6 用户定制：扩展图与剖面（元模型可定制）
+
+对标 MagicDraw 的 Custom Diagram 与 M-Design 的扩展图能力。本轮的关键取舍是：**用户定制物化为模型里
+的一等元素**，而不是另起一套前端状态或独立对象模型——这样自动继承服务端权威、命令驱动、可撤销、
+快照 / XMI 往返四件基础设施。
+
+| 定制对象 | 落点 | 关键属性（`custom:` 前缀） |
+| --- | --- | --- |
+| 自定义图类型 | `DiagramType` 元素（挂在包 / 剖面下） | `baseKind`（布局基底）、`allowedTypes`、`allowedRelationships`、`frameTitle`、`labelEn` |
+| 构造型 | `Stereotype` 元素 | —（沿用标准构造型语义） |
+| 标签定义 | `TagDefinition` 元素（挂在构造型下） | `tagType`（STRING / BOOLEAN / INTEGER / REAL / ENUM）、`options`、`defaultValue`、`required` |
+
+**图引用**：`Diagram` 增 `customTypeId` 字段指回图类型定义元素。
+
+**有效规范**（`EffectiveDiagramSpec`）：一张自定义图真正允许的东西 = **基底规范 ∩ 用户白名单**。
+服务端校验（`CREATE_ELEMENT` / `ADD_TO_DIAGRAM` / 关系校验）与前端目录（`/api/metamodel/customization`）
+共用同一个纯函数，杜绝「界面能画但服务端拒绝」。定义元素缺失、基底非法或白名单为空时一律退回基底
+规范——脏定义不会让一张图变成「什么都画不了」。
+
+**属性通道**：`custom:` 前缀是 `ValidationEngine` 的第三条例外分支（继 `route:` / `style:` 之后）：
+不进 `PropertyCatalog` 的规范元属性清单，但键与值都过 `Customization` 白名单——未知键、非法颜色式
+枚举、越界数值、空列表一律 400。这些值最终决定工具箱清单与 SVG 图框，不能让任意字符串落库。
+
+**新增元素类型过三道守卫**：`DIAGRAM_TYPE` / `TAG_DEFINITION` 纳入 `MetamodelRegistry` 主图
+（PKG 图）、`PropertyCatalog.roots`（沿用 `ScofenCore` 属性链）、`ContainmentRules`（挂包 / 剖面 /
+构造型下）。
+
+**id 命名空间**：用户自建元素必须用 `e-` 前缀。扩展域保留了 `ext- / mc- / st- / rel-` 等前缀，
+播种器 `sync()` 会按「落在扩展域但目录未定义」清理一次——用户元素若占了 `st-` 开头，下次打开项目
+就会被当成过期扩展内容删掉。
+
+**界面**：工具箱新增「定制」页签，分「扩展图 / 元模型」两段。新建图对话框的图类型下拉分「规范图 /
+自定义图」两组；元素应用构造型后，属性面板「标签」页签出现**剖面标签**分区，按标签定义渲染成
+带类型的字段（布尔下拉 / 数值框 / 枚举选项），值写回 `taggedValues`。
+
+---
+
 ## 7. 验证
 
 | 层 | 手段 | 结果 |
 | --- | --- | --- |
-| 单元测试 | `./mvnw -B -ntp test` | **165 项、157 通过**（metamodel 19 / core 76 / xmi 13 / web 57；8 项 Testcontainers 无 Docker 跳过），BUILD SUCCESS |
-| 目录守卫 | `MetamodelRegistryTest.everyElementTypeIsFullyRegistered` | 157 个类型逐一断言「有主图归属 + 有属性表 + 有可挂载父类型」 |
+| 单元测试 | `./mvnw -B -ntp test` | **174 项、166 通过**（metamodel 19 / core 85 / xmi 13 / web 57；8 项 Testcontainers 无 Docker 跳过），BUILD SUCCESS |
+| 目录守卫 | `MetamodelRegistryTest.everyElementTypeIsFullyRegistered` | 159 个类型逐一断言「有主图归属 + 有属性表 + 有可挂载父类型」 |
 | 关系守卫 | `everyRelationshipHasANormativeMetaclass`、`extensionLibraryMaterialisesEveryRelationshipType` | 37 种关系逐一断言「有规范元类 + 属性链含该元类 + 扩展包有对应条目 + 条目类型与 extendsMetaclass 正确」 |
 | 层级守卫 | `everyMetaclassIsConnectedToTheHierarchy` | 281 个元类不断链；抽象性按规范显式标注 |
 | 接口实测 | 真实命令写入 / 删除（本地实例） | 21 个新增类型全部可建，错误父级一律 400 `validation_rule violation`，无残留 |
-| 浏览器 E2E | headless Chrome + CDP | 外壳 30 / 模型树与关系 37 / 属性栏 41 / 面板尺寸 18 / 关系模型 20 / 图形样式 38 / 序列图 98，共 **282 项全通过**（样式与序列图两类本地与线上各跑一遍） |
+| 浏览器 E2E | headless Chrome + CDP | 外壳 30 / 模型树与关系 37 / 属性栏 41 / 面板尺寸 18 / 关系模型 20 / 图形样式 38 / 序列图 98 / 元模型定制 34，共 **316 项全通过**（样式、序列图与元模型定制三类本地与线上各跑一遍） |
 
 顺带修掉一个真实缺陷：`POST /api/commands` 载荷缺字段时 `Map.copyOf(null)` 抛 NPE 报 500，
 现在归一为空载荷走校验失败（400 `validation_failed`），并加单测锁定。
