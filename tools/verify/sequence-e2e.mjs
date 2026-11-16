@@ -338,10 +338,15 @@ const sceneExpr = `(()=>{const svg=document.querySelector('.canvas > svg')
 
 const page = await connect()
 
-const loginSnippet = `(()=>{const set=(el,v)=>{const s=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value').set;s.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}))};
- set(document.querySelector('input[name="scofen-admin-username"]'),'scofen');
- set(document.querySelector('input[name="scofen-admin-password"]'),${JSON.stringify(PASSWORD)});
- [...document.querySelectorAll('button')].find(b=>/登录/.test(b.textContent)).click();return 1})()`
+// 登录注入自带判空：waitFor 通过后 React 仍可能重挂登录表单，那一瞬 querySelector 是 null。
+const loginSnippet = `(()=>{const u=document.querySelector('input[name="scofen-admin-username"]')
+ const p=document.querySelector('input[name="scofen-admin-password"]')
+ if(!u||!p)return false
+ const set=(el,v)=>{const s=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value').set;s.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}))}
+ set(u,'scofen'); set(p,${JSON.stringify(PASSWORD)})
+ const b=[...document.querySelectorAll('button')].find(x=>/登录/.test(x.textContent))
+ if(!b)return false
+ b.click();return true})()`
 
 /**
  * 进工作台并确认项目目录真的拉回来：本地 jar 每次重启换签名密钥，
@@ -357,7 +362,11 @@ async function ensureWorkbench() {
     await page.evaluate(`(()=>{const b=[...document.querySelectorAll('button')].find(x=>x.textContent.trim()==='登出');if(b)b.click();return !!b})()`)
     await waitFor(page, `!!document.querySelector('input[name="scofen-admin-username"]')`, 40, 250)
   }
-  await page.evaluate(loginSnippet)
+  let loggedIn = false
+  for (let i = 0; i < 20 && !loggedIn; i++) {
+    loggedIn = await page.evaluate(loginSnippet).catch(() => false)
+    if (!loggedIn) await sleep(300)
+  }
   const workbench = await waitFor(page, `!!document.querySelector('.props-dock')`, 40, 250)
   const directory = await waitFor(page,
     `(()=>{const t=document.querySelector('.project-switch')?.textContent??''

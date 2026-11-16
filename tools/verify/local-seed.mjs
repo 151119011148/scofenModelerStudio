@@ -139,12 +139,67 @@ for (const relation of relationships) {
   })
 }
 // 用快照原坐标铺一遍「排布前」的图面：这样 UI 上看到的就是线上现在的样子。
+// 快照可能带重复记法（同一图同一元素多条），SET_NOTATIONS 整批拒绝重复，先按后者去重。
+const seenNotation = new Set()
 const items = notations
   .filter((n) => created.has(n.elementId) && wanted.some((d) => d.id === n.diagramId))
+  .filter((n) => {
+    const key = `${n.diagramId}|${n.elementId}`
+    if (seenNotation.has(key)) return false
+    seenNotation.add(key)
+    return true
+  })
   .map((n) => ({ diagramId: n.diagramId, elementId: n.elementId, x: n.x, y: n.y }))
 for (let index = 0; index < items.length; index += 1000) {
   await cmd('SET_NOTATIONS', { items: items.slice(index, index + 1000) })
 }
+// ── 语义排布场景（不依赖快照，本地造）：验证 satisfy 需求置顶与泛化父在上 ──
+// 故意把初始坐标摆成成对重叠，让「排布后零重叠」也有活干。
+// 结构图只放 3 个节点：父块 A 与同层参照 C1 是一层、子块 B 是下一层——
+// 层内超过 2 个节点会被「拆段」打散主轴对齐，断言就不成立了。
+const sem = {
+  reqR: 'sem-req-r', reqR2: 'sem-req-r2', impl: 'sem-impl-b', parent: 'sem-parent-a',
+  peer: 'sem-peer-c1',
+}
+for (const [id, type, name, ownerId] of [
+  [sem.reqR, 'Requirement', '语义需求R', rootId],
+  [sem.reqR2, 'Requirement', '语义需求R2', rootId],
+  [sem.impl, 'Block', '语义实现块B', rootId],
+  [sem.parent, 'Block', '语义父块A', rootId],
+  [sem.peer, 'Block', '语义同层块C1', rootId],
+]) {
+  if (!created.has(id)) {
+    await cmd('CREATE_ELEMENT', { id, type, name, ownerId, documentation: '' })
+    created.add(id)
+  }
+}
+// UML 方向：satisfy 从实现指向需求；generalization 从子指向父。
+await cmd('CREATE_RELATIONSHIP', {
+  id: 'sem-rel-satisfy', type: 'satisfy', sourceId: sem.impl, targetId: sem.reqR,
+  name: '', documentation: '', ownerId: rootId,
+})
+await cmd('CREATE_RELATIONSHIP', {
+  id: 'sem-rel-gen', type: 'generalization', sourceId: sem.impl, targetId: sem.parent,
+  name: '', documentation: '', ownerId: rootId,
+})
+await cmd('CREATE_DIAGRAM', {
+  id: 'sem-diagram-req', kind: 'req', name: '语义排布-追溯',
+  ownerId: rootId, elementIds: [sem.reqR, sem.reqR2, sem.impl],
+})
+await cmd('CREATE_DIAGRAM', {
+  id: 'sem-diagram-bdd', kind: 'bdd', name: '语义排布-结构',
+  ownerId: rootId,
+  elementIds: [sem.parent, sem.impl, sem.peer],
+})
+await cmd('SET_NOTATIONS', { items: [
+  { diagramId: 'sem-diagram-req', elementId: sem.reqR, x: 60, y: 60 },
+  { diagramId: 'sem-diagram-req', elementId: sem.reqR2, x: 380, y: 60 },
+  { diagramId: 'sem-diagram-req', elementId: sem.impl, x: 60, y: 60 },
+  { diagramId: 'sem-diagram-bdd', elementId: sem.parent, x: 40, y: 40 },
+  { diagramId: 'sem-diagram-bdd', elementId: sem.impl, x: 40, y: 40 },
+  { diagramId: 'sem-diagram-bdd', elementId: sem.peer, x: 330, y: 330 },
+] })
+
 const final = await api('api/model', { headers: scoped })
 console.log('灌数完成 rev', final.revision,
   '· 元素', final.elements.length, '· 关系', final.relationships.length,

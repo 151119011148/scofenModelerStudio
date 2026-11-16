@@ -109,7 +109,15 @@ function overlaps(boxes) {
   for (let i = 0; i < boxes.length; i++) {
     for (let j = i + 1; j < boxes.length; j++) {
       const a = boxes[i], b = boxes[j]
-      if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) count++
+      if (!(a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h)) continue
+      // 泳道语义：动作本来就该完全落在泳道框里（面积差一个量级），这不算重叠；
+      // 面积接近的互相压叠（两个盒子叠在同一个位置）才是要抓的。
+      const aContainsB = a.x <= b.x && a.y <= b.y && b.x + b.w <= a.x + a.w && b.y + b.h <= a.y + a.h
+        && a.w * a.h > 2 * b.w * b.h
+      const bContainsA = b.x <= a.x && b.y <= a.y && a.x + a.w <= b.x + b.w && a.y + a.h <= b.y + b.h
+        && b.w * b.h > 2 * a.w * a.h
+      if (aContainsB || bContainsA) continue
+      count++
     }
   }
   return count
@@ -282,10 +290,21 @@ await page.goto(APP_URL)
 
 console.log('[1] 登录并打开沙箱项目')
 await waitFor(page, `!!document.querySelector('input[name="scofen-admin-username"]')`)
-await page.evaluate(`(()=>{const set=(el,v)=>{const s=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value').set;s.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}))};
- set(document.querySelector('input[name="scofen-admin-username"]'),'scofen');
- set(document.querySelector('input[name="scofen-admin-password"]'),${JSON.stringify(PASSWORD)});
- [...document.querySelectorAll('button')].find(b=>/登录/.test(b.textContent)).click();return 1})()`)
+// 登录注入自带判空并重试：waitFor 通过后 React 仍可能因异步状态刷新重挂登录表单，
+// 那一瞬间 querySelector 拿到 null，注入 setter 会读 null 的 constructor 直接崩（今日实测两次）。
+const loginOnce = `(()=>{const u=document.querySelector('input[name="scofen-admin-username"]')
+ const p=document.querySelector('input[name="scofen-admin-password"]')
+ if(!u||!p)return false
+ const set=(el,v)=>{const s=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value').set;s.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}))}
+ set(u,'scofen'); set(p,${JSON.stringify(PASSWORD)})
+ const b=[...document.querySelectorAll('button')].find(x=>/登录/.test(x.textContent))
+ if(!b)return false
+ b.click();return true})()`
+let loggedIn = false
+for (let i = 0; i < 20 && !loggedIn; i++) {
+  loggedIn = await page.evaluate(loginOnce).catch(() => false)
+  if (!loggedIn) await sleep(300)
+}
 check('登录成功进入工作台', await waitFor(page, `!!document.querySelector('.props-dock')`))
 
 await page.evaluate(`document.querySelector('.project-switch').click()`)
@@ -423,6 +442,61 @@ const sameAll = cleaned.notations.every((n) => {
 })
 check('记法坐标全部复原', sameAll)
 check('数据语义无残留', semanticsFingerprint(cleaned) === fingerprintBefore)
+
+console.log('\n[6] 语义分层：satisfy 需求置顶、泛化父在上（local-seed 造的受控场景）')
+await page.evaluate(clickByText('.tree-head-tab', '图表'))
+await sleep(400)
+
+/**
+ * 语义分层断言：分层把同一层的节点沿跨轴铺开、主轴坐标对齐，下游层整排在主轴上
+ * 严格越过上游层。用「同层参照组对齐 + 下游整排越过」判定，比单点比较稳——
+ * 主轴方向从对齐轴反推（对齐在 x ⇒ 层沿 x 推进），不受视口比例干扰。
+ */
+function rankUpstream(model, diagram, cohortIds, downstreamId) {
+  const byId = new Map(boxesOf(model, diagram).map((b) => [b.id, b]))
+  const cohort = cohortIds.map((id) => byId.get(id))
+  const down = byId.get(downstreamId)
+  if (cohort.some((b) => !b) || !down) return null
+  const cx = (b) => b.x + b.w / 2
+  const cy = (b) => b.y + b.h / 2
+  const alignedX = cohort.every((b) => Math.abs(cx(b) - cx(cohort[0])) <= 2)
+  const alignedY = cohort.every((b) => Math.abs(cy(b) - cy(cohort[0])) <= 2)
+  if (alignedX) {
+    return { axis: 'x', ok: down.x > Math.max(...cohort.map((b) => b.x + b.w)) }
+  }
+  if (alignedY) {
+    return { axis: 'y', ok: down.y > Math.max(...cohort.map((b) => b.y + b.h)) }
+  }
+  return { axis: 'none', ok: false }
+}
+
+async function layoutSemantic(diagramName) {
+  check(`打开图「${diagramName}」`, await waitFor(page, clickByText('.chart-row', diagramName), 40, 200))
+  await sleep(600)
+  check('排布按钮可点', await waitFor(page, layoutButton))
+  await page.evaluate(clickLayout)
+  check('弹出对话框', await waitFor(page, `!!document.querySelector('.modal')`, 20, 150))
+  check('策略切到「分层」', await page.evaluate(setSelectByValue(1, 'layered')))
+  await page.evaluate(`(()=>{const b=[...document.querySelectorAll('.modal button')].find(x=>x.textContent.trim()==='开始排布');if(b)b.click();return !!b})()`)
+  check('排布完成', await waitFor(page, layoutDone(), 60, 250))
+  return snapshot()
+}
+
+// satisfy 边 source=实现块 target=需求：分层把需求端归一成上游；R/R2 同层对齐，实现块整排越过。
+const afterReq = await layoutSemantic('语义排布-追溯')
+const reqDiagram = afterReq.diagrams.find((d) => d.name === '语义排布-追溯')
+const reqRank = rankUpstream(afterReq, reqDiagram, ['sem-req-r', 'sem-req-r2'], 'sem-impl-b')
+check('satisfy：需求整层排在实现块上游（需求置顶）', reqRank?.ok === true, JSON.stringify(reqRank))
+
+// generalization 边 source=子块 target=父块：分层把父端归一成上游；A/C1 同层对齐，子块整排越过。
+const afterBdd = await layoutSemantic('语义排布-结构')
+const structDiagram = afterBdd.diagrams.find((d) => d.name === '语义排布-结构')
+const genRank = rankUpstream(afterBdd, structDiagram, ['sem-parent-a', 'sem-peer-c1'], 'sem-impl-b')
+check('generalization：父块整层排在子块上游（父在上）', genRank?.ok === true, JSON.stringify(genRank))
+check('语义图排布后无重叠',
+  overlaps(boxesOf(afterReq, reqDiagram)) === 0 && overlaps(boxesOf(afterBdd, structDiagram)) === 0)
+const shotSemantic = await page.screenshot('layout-semantic')
+console.log('    截图：' + shotSemantic)
 
 await page.close()
 console.log(`\n结果 PASS ${passed} · FAIL ${failed}`)

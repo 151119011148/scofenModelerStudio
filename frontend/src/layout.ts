@@ -1,8 +1,12 @@
 // 自动排布：把「关系散乱」的图重排成层次清楚、疏密均匀的图面。
 //
-// layered —— 沿关系方向分层（satisfy / include / controlFlow 这些有向关系决定先后次序），
-//            层内用中位数重心法排序以减少交叉；一层铺太长就拆段，一路铺太长就折行，
-//            折行走蛇形（第二行反着走），让首尾相接的那条线落在同一侧、不必横跨整个图面。
+// layered —— 沿关系语义分层：控制流 / 转移 / 用例包含这些硬方向边决定拓扑与层号；
+//            依赖、追溯这类软方向边只在两端次序一致时顺势加深；关联、包含不表达先后、不参与分层。
+//            泛化把父端归一成上游（父在上、子在下），satisfy/trace 把需求端归一成上游
+//            （需求在上、实现在下），追溯图一打开就是「需求树挂着实现」的读法。
+//            层内用中位数重心法排序以减少交叉；同一策略还会算一套「聚簇序」——
+//            同父（同包/同块）的元素在层内抱团、簇间留隙，图面读起来是「组」不是散沙，
+//            两套候选一起交给打分选优，谁更美用谁。
 // hubbed  —— 高度数的中心节点（参与者、系统块）摘出来贴在最外侧一列，其余按「连到哪个中心」
 //            成簇分块铺开，中心纵向对齐到自己那簇的中位位置。用例图这类星形结构只有这么排
 //            才不是一张网：同一个中心的线聚成扇形，彼此不再穿插。
@@ -82,17 +86,24 @@ interface LayoutNode {
   name: string
   type: string
   ownerId: string | null
+  /** 语义聚簇键：沿所有权上溯到的图上最顶层祖先，同父元素排布时抱团。 */
+  clusterKey: string
   w: number
   h: number
 }
 
+/**
+ * 关系对「层次」的话语权（语义分层）：
+ *  2 = 硬方向 —— 决定拓扑与层号（控制流、泛化、用例包含这些「先后/上下」语义明确的边）；
+ *  1 = 软方向 —— 只把目标向后拉，不参与拓扑（依赖、追溯这类弱顺序，方向一致才借力）；
+ *  0 = 无方向 —— 关联、包含、分区不表达先后，强行分层会把图拉成长链。
+ */
 interface LayoutEdge {
   from: string
   to: string
   /** 关系类型（小写归一），泳道排布据此识别 partition 归属。 */
   type: string
-  /** 是否参与分层：包含与细化说的是归属/分解层次，当成分层依据会把图拉成几十层长链。 */
-  layer: boolean
+  tier: 0 | 1 | 2
 }
 
 interface Graph {
@@ -125,12 +136,18 @@ export function autoLayout(input: LayoutInput): LayoutResult {
   const choice = input.strategy ?? 'auto'
   const wantLayered = choice === 'auto' || choice === 'layered'
   const wantHubbed = choice === 'auto' || choice === 'hubbed'
-  const ranks = wantLayered ? orderRanks(graph, rankNodes(graph)) : []
+  // 每个尺寸都排两遍：纯中位数序（交叉最少）与聚簇序（同父抱团、簇间留隙），
+  // 谁更美由打分说了算——语义清晰不该靠牺牲交叉数换，也不该反过来。
+  const baseRanks = wantLayered ? rankNodes(graph) : []
+  const ranksPlain = wantLayered ? orderRanks(graph, baseRanks) : []
+  const ranksCluster = wantLayered ? orderRanks(graph, baseRanks, true) : []
+  const CLUSTER_GAP = 26
+  const AXES: LayoutAxis[] = ['right', 'down']
   const layered = wantLayered
-    ? LAYOUT_SIZES.flatMap((size) => [
-      layoutLayered(graph, ranks, 'right', input.bounds, size),
-      layoutLayered(graph, ranks, 'down', input.bounds, size),
-    ])
+    ? LAYOUT_SIZES.flatMap((size) => AXES.flatMap((axis) => [
+      layoutLayered(graph, ranksPlain, axis, input.bounds, size),
+      layoutLayered(graph, ranksCluster, axis, input.bounds, size, CLUSTER_GAP),
+    ]))
     : []
   const hubbed = wantHubbed
     ? hubCrossLimits(graph, input.bounds).flatMap((cross) => [
@@ -251,6 +268,7 @@ function prepare(input: LayoutInput): Graph {
       name: element.name ?? element.id,
       type: element.type,
       ownerId: element.ownerId,
+      clusterKey: element.id,
       w: measured?.w ?? input.nodeSize.width,
       h: measured?.h ?? input.nodeSize.height,
     }
@@ -262,6 +280,33 @@ function prepare(input: LayoutInput): Graph {
     const right = byId.get(b)
     return cmp(left?.name ?? a, right?.name ?? b) || cmp(a, b)
   }
+
+  // 语义聚簇键：沿所有权链上溯到图上最顶层的祖先。同父（同包/同块）的元素
+  // 在分层排布的层内抱团成簇，簇与簇之间留出呼吸空隙，图面读起来是「组」而不是散沙。
+  const resolveCluster = (id: string): string => {
+    let best = id
+    let cursor = byId.get(id)?.ownerId ?? null
+    const guard = new Set<string>()
+    while (cursor && onDiagram.has(cursor) && !guard.has(cursor)) {
+      guard.add(cursor)
+      best = cursor
+      cursor = byId.get(cursor)?.ownerId ?? null
+    }
+    return best
+  }
+  for (const node of nodes) {
+    node.clusterKey = resolveCluster(node.id)
+  }
+
+  const typeOf = (id: string) => byId.get(id)?.type ?? ''
+
+  // 语义分层的档位与方向归一。泛化箭头从子指向父，但 UML 图面惯例父在上；
+  // satisfy/trace/verify/allocate 指向需求，把需求端归一成上游，追溯图就是「需求在上、实现在下」。
+  const STRONG_FORWARD = new Set(['controlflow', 'objectflow', 'include', 'extend', 'transition', 'send'])
+  const TRACE = new Set(['satisfy', 'trace', 'verify', 'allocate'])
+  const MEDIUM = new Set(['dependency', 'usage', 'realization', 'realize', 'manifest', 'expose'])
+  const WEAK = new Set(['association', 'containment', 'refine', 'partition'])
+  const isRequirement = (id: string) => /requirement/i.test(typeOf(id))
 
   const seen = new Set<string>()
   const edges: LayoutEdge[] = []
@@ -277,14 +322,34 @@ function prepare(input: LayoutInput): Graph {
       continue
     }
     seen.add(key)
-    const type = relation.type.toLowerCase()
-    edges.push({
-      from: relation.sourceId,
-      to: relation.targetId,
-      type: type.replace(/[^a-z]/g, ''),
-      // partition 是泳道归属而非流程，参与分层会把本应并排的泳道拉成上下层。
-      layer: type !== 'containment' && type !== 'refine' && type !== 'partition',
-    })
+    const kind = relation.type.toLowerCase().replace(/[^a-z]/g, '')
+    let from = relation.sourceId
+    let to = relation.targetId
+    let tier: LayoutEdge['tier']
+    if (WEAK.has(kind)) {
+      tier = 0
+    } else if (kind === 'generalization') {
+      tier = 2
+      ;[from, to] = [to, from]
+    } else if (TRACE.has(kind)) {
+      // 追溯到需求：需求端在上游（硬方向）；两端都不是需求时退成软方向。
+      if (isRequirement(to)) {
+        tier = 2
+        ;[from, to] = [to, from]
+      } else if (isRequirement(from)) {
+        tier = 2
+      } else {
+        tier = 1
+      }
+    } else if (STRONG_FORWARD.has(kind)) {
+      tier = 2
+    } else if (MEDIUM.has(kind)) {
+      tier = 1
+    } else {
+      // 没进表的类型保持既有行为：当作硬方向参与分层。
+      tier = 2
+    }
+    edges.push({ from, to, type: kind, tier })
   }
 
   const childrenOf = new Map<string, string[]>()
@@ -310,11 +375,12 @@ function cmp(a: string, b: string): number {
 /* ── layered：分层 + 中位数排序 + 拆段与蛇形折行 ── */
 
 function layoutLayered(graph: Graph, ranks: string[][], axis: LayoutAxis,
-  bounds: { maxX: number; maxY: number }, size: { cross: number, major: number }): LayoutResult {
+  bounds: { maxX: number; maxY: number }, size: { cross: number, major: number },
+  clusterGap = 0): LayoutResult {
   const sizes = new Map<string, { w: number; h: number }>(
     graph.nodes.map((node) => [node.id, { w: node.w, h: node.h }]),
   )
-  const laid = placeRanks(graph, ranks, axis, size.cross, size.major)
+  const laid = placeRanks(graph, ranks, axis, size.cross, size.major, clusterGap)
   // 报钳制后的真实包围盒：候选比较必须看用户实际会看到的那张图面。
   const placements = clampToDocument(laid.placements, sizes, bounds)
   return {
@@ -327,14 +393,16 @@ function layoutLayered(graph: Graph, ranks: string[][], axis: LayoutAxis,
 }
 
 /**
- * 分层：先按拓扑序排出先后，成环的边不参与分层（环上节点按名字补到序列尾部），
- * 再沿剩下的有向边取最长路径作为层号。返回按层分组的节点 id。
+ * 分层：硬方向边（tier=2）按拓扑序排出先后并沿最长路径取层号；
+ * 软方向边（tier=1）不参与拓扑，只在两端次序一致时把目标向后拉一层——
+ * 依赖链顺势加深，方向打架（环、回边）时直接忽略，不让弱语义扭曲图面。
+ * 成环的硬边不参与分层（环上节点按名字补到序列尾部）。返回按层分组的节点 id。
  */
 function rankNodes(graph: Graph): string[][] {
   const outgoing = new Map<string, string[]>(graph.nodes.map((node) => [node.id, []]))
   const indegree = new Map<string, number>(graph.nodes.map((node) => [node.id, 0]))
   for (const edge of graph.edges) {
-    if (!edge.layer) {
+    if (edge.tier !== 2) {
       continue
     }
     outgoing.get(edge.from)?.push(edge.to)
@@ -380,6 +448,17 @@ function rankNodes(graph: Graph): string[][] {
       rank.set(target, Math.max(rank.get(target) ?? 0, (rank.get(id) ?? 0) + 1))
     }
   }
+  // 软方向后处理：依赖/使用这类弱顺序只在「目标本来就在下游」时顺势加深一层，
+  // 方向冲突（回边、环）一律忽略——弱语义不该决定图面骨架。
+  for (const edge of graph.edges) {
+    if (edge.tier !== 1) {
+      continue
+    }
+    if ((position.get(edge.to) ?? 0) <= (position.get(edge.from) ?? 0)) {
+      continue
+    }
+    rank.set(edge.to, Math.max(rank.get(edge.to) ?? 0, (rank.get(edge.from) ?? 0) + 1))
+  }
   const groups: string[][] = Array.from({ length: Math.max(0, ...rank.values()) + 1 }, () => [])
   for (const id of sequence) {
     groups[rank.get(id) ?? 0].push(id)
@@ -387,12 +466,28 @@ function rankNodes(graph: Graph): string[][] {
   return groups
 }
 
-/** 层内次序：以拓扑序列起手，正反交替扫四轮，按相邻层的中位数位置排序以减少交叉。 */
-function orderRanks(graph: Graph, groups: string[][]): string[][] {
+/**
+ * 层内次序：以拓扑序列起手，正反交替扫四轮，按相邻层的中位数位置排序以减少交叉。
+ * clusterFirst 时把「同一聚簇（同父）的节点排在连续位置」放在中位数之前——
+ * 视觉上同包/同块的元素抱成簇，簇间的连线自然少而直；交叉代价交给打分兜底。
+ */
+function orderRanks(graph: Graph, groups: string[][], clusterFirst = false): string[][] {
   const neighbours = new Map<string, string[]>(graph.nodes.map((node) => [node.id, []]))
   for (const edge of graph.edges) {
     neighbours.get(edge.from)?.push(edge.to)
     neighbours.get(edge.to)?.push(edge.from)
+  }
+  // 簇次序 = 聚簇键在原始层序里首次出现的次序，保证排序稳定且跟拓扑走。
+  const clusterOrder = new Map<string, number>()
+  if (clusterFirst) {
+    for (const group of groups) {
+      for (const id of group) {
+        const key = graph.byId.get(id)?.clusterKey ?? id
+        if (!clusterOrder.has(key)) {
+          clusterOrder.set(key, clusterOrder.size)
+        }
+      }
+    }
   }
   const result = groups.map((group) => [...group])
   for (let sweep = 0; sweep < 4; sweep++) {
@@ -415,8 +510,12 @@ function orderRanks(graph: Graph, groups: string[][]): string[][] {
         keys.set(id, adjacent.length > 0 ? adjacent[Math.floor(adjacent.length / 2)] : position)
       })
       result[index] = [...result[index]].sort((a, b) => {
+        const clusterGap = clusterFirst
+          ? (clusterOrder.get(graph.byId.get(a)?.clusterKey ?? a) ?? 0)
+            - (clusterOrder.get(graph.byId.get(b)?.clusterKey ?? b) ?? 0)
+          : 0
         const byKey = (keys.get(a) ?? 0) - (keys.get(b) ?? 0)
-        return byKey || cmp(graph.byId.get(a)?.name ?? a, graph.byId.get(b)?.name ?? b) || cmp(a, b)
+        return clusterGap || byKey || cmp(graph.byId.get(a)?.name ?? a, graph.byId.get(b)?.name ?? b) || cmp(a, b)
       })
     }
   }
@@ -438,7 +537,8 @@ interface Slice {
  * 主轴铺过 majorLimit 折一行，且奇数行反向走 —— 首尾相接的那条线落在同一侧，
  * 不会从上一行的末端横跨整张图回到下一行的开头。
  */
-function placeRanks(graph: Graph, groups: string[][], axis: LayoutAxis, crossLimit: number, majorLimit: number):
+function placeRanks(graph: Graph, groups: string[][], axis: LayoutAxis, crossLimit: number, majorLimit: number,
+  clusterGap = 0):
   { placements: Placement[], bandCount: number } {
   const slices: Slice[] = []
   for (const group of groups) {
@@ -458,7 +558,15 @@ function placeRanks(graph: Graph, groups: string[][], axis: LayoutAxis, crossLim
       }
       const major = axis === 'right' ? node.w : node.h
       const cross = axis === 'right' ? node.h : node.w
-      const nextCross = slice.items.length === 0 ? cross : slice.crossExtent + GAP_MINOR + cross
+      // 聚簇排布：相邻节点换了簇（不同父）多让一段空隙，同一簇内仍用常规间距。
+      const previous = slice.items.length > 0
+        ? graph.byId.get(slice.items[slice.items.length - 1].id)?.clusterKey
+        : undefined
+      const crowd = clusterGap > 0 && slice.items.length > 0
+        && previous !== undefined && previous !== node.clusterKey ? clusterGap : 0
+      const nextCross = slice.items.length === 0
+        ? cross
+        : slice.crossExtent + GAP_MINOR + crowd + cross
       if (slice.items.length > 0 && nextCross > crossLimit) {
         flush()
       }

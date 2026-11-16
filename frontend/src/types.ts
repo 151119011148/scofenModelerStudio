@@ -213,6 +213,28 @@ export interface CustomizationCatalog {
   /** 标签定义允许的类型枚举。 */
   tagTypes: string[]
   prefix: string
+  /** 随产品附带的预置扩展图模板（对标 MagicDraw 的图种类库）。 */
+  presets?: CustomizationPreset[]
+  /** 预置定义所在的包。 */
+  presetPackage?: { id: string; name: string }
+}
+
+/** 一条预置扩展图模板。 */
+export interface CustomizationPreset {
+  id: string
+  name: string
+  label: string
+  labelEn: string
+  /** 布局与校验基底：规范图 code。 */
+  baseKind: string
+  /** 允许的元素类型（UML 名）。 */
+  allowedTypes: string[]
+  /** 允许的关系类型（code）。 */
+  allowedRelationships: string[]
+  frameTitle: string
+  documentation: string
+  /** 项目里是否已经有这条定义（已装则不再重复创建）。 */
+  installed: boolean
 }
 
 export interface ElementTypeInfo {

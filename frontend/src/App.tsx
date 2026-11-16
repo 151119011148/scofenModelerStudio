@@ -55,7 +55,10 @@ import type {
   WorkspaceDirectoryInfo,
   WorkspaceProject,
 } from './types'
-import { arrowGeometry, controlGlyph, controlSizeOf, isBackdropShape, isLaneMembershipRelation, isPartitionType, moveRouteSegment, orthogonalRoute, readRoute, reattachRoute, relationshipStyle, routeMidpoint, shapeOf, simplifyRoute, SWIMLANE_HEADER, wrapLabel, type RoutePoint } from './notation'
+import { arrowGeometry, controlGlyph, controlSizeOf, isBackdropShape, isLaneMembershipRelation, isPartitionType, moveRouteSegment, orthogonalRoute, readRoute, reattachRoute, relationshipStyle, routeMidpoint, shapeOf, simplifyRoute, SWIMLANE_HEADER, textWidth, wrapLabel, type RoutePoint } from './notation'
+// 图形符号：外观字典（配色 / 几何常量）与参数化记法生成器。
+import { appearanceOf, INTERACTIVE, INK, METRICS, TEXT } from './shapeStyle'
+import { classifierGlyph, glyphFor, packageGlyph, packageTabHeight, swimlaneGlyph } from './shapeGlyphs'
 import {
   layoutSequence, messageSortStyle, nextMessageOrder, reorderMessages, reorderMessagesTo,
   SEQ_MESSAGE_TOOLS, seqMessageToolOf, SEQ_ROW_PITCH, SEQ_SELF_BUMP, SEQ_SELF_HEIGHT,
@@ -896,7 +899,38 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [retryCount, setRetryCount] = useState(0)
   /** 元模型目录与项目无关，成功加载一次即可，失败则要跟着重试。 */
   const catalogsReady = useRef(false)
+  /**
+   * 全局写队列：所有写操作（命令 / 撤销 / 重做）在这里串行执行。
+   *
+   * <p>为什么需要：命令带乐观锁 {@code baseRevision}，两条命令若用同一个版本号并发发出，
+   * 后到的必然 409。服务端 {@code CommandExecutor.execute} 本身是 synchronized 串行的，
+   * 所以冲突只发生在客户端——连续调整（改完字号马上改字色再改线型）就会各拿同一份
+   * revisionRef 发出去。队列在「出队那一刻」才读 revisionRef.current，因此后一条命令用的
+   * 必然是前一条落地后的最新版本号，不会 409，也不会出现「后写覆盖先写」的静默丢失。</p>
+   *
+   * <p>撤销 / 重做也必须进同一条队列：它们走的是另一个端点，若插在命令中间到达服务端，
+   * 撤销的就不是用户以为的那一步。</p>
+   */
+  const commandQueueRef = useRef<Promise<unknown>>(Promise.resolve())
+
+  /**
+   * 忙计数：&gt;0 表示有写操作在飞行或排队中。
+   *
+   * <p>用计数而不是布尔：队列里排着两条命令时，第一条落地不能把 busy 提前清掉，
+   * 否则第二条还在飞、界面却已经显示空闲。</p>
+   */
+  const busyCountRef = useRef(0)
   const [busy, setBusy] = useState(false)
+  const beginBusy = useCallback(() => {
+    busyCountRef.current += 1
+    setBusy(true)
+  }, [])
+  const endBusy = useCallback(() => {
+    busyCountRef.current = Math.max(0, busyCountRef.current - 1)
+    if (busyCountRef.current === 0) {
+      setBusy(false)
+    }
+  }, [])
   // 用户与角色管理抽屉：仅 user.manage 权限可见。
   const [adminOpen, setAdminOpen] = useState(false)
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
@@ -1137,6 +1171,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   /** 最新快照的同步镜像：增量应用要在 setState 生效前就能读到上一次的结果。 */
   const modelRef = useRef(model)
   modelRef.current = model
+  /** 当前界面上的模型属于哪个项目：revision 只在同一个项目内可比，
+   *  跨项目比大小会把新项目的模型当「过期快照」丢掉（切项目后界面停在上一项目）。 */
+  const modelProjectRef = useRef(getProjectId())
   /** 定制目录的签名：定义元素集合变了才重新拉 /api/metamodel/customization。 */
   const customSigRef = useRef('')
   /** WS Patch 合并窗口：远端连续命令只触发一次全量刷新。 */
@@ -1168,6 +1205,23 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         getHealth(),
         getModel(),
       ])
+      // 请求在飞行途中用户切了项目：这份快照属于旧项目，落到界面上会把上一个项目的
+      // 模型显示成当前项目的。丢掉它，让切项目触发的那次 bootstrap 重来。
+      if (getProjectId() !== projectAtStart) {
+        return false
+      }
+      // 全量快照可能比本地已落地的增量更旧：WS 广播触发的 refresh 与命令回声的
+      // applyLocalPatch 会并行跑，先发的那次 GET 可能带着命令落地前的数据回来。
+      // 直接 setModel 会把刚应用的样式覆盖回旧值（画布上「改了没反应」）。
+      // 这里丢弃过期快照——本地模型已经更新，重拉一次只会更旧。
+      //
+      // 「过期」只在同一个项目内成立：切到另一个项目时，新快照的 revision 可能比上一个
+      // 项目小得多（新建项目的起点远低于跑了很久的项目），那不是旧数据，是另一个世界
+      // 的模型——按过期丢掉，界面就会永远停在上一个项目。
+      if (modelProjectRef.current === projectAtStart && nextModel.revision < modelRef.current.revision) {
+        return true
+      }
+      modelProjectRef.current = projectAtStart
       revisionRef.current = nextModel.revision
       setHealth(nextHealth)
       setModel(nextModel)
@@ -1186,12 +1240,18 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }, [])
 
+  /** 轻量刷新请求序号：丢弃过期响应，避免旧健康信息覆盖新值。 */
+  const lightReqRef = useRef(0)
   /** 轻量刷新：只取健康与空间目录（撤销深度 / 项目计数），不拉全量模型。 */
   const refreshLight = useCallback(async () => {
+    const token = ++lightReqRef.current
     const [nextHealth, nextWorkspace] = await Promise.all([
       getHealth().catch(() => null),
       getWorkspaces().catch(() => null),
     ])
+    if (token !== lightReqRef.current) {
+      return
+    }
     if (nextHealth) {
       setHealth(nextHealth)
     }
@@ -1247,7 +1307,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         patchTimer.current = 0
         pendingRefreshRevision.current = 0
       }
-      await refreshLight()
+      // 健康信息（撤销深度 / 在线数）与空间计数不参与命令的正确性，
+      // 不能占住命令链：这里多等两个 HTTP 往返，样式面板就会多灰两个往返的时间。
+      // 改为不阻塞地刷新——写队列因此可以立刻放行下一条命令。
+      void refreshLight()
     } else {
       await refresh()
     }
@@ -2643,7 +2706,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       <span
         className="prop-ref-card"
         key={`${spec.key}:${index}`}
-        title={`${target.name}（${target.id}）· ${typeText}｜${t('右键可树上高亮')}`}
+        title={`${target.name}（${target.id}）· ${typeText}｜${t('右键可树上高亮 / 画上高亮')}`}
         onContextMenu={(event) => {
           event.preventDefault()
           event.stopPropagation()
@@ -3519,33 +3582,82 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     setCreateStereotype(first.stereotype)
   }, [createDialog, createOptions, createType, model.elements.length])
 
-  const runCommand = async (type: string, payload: Record<string, unknown>): Promise<boolean> => {
+  /**
+   * 把一个写操作挂进全局串行队列。
+   *
+   * <p>队列在「出队那一刻」才执行任务体，因此任务体里读到的 revisionRef.current
+   * 一定是前一条命令落地后的最新版本号 —— 这正是消除 409 与静默丢写的关键。</p>
+   *
+   * <p>失败不阻断队列：后一条命令照常执行（此时它会拿到刷新后的 revision）。</p>
+   *
+   * <p>换项目时队列里待发的命令要丢弃：命令走的是「当前项目」请求头，
+   * 排队期间用户切了项目，再发出去就打到新项目上去了。</p>
+   *
+   * <p>忙标志在这里统一计数：从入队起算，到任务体结束（含被丢弃）为止。
+   * 只在执行期计数的话，排队等待的那段时间界面会显示空闲。</p>
+   */
+  const enqueueWrite = useCallback(<T,>(task: () => Promise<T>): Promise<T | undefined> => {
+    const projectAtEnqueue = getProjectId()
+    beginBusy()
+    const run = async (): Promise<T | undefined> => {
+      try {
+        if (getProjectId() !== projectAtEnqueue) {
+          // 项目已切换：这条命令属于旧项目，丢弃而不是打到新项目上。
+          return undefined
+        }
+        return await task()
+      } finally {
+        endBusy()
+      }
+    }
+    const result = commandQueueRef.current.then(run, run)
+    // 队列尾永远保持 resolved：某条命令抛错不能让后面的写操作全部卡死。
+    commandQueueRef.current = result.then(() => undefined, () => undefined)
+    return result
+  }, [beginBusy, endBusy])
+
+  /**
+   * 发一条写命令；载荷在**出队那一刻**才构造。
+   *
+   * <p>需要「读最新状态再算载荷」的写操作必须走这里：载荷在入队时构造的话，
+   * 用的可能是上一条命令落地前的旧值。典型例子是连线样式——服务端
+   * UPDATE_PROPERTY 是整包覆盖，用旧样式算出的载荷会把排队中前一条命令的结果抹掉。</p>
+   */
+  const runCommandDeferred = async (
+    type: string,
+    buildPayload: () => Record<string, unknown>,
+  ): Promise<boolean> => {
     if (!canEdit) {
       say('当前角色为只读，无法编辑模型')
       return false
     }
-    setBusy(true)
-    try {
-      const baseRevision = revisionRef.current
-      const patch = await postCommand({
-        type,
-        payload,
-        baseRevision,
-        clientCmdId: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      })
-      revisionRef.current = patch.revision
-      say('已应用 rev {revision} · {count} 个对象受影响 · 校验：{delta}', { revision: patch.revision, count: patch.affectedIds.length, delta: patch.validationDelta })
-      await applyLocalPatch(patch, baseRevision)
-      syncCustomizationCatalog()
-      return true
-    } catch (error) {
-      say('操作失败：{error}', { error: errorMessage(error) })
-      await refresh()
-      return false
-    } finally {
-      setBusy(false)
-    }
+    // 项目切换时被丢弃的命令返回 undefined：视为失败（没写成）。
+    const applied = await enqueueWrite(async () => {
+      try {
+        // baseRevision 必须在出队时取：入队时取的可能是上一条命令落地前的旧版本号。
+        const baseRevision = revisionRef.current
+        const patch = await postCommand({
+          type,
+          payload: buildPayload(),
+          baseRevision,
+          clientCmdId: `${type}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        })
+        revisionRef.current = patch.revision
+        say('已应用 rev {revision} · {count} 个对象受影响 · 校验：{delta}', { revision: patch.revision, count: patch.affectedIds.length, delta: patch.validationDelta })
+        await applyLocalPatch(patch, baseRevision)
+        syncCustomizationCatalog()
+        return true
+      } catch (error) {
+        say('操作失败：{error}', { error: errorMessage(error) })
+        await refresh()
+        return false
+      }
+    })
+    return applied ?? false
   }
+
+  const runCommand = async (type: string, payload: Record<string, unknown>): Promise<boolean> =>
+    runCommandDeferred(type, () => payload)
 
   /**
    * 定制目录（自定义图类型）跟着模型走：定义元素增删**或改属性**后要重新拉一次，
@@ -3611,16 +3723,23 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       say('请先选中一条连线')
       return
     }
+    const relationId = selectedRelationId
+    const diagramId = activeDiagramId
     // 关系 properties 是整包写入：把增量合并进现有样式，空串键先剔除。
-    const merged: StyleMap = replace ? { ...patch } : { ...currentLineStyle, ...patch }
-    for (const key of Object.keys(merged)) {
-      if (merged[key] === '') delete merged[key]
-    }
-    const key = `style:${activeDiagramId}`
-    const payload: Record<string, unknown> = Object.keys(merged).length === 0
-      ? { id: selectedRelationId, key, remove: true }
-      : { id: selectedRelationId, key, value: merged }
-    const ok = await runCommand('UPDATE_PROPERTY', payload)
+    // 合并必须在**出队那一刻**基于最新的关系样式算——若在这里算，
+    // 排队中前一条连线样式命令的结果会被这一条整包覆盖掉（丢改动）。
+    const ok = await runCommandDeferred('UPDATE_PROPERTY', () => {
+      const relation = modelRef.current.relationships.find((item) => item.id === relationId)
+      const current = relationStyleOf(relation, diagramId)
+      const merged: StyleMap = replace ? { ...patch } : { ...current, ...patch }
+      for (const key of Object.keys(merged)) {
+        if (merged[key] === '') delete merged[key]
+      }
+      const key = `style:${diagramId}`
+      return Object.keys(merged).length === 0
+        ? { id: relationId, key, remove: true }
+        : { id: relationId, key, value: merged }
+    })
     if (ok) say('已应用连线样式')
   }
 
@@ -3850,34 +3969,34 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }
 
   const handleUndo = useCallback(async () => {
-    setBusy(true)
-    try {
-      const baseRevision = revisionRef.current
-      const patch = await undo()
-      revisionRef.current = patch.revision
-      say('已撤销至 rev {revision}', { revision: patch.revision })
-      await applyLocalPatch(patch, baseRevision)
-    } catch (error) {
-      say('撤销失败：{error}', { error: errorMessage(error) })
-    } finally {
-      setBusy(false)
-    }
-  }, [applyLocalPatch])
+    // 撤销必须与命令串行：它走的是另一个端点，若插在两条命令中间到达服务端，
+    // 撤销的就不是用户以为的那一步。
+    await enqueueWrite(async () => {
+      try {
+        const baseRevision = revisionRef.current
+        const patch = await undo()
+        revisionRef.current = patch.revision
+        say('已撤销至 rev {revision}', { revision: patch.revision })
+        await applyLocalPatch(patch, baseRevision)
+      } catch (error) {
+        say('撤销失败：{error}', { error: errorMessage(error) })
+      }
+    })
+  }, [applyLocalPatch, enqueueWrite])
 
   const handleRedo = useCallback(async () => {
-    setBusy(true)
-    try {
-      const baseRevision = revisionRef.current
-      const patch = await redo()
-      revisionRef.current = patch.revision
-      say('已重做至 rev {revision}', { revision: patch.revision })
-      await applyLocalPatch(patch, baseRevision)
-    } catch (error) {
-      say('重做失败：{error}', { error: errorMessage(error) })
-    } finally {
-      setBusy(false)
-    }
-  }, [applyLocalPatch])
+    await enqueueWrite(async () => {
+      try {
+        const baseRevision = revisionRef.current
+        const patch = await redo()
+        revisionRef.current = patch.revision
+        say('已重做至 rev {revision}', { revision: patch.revision })
+        await applyLocalPatch(patch, baseRevision)
+      } catch (error) {
+        say('重做失败：{error}', { error: errorMessage(error) })
+      }
+    })
+  }, [applyLocalPatch, enqueueWrite])
 
   /**
    * 上移 / 下移一条序列图消息：整条时间轴归一化后由一条 SET_MESSAGE_ORDER 写完，
@@ -4833,7 +4952,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
   /** 导出：把服务端生成的交换文件取回本地。 */
   const runExport = async (kind: 'xmi' | 'sidecar' | 'native') => {
-    setBusy(true)
+    beginBusy()
     try {
       if (kind === 'xmi') {
         await exportXmi()
@@ -4848,7 +4967,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     } catch (error) {
       say('导出失败：{error}', { error: errorMessage(error) })
     } finally {
-      setBusy(false)
+      endBusy()
     }
   }
 
@@ -4888,32 +5007,32 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       say('请先选择 XMI 语义文件')
       return
     }
-    setBusy(true)
-    try {
-      const patch = await importXmi({
-        semantic: importDialog.semantic,
-        sidecar: importDialog.sidecar.trim() ? importDialog.sidecar : undefined,
-      })
-      revisionRef.current = patch.revision
-      setImportDialog(null)
-      // 整包替换后原来的选中项、标签与树展开状态多半已失效，全部复位。
-      setSelectedId(null)
-      setSelectedDiagramId(null)
-      setSelectedRelationId(null)
-      setRelationTool(null)
-      setRelationSource(null)
-      setTabs([])
-      setExpanded(new Set())
-      await refresh()
-      say(importDialog.sidecar.trim()
-        ? '已导入模型（rev {revision}）· {count} 个对象受影响 · 可撤销'
-        : '已导入模型（rev {revision}）· {count} 个对象受影响 · 未提供布局侧车，九图由服务端重排',
-      { revision: patch.revision, count: patch.affectedIds.length })
-    } catch (error) {
-      say('导入失败：{error}', { error: errorMessage(error) })
-    } finally {
-      setBusy(false)
-    }
+    // 导入是整包替换模型，必须排在队列里：与并发的命令交错会写坏模型。
+    await enqueueWrite(async () => {
+      try {
+        const patch = await importXmi({
+          semantic: importDialog.semantic,
+          sidecar: importDialog.sidecar.trim() ? importDialog.sidecar : undefined,
+        })
+        revisionRef.current = patch.revision
+        setImportDialog(null)
+        // 整包替换后原来的选中项、标签与树展开状态多半已失效，全部复位。
+        setSelectedId(null)
+        setSelectedDiagramId(null)
+        setSelectedRelationId(null)
+        setRelationTool(null)
+        setRelationSource(null)
+        setTabs([])
+        setExpanded(new Set())
+        await refresh()
+        say(importDialog.sidecar.trim()
+          ? '已导入模型（rev {revision}）· {count} 个对象受影响 · 可撤销'
+          : '已导入模型（rev {revision}）· {count} 个对象受影响 · 未提供布局侧车，九图由服务端重排',
+        { revision: patch.revision, count: patch.affectedIds.length })
+      } catch (error) {
+        say('导入失败：{error}', { error: errorMessage(error) })
+      }
+    })
   }
 
   const toSvgPoint = (clientX: number, clientY: number): { x: number; y: number } => {
@@ -5664,7 +5783,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     if (!newProjectName.trim()) {
       return
     }
-    setBusy(true)
+    beginBusy()
     try {
       const created = await createProject({
         spaceCode: newProjectSpace,
@@ -5681,7 +5800,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     } catch (error) {
       say('新建项目失败：{error}', { error: errorMessage(error) })
     } finally {
-      setBusy(false)
+      endBusy()
     }
   }
 
@@ -5697,7 +5816,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     if (!target || busy) {
       return
     }
-    setBusy(true)
+    beginBusy()
     try {
       await deleteProject(target.id)
       setDeleteProjectTarget(null)
@@ -5727,7 +5846,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     } catch (error) {
       say('删除项目失败：{error}', { error: errorMessage(error) })
     } finally {
-      setBusy(false)
+      endBusy()
     }
   }
 
@@ -6146,18 +6265,20 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const selected = selectedId === element.id
     const multiSelected = selectedIds.size > 1 && selectedIds.has(element.id)
     const isLinkSource = relationSource === element.id
-    const isPort = shape === 'port'
+    const isPort = shape === 'port' || shape === 'flowport'
     // 生命线以图面计算为准：表头对齐到同一行，宽度取到放得下名字，竖线一直伸到共享底边。
     const lifeline = shape === 'lifeline' ? seqLifelineById.get(element.id) : undefined
-    const bw = isPort ? 26 : lifeline?.width ?? w
-    const bh = isPort ? 26 : lifeline?.height ?? h
-    const bx = isPort ? x + w / 2 - 13 : lifeline?.x ?? x
-    const by = isPort ? y + h / 2 - 13 : lifeline?.y ?? y
-    const children = (childrenByOwner.get(element.id) ?? []).map((child) => child.name)
+    const bw = isPort ? METRICS.portSize : lifeline?.width ?? w
+    const bh = isPort ? METRICS.portSize : lifeline?.height ?? h
+    const bx = isPort ? x + w / 2 - bw / 2 : lifeline?.x ?? x
+    const by = isPort ? y + h / 2 - bh / 2 : lifeline?.y ?? y
+    const children = childrenByOwner.get(element.id) ?? []
+    // 默认外观来自统一字典（shapeStyle.ts），用户样式只覆盖差异项。
+    const look = appearanceOf(shape)
     // 用户样式覆盖默认值；连线起点 / 选中态是临时交互色，优先级更高。
-    const fill = isLinkSource ? '#e6f6f3' : selected ? '#e9f0fc' : colorOr(style, 'fill', '#ffffff')
-    const stroke = isLinkSource ? '#0f766e' : selected ? '#2b5cb8' : colorOr(style, 'stroke', '#cbd3dd')
-    const strokeW = isLinkSource || selected ? 2 : numberValue(style, 'strokeWidth', 1)
+    const fill = isLinkSource ? INTERACTIVE.linkSourceFill : selected ? INTERACTIVE.selectedFill : colorOr(style, 'fill', look.fill)
+    const stroke = isLinkSource ? INTERACTIVE.linkSourceStroke : selected ? INTERACTIVE.selectedStroke : colorOr(style, 'stroke', look.stroke)
+    const strokeW = isLinkSource || selected ? 2 : numberValue(style, 'strokeWidth', look.strokeWidth)
     const fontSize = numberValue(style, 'fontSize', 13)
     const smallFontSize = Math.max(8, fontSize - 2)
     const fontColor = colorOr(style, 'fontColor', '')
@@ -6170,98 +6291,81 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
     const nameTextStyle: CSSProperties = { ...baseTextStyle, fontSize }
     const smallTextStyle: CSSProperties = { ...baseTextStyle, fontSize: smallFontSize }
-    const labelX = alignX(style, bx, bw)
-    const labelAnchor = alignAnchor(style)
+    // 类三栏 / 枚举 / 用例按 UML 规范居中排字，其余左对齐（用户显式设 textAlign 时听用户的）。
+    const centered = (shape === 'classifier' || shape === 'usecase' || shape === 'enumeration')
+      && style.textAlign === undefined
+    const labelX = centered ? bx + bw / 2 : alignX(style, bx, bw)
+    const labelAnchor = centered ? 'middle' : alignAnchor(style)
     const onDown = (event: ReactPointerEvent<SVGGElement>) => handlePointerDown(event, element, bx, by)
+
+    // 类三栏：属性与操作按子元素类型分流（UML 类记法的两个隔间）。
+    const attributeChildren = children.filter((child) =>
+      ['Property', 'ValueProperty', 'ReferenceProperty', 'FlowProperty', 'Port', 'FlowPort', 'Parameter']
+        .includes(codeOf(child.type)))
+    const operationChildren = children.filter((child) => codeOf(child.type) === 'Operation')
+    const classRows = {
+      attributeCount: Math.min(attributeChildren.length, 3),
+      operationCount: Math.min(operationChildren.length, 3),
+    }
+
+    // 包标签页：名字写进标签页（UML 规范），标签页高度跟着字号走。
+    const pkgTabH = Math.max(packageTabHeight(bh), fontSize + 8)
 
     let shapeSvg: ReactNode = null
     switch (shape) {
-      case 'package':
-        shapeSvg = (
-          <path
-            d={`M${bx},${by + 18} h34 v-18 h${bw - 34} v18 h0 v${bh - 18} h-${bw} z`}
-            fill={fill}
-            stroke={stroke}
-            strokeWidth={strokeW}
-          />
-        )
-        break
-      case 'requirement':
-      case 'comment': {
-        const fold = 12
-        const d = `M${bx},${by} h${bw - fold} l${fold},${fold} v${bh - fold} h-${bw} z M${bx + bw - fold},${by} v${fold} h-${fold}`
-        shapeSvg = (
-          <path
-            d={d}
-            fill={fill}
-            stroke={stroke}
-            strokeWidth={strokeW}
-            strokeDasharray={shape === 'comment' ? '4 3' : undefined}
-          />
-        )
+      case 'package': {
+        // 包名按 UML 规范写在标签页里：标签页宽度跟着名字长度走，
+        // 否则「«Package»」标签会从标签页里溢出来。
+        // 名字用主字号（跟随样式面板的字号设置），标签页高度随之长高。
+        const tabW = Math.min(Math.max(bw * 0.28, textWidth(element.name, fontSize) + 16), bw * 0.72)
+        shapeSvg = packageGlyph({ x: bx, y: by, w: bw, h: bh },
+          { fill, stroke, strokeWidth: strokeW }, { tabWidth: tabW, tabHeight: pkgTabH })
         break
       }
+      case 'requirement':
+        shapeSvg = glyphFor('requirement', { x: bx, y: by, w: bw, h: bh }, { fill, stroke, strokeWidth: strokeW })
+        break
+      case 'comment':
+        shapeSvg = glyphFor('comment', { x: bx, y: by, w: bw, h: bh }, { fill, stroke, strokeWidth: strokeW })
+        break
       case 'usecase':
-        shapeSvg = (
-          <ellipse cx={bx + bw / 2} cy={by + bh / 2} rx={bw / 2 - 2} ry={bh / 2 - 2} fill={fill} stroke={stroke} strokeWidth={strokeW} />
-        )
+        shapeSvg = glyphFor('usecase', { x: bx, y: by, w: bw, h: bh }, { fill, stroke, strokeWidth: strokeW })
         break
       case 'state':
-        shapeSvg = (
-          <g>
-            <rect x={bx} y={by} width={bw} height={bh} rx={10} fill={fill} stroke={stroke} strokeWidth={strokeW} />
-            <rect x={bx + 4} y={by + 4} width={bw - 8} height={bh - 8} rx={7} fill="none" stroke={stroke} strokeWidth={1} opacity={0.6} />
-          </g>
-        )
+        shapeSvg = glyphFor('state', { x: bx, y: by, w: bw, h: bh }, { fill, stroke, strokeWidth: strokeW })
         break
       case 'pseudostate':
-        shapeSvg = (
-          <circle cx={bx + bw / 2} cy={by + bh / 2} r={11} fill={fill} stroke={stroke} strokeWidth={strokeW} />
-        )
+        shapeSvg = glyphFor('pseudostate', { x: bx, y: by, w: bw, h: bh }, { fill, stroke, strokeWidth: strokeW })
         break
       case 'actor': {
-        const cxActor = bx + bw / 2
-        const headY = by + 14
-        shapeSvg = (
-          <g fill="none" stroke={stroke} strokeWidth={1.6}>
-            <circle cx={cxActor} cy={headY} r={7} fill={fill} />
-            <line x1={cxActor} y1={headY + 7} x2={cxActor} y2={by + bh - 22} />
-            <line x1={cxActor - 13} y1={by + bh - 14} x2={cxActor + 13} y2={by + bh - 14} />
-            <line x1={cxActor - 11} y1={by + bh - 22} x2={cxActor - 4} y2={by + bh - 12} />
-            <line x1={cxActor + 11} y1={by + bh - 22} x2={cxActor + 4} y2={by + bh - 12} />
-          </g>
-        )
+        // 火柴人只占框体上部，底部留给名字（UML 规范：参与者名字在人形下方）。
+        // 人形本身是窄的：宽画布上画个 168 宽的火柴人只会更像一根棍。
+        const glyphW = Math.min(bw, 78)
+        const glyphH = bh * 0.7
+        shapeSvg = glyphFor('actor',
+          { x: bx + (bw - glyphW) / 2, y: by + bh * 0.05, w: glyphW, h: glyphH },
+          { fill, stroke, strokeWidth: strokeW })
         break
       }
       case 'port':
-        shapeSvg = <rect x={bx} y={by} width={bw} height={bh} fill={fill} stroke={stroke} strokeWidth={strokeW} />
+      case 'flowport':
+        shapeSvg = glyphFor(shape, { x: bx, y: by, w: bw, h: bh }, { fill, stroke, strokeWidth: strokeW })
         break
       case 'frame':
-        shapeSvg = (
-          <g>
-            <rect x={bx} y={by + 16} width={bw} height={bh - 16} rx={4} fill={fill} stroke={stroke} strokeWidth={strokeW} />
-            <path d={`M${bx + 6},${by + 16} v-12 h46 v12`} fill={colorOr(style, 'fill', '#f1f5f9')} stroke={stroke} strokeWidth={strokeW} />
-          </g>
-        )
+        shapeSvg = glyphFor('frame', { x: bx, y: by, w: bw, h: bh }, { fill, stroke, strokeWidth: strokeW })
         break
       case 'swimlane': {
-        const headerFill = isLinkSource ? '#d8efe9' : selected ? '#dbe7fb' : '#e8edf4'
-        const bodyFill = isLinkSource ? '#f2fbf8' : selected ? '#f3f7fe' : colorOr(style, 'fill', '#fafbfd')
-        shapeSvg = (
-          <g>
-            <rect x={bx} y={by} width={bw} height={bh} fill={bodyFill} stroke={stroke} strokeWidth={strokeW} />
-            <rect x={bx} y={by} width={bw} height={SWIMLANE_HEADER} fill={headerFill} stroke={stroke} strokeWidth={strokeW} />
-            <text x={labelX} y={by + SWIMLANE_HEADER / 2 + 4} textAnchor={labelAnchor} className="node-name" style={nameTextStyle}>
-              {wrapLabel(element.name, bw - 12, fontSize, 1)[0]}
-            </text>
-          </g>
-        )
+        const headerFill = isLinkSource ? '#d8efe9' : selected ? '#dbe7fb' : '#eef2f7'
+        const bodyFill = isLinkSource ? '#f2fbf8' : selected ? '#f3f7fe' : colorOr(style, 'fill', '#fbfcfe')
+        shapeSvg = swimlaneGlyph({ x: bx, y: by, w: bw, h: bh },
+          { fill: bodyFill, stroke, strokeWidth: strokeW },
+          { headerFill, bodyFill, headerHeight: SWIMLANE_HEADER })
         break
       }
       case 'lifeline': {
         const axisX = bx + bw / 2
         const axisEnd = lifeline?.bottom ?? by + bh
-        const headerFill = isLinkSource ? '#d8efe9' : selected ? '#dbe7fb' : colorOr(style, 'fill', '#f8fafc')
+        const headerFill = isLinkSource ? '#d8efe9' : selected ? '#dbe7fb' : colorOr(style, 'fill', '#f7f9fc')
         shapeSvg = (
           <g>
             {/* 先竖线后表头：线从框底边起笔，压在矩形之下不留毛边。 */}
@@ -6296,7 +6400,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         }
         const cx = bx + bw / 2
         const cy = by + bh / 2
-        const ink = selected ? '#2b5cb8' : colorOr(style, 'stroke', '#1f2937')
+        const ink = selected ? INTERACTIVE.selectedStroke : colorOr(style, 'stroke', INK)
         const r = Math.min(bw, bh) / 2 - 1
         let glyphSvg: ReactNode
         switch (glyph) {
@@ -6328,7 +6432,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             glyphSvg = (
               <polygon
                 points={`${cx},${by} ${bx + bw},${cy} ${cx},${by + bh} ${bx},${cy}`}
-                fill={selected ? '#e9f0fc' : '#ffffff'}
+                fill={selected ? INTERACTIVE.selectedFill : '#ffffff'}
                 stroke={ink}
                 strokeWidth={1.6}
               />
@@ -6337,7 +6441,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         shapeSvg = (
           <g>
             {selected && (
-              <rect x={bx - 5} y={by - 5} width={bw + 10} height={bh + 10} rx={6} fill="none" stroke="#2b5cb8" strokeWidth={1.2} strokeDasharray="4 3" data-export="omit" />
+              <rect x={bx - 5} y={by - 5} width={bw + 10} height={bh + 10} rx={6} fill="none" stroke={INTERACTIVE.multiSelectStroke} strokeWidth={1.2} strokeDasharray="4 3" data-export="omit" />
             )}
             {glyphSvg}
             {/* 小图形难点中：透明命中区罩住图形与下方名称。 */}
@@ -6346,31 +6450,26 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         )
         break
       }
-      case 'action':
-      case 'object':
-        shapeSvg = (
-          <rect
-            x={bx}
-            y={by}
-            width={bw}
-            height={bh}
-            rx={shape === 'action' ? 22 : 8}
-            fill={fill}
-            stroke={stroke}
-            strokeWidth={strokeW}
-          />
-        )
+      case 'classifier':
+        shapeSvg = classifierGlyph({ x: bx, y: by, w: bw, h: bh },
+          { fill, stroke, strokeWidth: strokeW, divider: look.dividerColor }, classRows)
         break
       default:
-        shapeSvg = <rect x={bx} y={by} width={bw} height={bh} rx={8} fill={fill} stroke={stroke} strokeWidth={strokeW} />
+        shapeSvg = glyphFor(shape, { x: bx, y: by, w: bw, h: bh }, { fill, stroke, strokeWidth: strokeW })
     }
 
     const glyphKind = shape === 'control' ? controlGlyph(element.type) : null
+    const isContainer = shape === 'frame'
+    const isUsecase = shape === 'usecase'
+    const isClass = shape === 'classifier'
+    const isEnum = shape === 'enumeration'
+    const isCentredShape = isUsecase || shape === 'action' || shape === 'object'
     const showText =
-      !isPort && shape !== 'pseudostate' && shape !== 'actor' && shape !== 'swimlane' && shape !== 'lifeline' && !glyphKind
+      !isPort && shape !== 'pseudostate' && shape !== 'actor' && shape !== 'swimlane' && shape !== 'lifeline' && !glyphKind && !isContainer && shape !== 'package'
     const showLabel = shape === 'actor' || shape === 'pseudostate'
+    // 有隔间的形状：SysML 块（子元素）与包（成员）；枚举的字面量单独按隔间线排布。
     const showCompartment =
-      !isPort && (shape === 'block' || shape === 'frame' || shape === 'requirement' || shape === 'package') && children.length > 0
+      !isPort && (shape === 'block' || shape === 'package') && children.length > 0
     // 有隔间的形状名字只能占隔间线以上一行；其余按框高折行，末行省略，杜绝标签跨框。
     const nameLines = wrapLabel(
       element.name,
@@ -6378,6 +6477,17 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       fontSize,
       showCompartment ? 1 : Math.max(1, Math.floor((bh - 50) / (fontSize + 2)) + 1),
     )
+    // 名称基线：用例 / 动作 / 对象节点按 UML 规范居中；类三栏固定在名称栏内。
+    const nameBaseline = isCentredShape
+      ? by + bh / 2 + fontSize / 3
+      : isClass ? by + 36 : isEnum ? by + 24 : by + TEXT.nameBaseline
+    // 类三栏的两段隔间高度，与 classifierGlyph 的分隔线位置保持一致。
+    const classNameH = Math.min(METRICS.classNameH, bh * METRICS.classNameHRatio)
+    const classAttrH = classRows.attributeCount > 0
+      ? Math.min(METRICS.classLineH * classRows.attributeCount, bh * METRICS.classRowHRatio)
+      : Math.min(METRICS.classLineH * 0.6, bh * METRICS.classEmptyHRatio)
+    // 枚举的字面量隔间线在 55% 高度处。
+    const enumDividerY = by + bh * 0.55
 
     return (
       <g
@@ -6414,29 +6524,80 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             ))}
           </text>
         )}
+        {showText && !isCentredShape && (
+          <text x={labelX} y={by + TEXT.typeBaseline} textAnchor={labelAnchor} className="node-type" style={smallTextStyle} fillOpacity={1}>
+            {wrapLabel(`«${info?.uml ?? element.type}»`, bw - 24, smallFontSize, 1)[0]}
+          </text>
+        )}
         {showText && (
-          <>
-            <text x={labelX} y={by + 22} textAnchor={labelAnchor} className="node-type" style={smallTextStyle} fillOpacity={1}>
-              {wrapLabel(`«${info?.uml ?? element.type}»`, bw - 24, smallFontSize, 1)[0]}
-            </text>
-            <text x={labelX} y={by + 42} textAnchor={labelAnchor} className="node-name" style={nameTextStyle} fillOpacity={1}>
-              {nameLines.map((line, index) => (
-                <tspan key={index} x={labelX} dy={index === 0 ? 0 : fontSize + 2}>{line}</tspan>
-              ))}
-            </text>
-          </>
+          <text x={labelX} y={nameBaseline} textAnchor={labelAnchor} className="node-name" style={nameTextStyle} fillOpacity={1}>
+            {nameLines.map((line, index) => (
+              <tspan key={index} x={labelX} dy={index === 0 ? 0 : fontSize + 2}>{line}</tspan>
+            ))}
+          </text>
+        )}
+        {isContainer && (
+          <text x={bx + 7} y={by + METRICS.frameTabH - 4} className="node-name" style={smallTextStyle} fillOpacity={1}>
+            {wrapLabel(element.name, METRICS.frameTabW - 10, smallFontSize, 1)[0]}
+          </text>
+        )}
+        {/* 包：名字写在文件夹的标签页里（UML 规范），用主字号（跟随样式面板设置）。 */}
+        {shape === 'package' && (
+          <text x={bx + METRICS.packageTabPadX} y={by + pkgTabH - 6} className="node-name" style={nameTextStyle} fillOpacity={1}>
+            {wrapLabel(element.name, Math.max(20, bw * 0.72 - 12), fontSize, 1)[0]}
+          </text>
         )}
         {showLabel && (
-          <text x={labelX} y={by + bh - 4} textAnchor={labelAnchor} className="node-name" style={nameTextStyle} fillOpacity={1}>{element.name}</text>
+          <text x={shape === 'actor' ? bx + bw / 2 : labelX} y={by + bh - 4}
+            textAnchor={shape === 'actor' ? 'middle' : labelAnchor}
+            className="node-name" style={nameTextStyle} fillOpacity={1}>{element.name}</text>
         )}
         {showCompartment && (
           <>
-            <line x1={bx + 6} y1={by + 50} x2={bx + bw - 6} y2={by + 50} stroke="#d4dae3" strokeWidth={1} />
-            {children.slice(0, 3).map((name, index) => (
-              <text key={index} x={labelX} y={by + 66 + index * (smallFontSize + 1)} textAnchor={labelAnchor} className="node-child" style={smallTextStyle} fillOpacity={1}>{name}</text>
+            <line x1={bx + 6} y1={by + METRICS.dividerOffset} x2={bx + bw - 6} y2={by + METRICS.dividerOffset} stroke={look.dividerColor} strokeWidth={1} />
+            {children.slice(0, 3).map((child, index) => (
+              <text key={child.id} x={labelX} y={by + 66 + index * (smallFontSize + 1)} textAnchor={labelAnchor} className="node-child" style={smallTextStyle} fillOpacity={1}>{child.name}</text>
             ))}
             {children.length > 3 && (
               <text x={labelX} y={by + 66 + 3 * (smallFontSize + 1)} textAnchor={labelAnchor} className="node-child" style={smallTextStyle} fillOpacity={1}>+{children.length - 3}</text>
+            )}
+          </>
+        )}
+        {/* 类三栏：属性栏与操作栏分别列在各自隔间内。 */}
+        {isClass && classRows.attributeCount > 0 && (
+          <>
+            {attributeChildren.slice(0, 3).map((child, index) => (
+              <text key={child.id} x={bx + METRICS.classPadX} y={by + classNameH + 14 + index * METRICS.classLineH}
+                className="node-child" style={smallTextStyle} fillOpacity={1}>{child.name}</text>
+            ))}
+            {attributeChildren.length > 3 && (
+              <text x={bx + METRICS.classPadX} y={by + classNameH + 14 + 3 * METRICS.classLineH}
+                className="node-child" style={smallTextStyle} fillOpacity={1}>+{attributeChildren.length - 3}</text>
+            )}
+          </>
+        )}
+        {isClass && classRows.operationCount > 0 && (
+          <>
+            {operationChildren.slice(0, 3).map((child, index) => (
+              <text key={child.id} x={bx + METRICS.classPadX} y={by + classNameH + classAttrH + 14 + index * METRICS.classLineH}
+                className="node-child" style={smallTextStyle} fillOpacity={1}>{child.name}</text>
+            ))}
+            {operationChildren.length > 3 && (
+              <text x={bx + METRICS.classPadX} y={by + classNameH + classAttrH + 14 + 3 * METRICS.classLineH}
+                className="node-child" style={smallTextStyle} fillOpacity={1}>+{operationChildren.length - 3}</text>
+            )}
+          </>
+        )}
+        {/* 枚举：字面量列在隔间线下方。 */}
+        {isEnum && children.length > 0 && (
+          <>
+            {children.slice(0, 4).map((child, index) => (
+              <text key={child.id} x={bx + METRICS.classPadX} y={enumDividerY + 16 + index * METRICS.classLineH}
+                className="node-child" style={smallTextStyle} fillOpacity={1}>{child.name}</text>
+            ))}
+            {children.length > 4 && (
+              <text x={bx + METRICS.classPadX} y={enumDividerY + 16 + 4 * METRICS.classLineH}
+                className="node-child" style={smallTextStyle} fillOpacity={1}>+{children.length - 4}</text>
             )}
           </>
         )}
@@ -7103,7 +7264,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             <button
               type="button"
               className="tbi wide"
-              title={t('自动排布：按关系方向重排当前图的节点坐标')}
+              title={t('自动排布：按关系语义重排当前图的节点坐标')}
               disabled={!canEdit || busy || model.diagrams.length === 0}
               onClick={() => setLayoutDialog(activeDiagramObj ? 'diagram' : 'all')}
             >{t('排布')}</button>
@@ -9091,7 +9252,18 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             {menuDiagram && <DiagramIcon code={menuDiagram.kind} size={16} />}
             {menuElement && <TypeIcon code={codeOf(menuElement.type)} size={16} />}
             {menuTarget?.kind === 'root' && projectRoot && <TypeIcon code={codeOf(projectRoot.type)} size={16} />}
-            <span>{menuDiagram ? menuDiagram.name : menuElement ? menuElement.name : t('项目根')}</span>
+            {/* 引用型右键目标：标题也指向被引用的目标元素，而不是退化成「项目根」。 */}
+            {menuTarget?.kind === 'reference' && (() => {
+              const target = elementById.get(menuTarget.id)
+              return target ? <TypeIcon code={codeOf(target.type)} size={16} /> : null
+            })()}
+            <span>{menuDiagram
+              ? menuDiagram.name
+              : menuElement
+                ? menuElement.name
+                : menuTarget?.kind === 'reference'
+                  ? elementById.get(menuTarget.id)?.name ?? t('引用目标')
+                  : t('项目根')}</span>
           </div>
           {menuTarget?.kind === 'element' && (
             <>
@@ -9177,6 +9349,27 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <button type="button" onClick={() => { locateInTree(menuTarget.id); setMenu(null) }}>
                 {t('树上高亮')}
               </button>
+              {/* 引用目标已出现在某张图上时，可切图定位并把视口对准它（画上高亮）。 */}
+              {model.diagrams.some((item) => item.elementIds.includes(menuTarget.id)) ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    focusElementInDiagram(menuTarget.id)
+                    setMenu(null)
+                  }}
+                >
+                  {t('画上高亮')}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="disabled-hint"
+                  disabled
+                  title={t('该元素尚未加入任何图，可用右键「加入当前图」')}
+                >
+                  {t('画上高亮')}
+                </button>
+              )}
               <button
                 type="button"
                 className="danger"
@@ -9437,7 +9630,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <span className="mark" aria-hidden="true">▦</span>
               {t('自动排布')}
             </h2>
-            <p className="modal-sub">{t('按关系方向重排节点坐标：连线少交叉、图面比例接近视口')}</p>
+            <p className="modal-sub">{t('按关系语义重排节点坐标：需求置顶、泛化向上、同父聚簇、少交叉')}</p>
             <label className="field">
               <span>{t('范围')}</span>
               <select
@@ -9455,7 +9648,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 onChange={(event) => setLayoutStrategy(event.target.value as LayoutChoice)}
               >
                 <option value="auto">{t('自动：逐图打分挑一种')}</option>
-                <option value="layered">{t('分层：顺关系方向排，交叉最少')}</option>
+                <option value="layered">{t('分层：需求置顶、泛化向上，层内同父聚簇')}</option>
                 <option value="hubbed">{t('枢纽：中心节点贴边，其余按簇分块')}</option>
                 <option value="grouped">{t('分组：按父子归属成块，适合结构图')}</option>
               </select>

@@ -132,16 +132,7 @@ public final class ValidationEngine {
                     // 元素的 type 存的是创建时的原始字符串（可能是枚举名，也可能是 umlName），
                     // 因此按 ElementType.fromAny 归一后再比。
                     ElementType ownerType = ElementType.fromAny(owner.type()).orElse(null);
-                    boolean customization = ownerType == ElementType.DIAGRAM_TYPE
-                            || ownerType == ElementType.TAG_DEFINITION;
-                    if (!customization) {
-                        throw new ValidationException("定制属性只能写在图类型或标签定义上: " + key);
-                    }
-                    try {
-                        Customization.validate(key, value, remove);
-                    } catch (IllegalArgumentException ex) {
-                        throw new ValidationException(ex.getMessage());
-                    }
+                    assertCustomProperty(ownerType, key, value, remove);
                     return;
                 }
 
@@ -1185,6 +1176,12 @@ public final class ValidationEngine {
             return;
         }
         for (Map.Entry<String, Object> entry : element.properties().entrySet()) {
+            // 定制属性走 Customization 白名单：批量创建（预置扩展图播种）同样受控，
+            // 否则可以绕过 UPDATE_PROPERTY 往模型里塞非法基底 / 未知元素类型。
+            if (Customization.isCustomKey(entry.getKey())) {
+                assertCustomProperty(type, entry.getKey(), entry.getValue(), false);
+                continue;
+            }
             PropertyCatalog.PropertySpec spec = PropertyCatalog.find(type, entry.getKey());
             if (spec == null || !PropertyCatalog.referencesElement(spec)) {
                 continue;
@@ -1194,6 +1191,23 @@ public final class ValidationEngine {
                     throw new ValidationException("引用的元素不存在: " + entry.getKey() + " → " + reference);
                 }
             }
+        }
+    }
+
+    /**
+     * 定制属性（{@code custom:*}）的落库前校验：目标元素必须是图类型定义或标签定义，
+     * 键与值都要过 {@link Customization} 白名单。
+     */
+    private static void assertCustomProperty(ElementType ownerType, String key, Object value, boolean remove) {
+        boolean customization = ownerType == ElementType.DIAGRAM_TYPE
+                || ownerType == ElementType.TAG_DEFINITION;
+        if (!customization) {
+            throw new ValidationException("定制属性只能写在图类型或标签定义上: " + key);
+        }
+        try {
+            Customization.validate(key, value, remove);
+        } catch (IllegalArgumentException ex) {
+            throw new ValidationException(ex.getMessage());
         }
     }
 

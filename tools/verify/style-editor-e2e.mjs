@@ -136,8 +136,14 @@ await page.evaluate(`(()=>{const set=(el,v)=>{const s=Object.getOwnPropertyDescr
 check('登录成功进入工作台', await waitFor(page, `!!document.querySelector('.props-dock')`, 120, 250))
 await sleep(1200)
 // 可重入：同一实例连跑时上一轮留下的自定义标题 / 关掉的图框会污染首屏断言，先复位。
-const shellDiagramId = await page.evaluate(
+// 复位目标取「当前活动的图」；拿不到活动页签时回退到服务端第一张图——
+// 复位命令发空 id 会被服务端忽略，图框标题就永远残留上一轮的自定义值。
+const activeTabId = await page.evaluate(
   `document.querySelector('.doc-tab.diagram.active')?.getAttribute('data-tab-id') ?? ''`)
+const shellDiagramId = await api(`const d=await (await fetch('api/model',{headers:h})).json();
+  const fromTab=${JSON.stringify(activeTabId)};
+  const hit=d.diagrams.find(g=>g.id===fromTab)??d.diagrams[0];
+  return hit?.id??''`)
 await api(`const m=await (await fetch('api/model',{headers:h})).json();
   await fetch('api/commands',{method:'POST',headers:{...h,'X-Scofen-Session':'web-ui'},
     body:JSON.stringify({type:'SET_DIAGRAM_STYLE',baseRevision:m.revision,
@@ -145,6 +151,10 @@ await api(`const m=await (await fetch('api/model',{headers:h})).json();
       payload:{diagramId:${JSON.stringify(shellDiagramId)},style:{frame:'on',frameTitle:''}}})});
   return 1`)
 await sleep(600)
+// 复位要等服务端 WS patch 推到前端才生效（不能只睡固定时间，否则读到旧标题）。
+// 判据是「标题回到规范三段式」，而不是「旧标题消失」——后者在标题尚未到达时也成立。
+await waitFor(page, `(()=>{const t=document.querySelector('.diagram-frame')?.getAttribute('data-frame-title')??'';
+  return t.includes('[')})()`, 40, 250)
 check('默认显示 SysML 图框', await waitFor(page, `!!document.querySelector('.diagram-frame[data-frame="true"]')`))
 const frameTitle = await page.evaluate(`document.querySelector('.diagram-frame')?.getAttribute('data-frame-title') ?? ''`)
 check('图框标题是「图种 [宿主 [图名]]」规范格式', frameTitle.includes('['), frameTitle)
@@ -200,7 +210,11 @@ check('点「强调」预设', await page.evaluate(`(()=>{
   const b=document.querySelector('[data-style-preset="强调"][data-style-scope="node"]');
   if(b) b.click(); return !!b;
 })()`))
-await sleep(900)
+// 预设走「整包替换」命令，等服务端记法真的带上预设色再断言（不睡固定时间）。
+await waitFor(page, `(async()=>{const h=${H};
+  const d=await (await fetch('api/model',{headers:h})).json();
+  const n=d.notations.find(x=>x.elementId===${JSON.stringify(nodeId?.id ?? '')});
+  return n?.style?.fill === '#fff2cc'})()`, 40, 250)
 const styleAfterPreset = await api(`return (await (await fetch('api/model',{headers:h})).json()).notations
   .filter(n=>n.elementId===${JSON.stringify(nodeId?.id ?? '')}).map(n=>n.style)`)
 check('预设写进服务端记法（fill / stroke / fontColor）',
@@ -230,11 +244,15 @@ if (otherId) {
 
 console.log('[4] 字号 / 文字颜色 / 边框线型')
 check('字号滑块可调', await page.evaluate(setInput('[data-style-key="fontSize"][data-style-scope="node"]', '18')))
-await sleep(900)
+await waitFor(page, `(()=>{const t=document.querySelector('.node[data-element-id="${nodeId?.id ?? ''}"] text.node-name');
+  return !!t && t.style.fontSize === '18px'})()`, 40, 250)
 check('节点文字字号变为 18px', await page.evaluate(
   `document.querySelector('.node[data-element-id="${nodeId?.id ?? ''}"] text.node-name')?.style.fontSize === '18px'`))
 check('文字颜色可调', await page.evaluate(setInput('[data-style-key="fontColor"][data-style-scope="node"]', '#b23c3c')))
-await sleep(900)
+// 样式面板 220ms 合并成一条命令，服务端回包 + WS patch + React 重渲染还要再花时间；
+// 固定 sleep 会读到旧值，改成等字色真的出现在画布上。
+await waitFor(page, `(()=>{const t=document.querySelector('.node[data-element-id="${nodeId?.id ?? ''}"] text.node-name');
+  return !!t && (t.style.fill === 'rgb(178, 60, 60)' || t.style.fill === '#b23c3c')})()`, 40, 250)
 const textStyle = await page.evaluate(`(()=>{const t=document.querySelector('.node[data-element-id="${nodeId?.id ?? ''}"] text.node-name');
   return t ? {fill:t.style.fill,size:t.style.fontSize} : null})()`)
 check('节点文字颜色与字号同时生效', textStyle?.fill === 'rgb(178, 60, 60)' || textStyle?.fill === '#b23c3c',
@@ -243,7 +261,8 @@ check('点「虚线」边框线型', await page.evaluate(`(()=>{
   const b=document.querySelector('[data-style-key="strokeDash"][data-style-value="dashed"]');
   if(b) b.click(); return !!b;
 })()`))
-await sleep(900)
+// 与字号 / 字色同理：等样式真正落到画布上，而不是睡固定时间读旧值。
+await waitFor(page, `document.querySelector('.node[data-element-id="${nodeId?.id ?? ''}"]')?.getAttribute('stroke-dasharray') === '5 4'`, 40, 250)
 check('节点边框变虚线', await page.evaluate(
   `document.querySelector('.node[data-element-id="${nodeId?.id ?? ''}"]')?.getAttribute('stroke-dasharray') === '5 4'`))
 
@@ -255,7 +274,10 @@ const afterReload = await api(`return (await (await fetch('api/model',{headers:h
 check('刷新后样式仍在（服务端权威）',
   afterReload?.[0]?.fontSize === '18' && afterReload?.[0]?.fill === '#fff2cc', JSON.stringify(afterReload))
 await api(`await fetch('api/commands/undo',{method:'POST',headers:{...h,'X-Scofen-Session':'web-ui'}});return 1`)
-await sleep(900)
+await waitFor(page, `(async()=>{const h=${H};
+  const d=await (await fetch('api/model',{headers:h})).json();
+  const n=d.notations.find(x=>x.elementId===${JSON.stringify(nodeId?.id ?? '')});
+  return !!n && !n.style?.strokeDash})()`, 40, 250)
 const afterUndo = await api(`return (await (await fetch('api/model',{headers:h})).json()).notations
   .filter(n=>n.elementId===${JSON.stringify(nodeId?.id ?? '')}).map(n=>n.style)`)
 check('撤销回退最后一步样式（strokeDash 消失、其余保留）',
@@ -267,7 +289,7 @@ await reload()
 check('点工具条关闭图框', await page.evaluate(`(()=>{
   const b=document.querySelector('.dt-frame-toggle'); if(b) b.click(); return !!b;
 })()`))
-await sleep(900)
+await waitFor(page, `!document.querySelector('.diagram-frame')`, 40, 250)
 check('画布图框消失', await page.evaluate(`!document.querySelector('.diagram-frame')`))
 check('开关变为未按下', await page.evaluate(`document.querySelector('.dt-frame-toggle')?.getAttribute('aria-pressed') === 'false'`))
 await reload()
@@ -275,8 +297,7 @@ check('刷新后图框仍隐藏（服务端 Diagram.style）', await page.evalua
 check('重新打开图框', await page.evaluate(`(()=>{
   const b=document.querySelector('.dt-frame-toggle'); if(b) b.click(); return !!b;
 })()`))
-await sleep(900)
-check('图框恢复显示', await waitFor(page, `!!document.querySelector('.diagram-frame')`))
+check('图框恢复显示', await waitFor(page, `!!document.querySelector('.diagram-frame')`, 40, 250))
 await openStyles()
 check('自定义标题输入可用', await page.evaluate(setInput('[data-style-key="frameTitle"][data-style-scope="frame"]', 'SC-样式实测图框')))
 await page.evaluate(`(()=>{const el=document.querySelector('[data-style-key="frameTitle"]');
@@ -303,7 +324,7 @@ if (relationInfo?.id && relationInfo?.diagramId) {
   await sleep(400)
   await page.evaluate(`(()=>{const row=document.querySelector('.chart-row[data-diagram-id=${JSON.stringify(relationInfo.diagramId)}]');
     if(row) row.click(); return !!row})()`)
-  await sleep(900)
+  await waitFor(page, `document.querySelector('.doc-tab.diagram.active')?.getAttribute('data-tab-id') === ${JSON.stringify(relationInfo.diagramId)}`, 40, 250)
   check('已切到含连线的图', await page.evaluate(
     `document.querySelector('.doc-tab.diagram.active')?.getAttribute('data-tab-id') === ${JSON.stringify(relationInfo.diagramId)}`))
   await api(`await fetch('api/commands',{method:'POST',headers:{...h,'X-Scofen-Session':'web-ui'},

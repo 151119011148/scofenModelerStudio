@@ -3,6 +3,13 @@
 
 export type ShapeKind =
   | 'block'
+  | 'classifier'
+  | 'component'
+  | 'node'
+  | 'interface'
+  | 'enumeration'
+  | 'datatype'
+  | 'artifact'
   | 'requirement'
   | 'usecase'
   | 'state'
@@ -13,6 +20,7 @@ export type ShapeKind =
   | 'actor'
   | 'package'
   | 'port'
+  | 'flowport'
   | 'comment'
   | 'frame'
   | 'swimlane'
@@ -85,10 +93,13 @@ export function relationshipStyle(type: string): RelStyle {
 }
 
 // 元素类型（uml 名或枚举 code，忽略大小写） → 形状
+//
+// 键必须是 normalizeTypeKey 之后的形态（纯小写字母）：早先写成驼峰的 `valueType`
+// 永远匹配不上，值类型实际上落到了 default 分支。
 const SHAPE_MAP: Record<string, ShapeKind> = {
   block: 'block',
   partproperty: 'block',
-  valueType: 'block',
+  valuetype: 'block',
   constraintblock: 'block',
   constraintproperty: 'block',
   interaction: 'frame',
@@ -110,34 +121,36 @@ const SHAPE_MAP: Record<string, ShapeKind> = {
   controlnode: 'control',
   objectnode: 'object',
   port: 'port',
-  flowport: 'port',
+  flowport: 'flowport',
   connector: 'port',
   comment: 'comment',
 
-  // 扩充类型：分类器 / 特征 / 部署
-  class: 'block',
-  interface: 'block',
-  signal: 'block',
-  datatype: 'block',
-  primitivetype: 'block',
-  enumeration: 'block',
-  associationclass: 'block',
-  component: 'block',
+  // 扩充类型：分类器 / 特征 / 部署。
+  // UML 记法各有各的形：类三栏、组件双缺口、部署立方体、接口圆销、
+  // 枚举圆角隔间、数据类型双斜线、制品文档折角——不再一律塌缩成普通矩形。
+  class: 'classifier',
+  interface: 'interface',
+  signal: 'classifier',
+  datatype: 'datatype',
+  primitivetype: 'datatype',
+  enumeration: 'enumeration',
+  associationclass: 'classifier',
+  component: 'component',
   collaboration: 'block',
   informationitem: 'block',
   instancespecification: 'block',
   operation: 'default',
   parameter: 'default',
   reception: 'default',
-  node: 'block',
-  device: 'block',
-  executionenvironment: 'block',
-  artifact: 'block',
-  deploymentspecification: 'block',
+  node: 'node',
+  device: 'node',
+  executionenvironment: 'node',
+  artifact: 'artifact',
+  deploymentspecification: 'artifact',
   valueproperty: 'block',
   referenceproperty: 'block',
   flowproperty: 'block',
-  flowspecification: 'block',
+  flowspecification: 'default',
   view: 'package',
   viewpoint: 'package',
   rationale: 'comment',

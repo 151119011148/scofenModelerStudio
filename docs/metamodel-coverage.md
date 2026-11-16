@@ -233,16 +233,43 @@ FAIL ENUMERATION_LITERAL    owner=Block        → Containment rule violation（
 
 ---
 
+## 6.7 预置扩展图库：产品随附 16 张 MBSE 图模板
+
+上一节的扩展图是「用户自建图种类」的能力，落地时缺一块：**新建项目里一张扩展图都没有**，
+用户得先自己勾白名单才能用。对标 MagicDraw / M-Design 的图种类库，产品应当随附一批业务向的
+图模板（系统上下文图、需求分解图、逻辑架构图……），新建图时直接挑。
+
+**清单与实现分离**：`DiagramTypeLibrary`（metamodel 模块）只提供**纯数据清单**——16 条
+`Preset`（id / 中文名 / 英文名 / 基底 kind / 允许元素类型 / 允许关系类型 / 说明）。
+`DiagramTypeSeeder`（core 模块）把清单写成模型里的**一等元素**：
+
+| 环节 | 做法 |
+| --- | --- |
+| 新项目 | `seed()` 走一条 `CREATE_ELEMENTS` 建「扩展图库」包（`e-pkg-diagram-type-library`）+ 16 条 `DiagramType`（id `e-dt-preset-*`），一个 revision、一条命令 |
+| 存量项目 | `sync()` 按 id 差集补建缺的模板（产品升级新增的模板能补进老项目）；已存在的（含用户改过名、改过白名单的）一律不动 |
+| 手动补建 | 定制面板「载入预置扩展图 (N)」按钮只补 `installed=false` 的那些 |
+| 落库形态 | 与用户手建的扩展图**完全同构**：同样的 `custom:` 属性、同样的可改名 / 改白名单 / 可删除、同样随快照与 XMI 往返、同样可撤销 |
+
+**与用户自建的区分**：归属不同——预置模板的 owner 是「扩展图库」包。定制面板因此把
+「预置扩展图库」与「用户自定义」**分两段展示**（预置带徽标），`/api/metamodel/customization`
+的每行图类型另带 `preset` 标记。这一区分是必须的：混在一起会让「新建图类型」的编号
+从 17 开始算，用户自定义图类型也永远等不到空态。
+
+**id 命名空间**：预置定义落在用户域（`e-` 家族）而非扩展域，所以 `ExtensionSeeder.sync()`
+的反向清理不会把它们当过期内容删掉。
+
+---
+
 ## 7. 验证
 
 | 层 | 手段 | 结果 |
 | --- | --- | --- |
-| 单元测试 | `./mvnw -B -ntp test` | **174 项、166 通过**（metamodel 19 / core 85 / xmi 13 / web 57；8 项 Testcontainers 无 Docker 跳过），BUILD SUCCESS |
+| 单元测试 | `./mvnw -B -ntp test` | **175 项、167 通过**（metamodel 19 / core 85 / xmi 14 / web 57；8 项 Testcontainers 无 Docker 跳过），BUILD SUCCESS |
 | 目录守卫 | `MetamodelRegistryTest.everyElementTypeIsFullyRegistered` | 159 个类型逐一断言「有主图归属 + 有属性表 + 有可挂载父类型」 |
 | 关系守卫 | `everyRelationshipHasANormativeMetaclass`、`extensionLibraryMaterialisesEveryRelationshipType` | 37 种关系逐一断言「有规范元类 + 属性链含该元类 + 扩展包有对应条目 + 条目类型与 extendsMetaclass 正确」 |
 | 层级守卫 | `everyMetaclassIsConnectedToTheHierarchy` | 281 个元类不断链；抽象性按规范显式标注 |
 | 接口实测 | 真实命令写入 / 删除（本地实例） | 21 个新增类型全部可建，错误父级一律 400 `validation_rule violation`，无残留 |
-| 浏览器 E2E | headless Chrome + CDP | 外壳 30 / 模型树与关系 37 / 属性栏 41 / 面板尺寸 18 / 关系模型 20 / 图形样式 38 / 序列图 98 / 元模型定制 34，共 **316 项全通过**（样式、序列图与元模型定制三类本地与线上各跑一遍） |
+| 浏览器 E2E | headless Chrome + CDP | 全部对着**打包 jar** 跑（vite dev 的 WS 代理会干扰重连与切项目）：外壳 30 / 模型树与关系 37 / 属性栏 41 / 关系模型 20 / 根节点 19 / 图形样式 38 / 序列图 98 / 元模型定制 35 / 符号记法 25 / 引用高亮 18 / 断网自愈 19 / XMI 32 / 画布平移 47，共 **461 项全通过**。另 `auto-layout-e2e` 44/48——剩下 4 项的前提是「含 satisfy 关系链与交叉连线」的特定沙箱快照（本机无 `/tmp/mbse/mdesign_payload_final.json`），非产品回归 |
 
 顺带修掉一个真实缺陷：`POST /api/commands` 载荷缺字段时 `Map.copyOf(null)` 抛 NPE 报 500，
 现在归一为空载荷走校验失败（400 `validation_failed`），并加单测锁定。

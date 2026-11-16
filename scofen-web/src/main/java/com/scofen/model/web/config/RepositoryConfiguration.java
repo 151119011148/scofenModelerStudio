@@ -2,6 +2,7 @@ package com.scofen.model.web.config;
 
 import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
+import com.scofen.model.core.DiagramTypeSeeder;
 import com.scofen.model.core.ExtensionSeeder;
 import com.scofen.model.core.InMemoryModelRepository;
 import com.scofen.model.core.NoopPersistenceService;
@@ -87,6 +88,13 @@ public class RepositoryConfiguration {
                         System.out.println("[scofen] 扩展包已补齐到当前版本，project="
                                 + WorkspaceDirectory.CURRENT_PROJECT_ID);
                     }
+                    // 预置扩展图同样随版本补齐：升级后新增的扩展图模板要出现在
+                    // 「新建图」的「自定义图」分组里，否则用户看到的就是「扩展图缺失」。
+                    if (DiagramTypeSeeder.sync(executor, ProjectRoot.ID)) {
+                        persistence.save(executor.repository().snapshot());
+                        System.out.println("[scofen] 预置扩展图已补齐到当前版本，project="
+                                + WorkspaceDirectory.CURRENT_PROJECT_ID);
+                    }
                     return;
                 }
                 // 播种期间先摘掉持久化，避免每条种子命令都写一份整包快照。
@@ -98,6 +106,9 @@ public class RepositoryConfiguration {
             // 通用扩展包：SysML / UML 的元类与构造型随项目提供，
             // 属性面板里的「扩展的元类」「构造型」因此可以右键在模型树上定位。
             ExtensionSeeder.seed(executor, "model-root");
+
+            // 预置扩展图库：开箱即用的一批 MBSE 图模板，新建图时可直接选。
+            DiagramTypeSeeder.seed(executor, "model-root");
 
             // 项目根也是 Package 元类的实例，此时扩展包已就位，可以补上这条引用。
             run(executor, "UPDATE_PROPERTY", Map.of(

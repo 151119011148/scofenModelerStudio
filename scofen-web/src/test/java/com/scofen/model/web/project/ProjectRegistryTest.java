@@ -6,6 +6,7 @@ import com.scofen.model.core.InMemoryModelRepository;
 import com.scofen.model.core.PersistenceService;
 import com.scofen.model.core.ProjectRoot;
 import com.scofen.model.core.ValidationEngine;
+import com.scofen.model.metamodel.DiagramTypeLibrary;
 import com.scofen.model.metamodel.ExtensionLibrary;
 import com.scofen.model.metamodel.ModelElement;
 import com.scofen.model.metamodel.ModelSnapshot;
@@ -50,14 +51,29 @@ class ProjectRegistryTest {
     void openingOtherProjectSeedsPackageRootAndNineEmptyDiagrams() {
         CommandExecutor opened = registry.resolve("project-req");
         assertThat(opened).isNotSameAs(primary);
-        // 项目根 + 通用扩展包（SysML / UML 的元类与构造型）
-        assertThat(opened.snapshot().elements()).hasSize(1 + ExtensionLibrary.size());
+        // 项目根 + 通用扩展包（SysML / UML 的元类与构造型）+ 预置扩展图库
+        assertThat(opened.snapshot().elements()).hasSize(1 + ExtensionLibrary.size() + DiagramTypeLibrary.size());
         assertThat(opened.snapshot().elements().get(0).name()).isEqualTo("需求工程样例");
         assertThat(opened.snapshot().elements().get(0).type()).isEqualTo("Package");
         assertThat(opened.snapshot().elements().get(0).ownerId()).isNull();
         assertThat(opened.snapshot().elements()).extracting(ModelElement::id)
                 .contains(ExtensionLibrary.SYSML_PROFILE_ID, ExtensionLibrary.UML_PROFILE_ID);
         assertThat(opened.snapshot().diagrams()).hasSize(9);
+        // 预置扩展图库是模型里的真实元素：库包 + 16 条定义，挂在项目根下。
+        assertThat(opened.snapshot().elements()).extracting(ModelElement::id)
+                .contains(DiagramTypeLibrary.LIBRARY_PACKAGE_ID)
+                .containsAll(DiagramTypeLibrary.presets().stream().map(DiagramTypeLibrary.Preset::id).toList());
+        assertThat(opened.snapshot().elements()).filteredOn(e -> e.id().equals(DiagramTypeLibrary.LIBRARY_PACKAGE_ID))
+                .singleElement().satisfies(pkg -> {
+                    assertThat(pkg.type()).isEqualTo("PACKAGE");
+                    assertThat(pkg.ownerId()).isEqualTo(ProjectRoot.ID);
+                });
+        assertThat(opened.snapshot().elements()).filteredOn(e -> DiagramTypeLibrary.isPresetId(e.id()))
+                .allSatisfy(preset -> {
+                    assertThat(preset.type()).isEqualTo("DIAGRAM_TYPE");
+                    assertThat(preset.ownerId()).isEqualTo(DiagramTypeLibrary.LIBRARY_PACKAGE_ID);
+                    assertThat(preset.properties()).containsKey("custom:baseKind");
+                });
         assertThat(registry.isOpened("project-req")).isTrue();
         assertThat(registry.resolve("project-req")).isSameAs(opened);
     }
@@ -69,7 +85,7 @@ class ProjectRegistryTest {
         other.execute("session-1", Command.of("CREATE_ELEMENT", before, "c-1",
                 Map.of("id", "e-isolated", "type", "Package", "name", "只属于这个项目",
                         "ownerId", "model-root", "stereotypes", List.of("package"))));
-        assertThat(other.snapshot().elements()).hasSize(2 + ExtensionLibrary.size());
+        assertThat(other.snapshot().elements()).hasSize(2 + ExtensionLibrary.size() + DiagramTypeLibrary.size());
         assertThat(primary.snapshot().elements()).isEmpty();
         assertThat(primary.revision()).isZero();
     }
@@ -152,8 +168,8 @@ class ProjectRegistryTest {
         // 老快照里的内容不能被覆盖掉。
         assertThat(opened.snapshot().elements()).extracting(ModelElement::id)
                 .contains(ProjectRoot.ID, ExtensionLibrary.SYSML_PROFILE_ID);
-        // 老快照已有 1 个 Profile，只补缺的那些，数量正好等于「根 + 完整扩展包」。
-        assertThat(opened.snapshot().elements()).hasSize(1 + ExtensionLibrary.size());
+        // 老快照已有 1 个 Profile，只补缺的那些，数量正好等于「根 + 完整扩展包 + 预置扩展图库」。
+        assertThat(opened.snapshot().elements()).hasSize(1 + ExtensionLibrary.size() + DiagramTypeLibrary.size());
         assertThat(saved.get()).as("补齐后应重写一次快照").isNotNull();
         assertThat(saved.get().revision()).isGreaterThan(7L);
     }

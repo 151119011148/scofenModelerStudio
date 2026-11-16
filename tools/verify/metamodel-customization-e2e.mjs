@@ -171,25 +171,43 @@ check('登录成功进入工作台', await waitFor(page, `!!document.querySelect
 await sleep(1000)
 
 // 可重入：删掉上一轮留下的自定义图（customTypeId 非空）与自定义定义元素。
+//
+// 两条硬约束：
+//   1) 预置扩展图库（owner = 扩展图库包）**不能删**——它是产品随附的模板，
+//      删了会被播种器补回来，而且会把「预置图库单独成段」这条断言打挂。
+//      按 owner 判定比按 type 字符串判定可靠：预置用枚举名 DIAGRAM_TYPE，
+//      用户手建的用 UML 名 DiagramType，两条路径都出现过。
+//   2) 每条命令都要看状态码——静默失败会留下残留，下一轮的断言就莫名其妙地挂。
 const cleanup = await api(`const d=await (await fetch('api/model',{headers:h})).json();
   const rev=d.revision;
+  const errors=[];
+  const post=async(body)=>{const res=await fetch('api/commands',{method:'POST',
+    headers:{...h,'X-Scofen-Session':'web-ui'},body:JSON.stringify(body)});
+    if(res.status!==200) errors.push(body.type+':'+res.status+':'+(await res.text()).slice(0,120));
+    return res.status;};
   const customDiagrams=(d.diagrams??[]).filter(g=>g.customTypeId).map(g=>g.id);
+  let cur=d.revision;
   for(const id of customDiagrams){
-    await fetch('api/commands',{method:'POST',headers:{...h,'X-Scofen-Session':'web-ui'},
-      body:JSON.stringify({type:'DELETE_DIAGRAM',baseRevision:rev,clientCmdId:'cust-e2e-del-'+id,
-        payload:{id}})});
+    await post({type:'DELETE_DIAGRAM',baseRevision:cur,clientCmdId:'cust-e2e-del-'+id,payload:{id}});
+    cur=cur+1;
   }
   const d2=await (await fetch('api/model',{headers:h})).json();
-  const defs=(d2.elements??[]).filter(e=>['DiagramType','TagDefinition'].includes(e.type)).map(e=>e.id);
-  const sts=(d2.elements??[]).filter(e=>e.type==='Stereotype'&&String(e.id).startsWith('e-')).map(e=>e.id);
+  const LIB='e-pkg-diagram-type-library';
+  const owned=(e)=>e.ownerId!==LIB;
+  const defs=(d2.elements??[]).filter(e=>['DiagramType','TagDefinition'].includes(e.type)&&owned(e)).map(e=>e.id);
+  const sts=(d2.elements??[]).filter(e=>e.type==='Stereotype'&&String(e.id).startsWith('e-')&&owned(e)).map(e=>e.id);
   const all=[...defs,...sts];
   if(all.length){
-    await fetch('api/commands',{method:'POST',headers:{...h,'X-Scofen-Session':'web-ui'},
-      body:JSON.stringify({type:'DELETE_ELEMENTS',baseRevision:d2.revision,clientCmdId:'cust-e2e-clean-'+Date.now(),
-        payload:{ids:all}})});
+    await post({type:'DELETE_ELEMENTS',baseRevision:d2.revision,clientCmdId:'cust-e2e-clean-'+Date.now(),
+      payload:{ids:all}});
   }
-  return {customDiagrams:customDiagrams.length,defs:all.length}`)
-check('清理上一轮残留的自定义图与定义元素', true, JSON.stringify(cleanup))
+  const d3=await (await fetch('api/model',{headers:h})).json();
+  return {customDiagrams:customDiagrams.length,defs:all.length,errors,
+    remainCustom:(d3.elements??[]).filter(e=>['DiagramType','TagDefinition'].includes(e.type)&&owned(e)).length,
+    remainPreset:(d3.elements??[]).filter(e=>e.ownerId===LIB).length}`)
+check('清理上一轮残留的自定义图与定义元素',
+  cleanup.errors.length === 0 && cleanup.remainCustom === 0 && cleanup.remainPreset > 0,
+  JSON.stringify(cleanup))
 // 混用 API 直驱后必须刷新对齐 baseRevision，否则界面上的写入会撞 Stale baseRevision。
 await page.goto(APP_URL)
 await waitFor(page, `!!document.querySelector('.props-dock')`, 120, 250)
@@ -202,7 +220,18 @@ const tabLabels = await page.evaluate(
   `[...document.querySelectorAll('.cust-tabs button')].map(b=>b.textContent.trim()).join('|')`)
 check('定制面板分「扩展图 / 元模型」两段',
   tabLabels.includes('扩展图') && tabLabels.includes('元模型'), tabLabels)
-check('初始无自定义图类型', await page.evaluate(
+// 预置扩展图库（产品随附的模板）常驻在「扩展图」段，用户自建的图类型才是空态。
+// 两者必须分开：预置模板混进用户自建列表会让「新建图类型」从 17 开始编号。
+const presets = await page.evaluate(`(()=>{
+  const heads=[...document.querySelectorAll('.cust-card-head')];
+  const presetCards=heads.filter(h=>h.querySelector('.cust-badge.preset'));
+  return {total:heads.length, preset:presetCards.length,
+    names:presetCards.map(h=>h.querySelector('.cust-name')?.textContent ?? '').slice(0,3),
+    hasSection:[...document.querySelectorAll('.cust-section')].some(s=>s.textContent.includes('预置扩展图库'))};
+})()`)
+check('预置扩展图库单独成段并带「预置」徽标',
+  presets.preset > 0 && presets.hasSection, JSON.stringify(presets))
+check('初始无用户自定义图类型（空态属于自建区）', await page.evaluate(
   `!!document.querySelector('.cust-empty') && document.querySelector('.cust-empty').textContent.includes('尚无')`))
 
 console.log('[3] 新建自定义图类型')

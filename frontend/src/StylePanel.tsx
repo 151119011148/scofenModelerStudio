@@ -46,6 +46,11 @@ const EMPTY: StyleMap = {}
  * 面板只产生「样式补丁」，写入一律走 App 里的命令通道（服务端权威、可撤销、
  * 随 WS Patch 广播）。连续拖滑块 / 取色按 220ms 合并成一次命令，避免把一次调整
  * 炸成几十个 revision。
+ *
+ * <p>关于 busy：命令在飞行时面板**不**把控件置灰。浏览器不会向 disabled 按钮派发
+ * click，置灰等于把用户这一步调整静默吞掉——「改完字号马上点虚线」就会丢掉虚线那一步。
+ * 真正的硬性禁用只有两种：只读角色、当前选中对象与该分区不匹配。命令在飞行期间的
+ * 调整会由 App 的写队列排队执行，不会丢也不会并发。</p>
  */
 export function StylePanel(props: StylePanelProps) {
   const {
@@ -55,10 +60,13 @@ export function StylePanel(props: StylePanelProps) {
   } = props
   const locale = useLocale()
   void locale
-  const disabled = !canEdit || busy
-  const scopeDisabled = (scope: Scope): boolean => disabled
-    || (scope === 'node' && targetKind !== 'elements')
+  /** 硬禁用：只读角色。与 busy 无关——busy 只是「正在写」，不是「不能写」。 */
+  const readonly = !canEdit
+  /** 该分区与当前选中对象不匹配时不可调（选了连线却在调图形样式）。 */
+  const scopeMismatch = (scope: Scope): boolean =>
+    (scope === 'node' && targetKind !== 'elements')
     || (scope === 'line' && targetKind !== 'relation')
+  const scopeDisabled = (scope: Scope): boolean => readonly || scopeMismatch(scope)
   const stylesByScope: Record<Scope, StyleMap> = { node: nodeStyle, line: lineStyle, frame: frameStyle }
   const applyByScope: Record<Scope, (patch: StyleMap, replace?: boolean) => void> = {
     node: onApplyNode, line: onApplyLine, frame: onApplyFrame,
@@ -276,7 +284,7 @@ export function StylePanel(props: StylePanelProps) {
           onClick={() => replaceAll(scope, {})}
         >{t('重置全部')}</button>
       </div>
-      {scopeDisabled(scope) && !disabled && (
+      {scopeMismatch(scope) && !readonly && (
         <p className="sp-note">{scope === 'line' ? t('选中一条连线后可调整颜色、粗细与线型。') : t('选中图形后可调整字号与颜色。')}</p>
       )}
       {note && !scopeDisabled(scope) && <p className="sp-note">{t(note)}</p>}
@@ -307,6 +315,7 @@ export function StylePanel(props: StylePanelProps) {
       <div className="sp-target" data-style-target={selectionCount > 0 ? 'selection' : 'none'}>
         <strong>{selectionLabel || t('未选择对象')}</strong>
         {selectionCount > 1 && <span>{t('{count} 个对象', { count: selectionCount })}</span>}
+        {busy && <span className="sp-writing" data-style-writing="true">{t('写入中…')}</span>}
       </div>
 
       {targetKind === 'elements' && renderSection('node', '图形样式', NODE_STYLE_GROUPS, NODE_PRESETS,
@@ -326,7 +335,7 @@ export function StylePanel(props: StylePanelProps) {
               type="checkbox"
               checked={frameToggleDisabled ? true : frameEnabled}
               data-style-toggle="frame"
-              disabled={disabled || !diagram || frameToggleDisabled}
+              disabled={readonly || !diagram || frameToggleDisabled}
               onChange={(event) => onToggleFrame(event.target.checked)}
             />
             <span>{t('显示图框')}</span>
@@ -346,7 +355,7 @@ export function StylePanel(props: StylePanelProps) {
             type="button"
             className="sp-reset"
             data-style-reset="frame"
-            disabled={disabled || Object.keys(frameStyle).length === 0}
+            disabled={readonly || Object.keys(frameStyle).length === 0}
             onClick={() => replaceAll('frame', {})}
           >{t('重置全部')}</button>
         </div>

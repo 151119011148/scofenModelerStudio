@@ -2,6 +2,7 @@ package com.scofen.model.web.project;
 
 import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
+import com.scofen.model.core.DiagramTypeSeeder;
 import com.scofen.model.core.ExtensionSeeder;
 import com.scofen.model.core.InMemoryModelRepository;
 import com.scofen.model.core.NoopPersistenceService;
@@ -119,6 +120,11 @@ public class ProjectRegistry {
                     persistence.save(executor.snapshot());
                     System.out.println("[scofen] 扩展包已补齐到当前版本，project=" + projectId);
                 }
+                // 预置扩展图模板随版本补齐，存量项目也能在「新建图」里直接选。
+                if (DiagramTypeSeeder.sync(executor, ProjectRoot.ID) && persistence.isEnabled()) {
+                    persistence.save(executor.snapshot());
+                    System.out.println("[scofen] 预置扩展图已补齐到当前版本，project=" + projectId);
+                }
                 executor.setPersistence(persistence);
                 return executor;
             }
@@ -131,6 +137,8 @@ public class ProjectRegistry {
                 "id", ProjectRoot.ID, "type", ProjectRoot.TYPE_CODE, "name", name, "ownerId", ""));
         // 通用扩展包随项目一起提供：SysML / UML 的元类与构造型。
         ExtensionSeeder.seed(executor, ProjectRoot.ID);
+        // 预置扩展图库：开箱即用的 MBSE 图模板。
+        DiagramTypeSeeder.seed(executor, ProjectRoot.ID);
         run(executor, "UPDATE_PROPERTY", Map.of(
                 "id", ProjectRoot.ID, "key", "extendsMetaclass",
                 "value", ExtensionLibrary.metaclassId(PropertyCatalog.rootMetaclass(ProjectRoot.TYPE))));

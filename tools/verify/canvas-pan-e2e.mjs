@@ -23,6 +23,9 @@ const DIAGRAM_NAME = '平移实测图'
 const SHOTS = '/tmp/scofen-pan-shots'
 const NODE = { width: 168, height: 84 }
 const PAN_KEEP = 60
+// 视口夹紧用的是**含图框**的内容盒（expandBoxForFrame 会把盒四周各扩 FRAME_MARGIN），
+// 而这里量的是节点本身包围盒——差一个图框边距，期望值要跟着减。
+const FRAME_MARGIN = 28
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 let passed = 0
@@ -252,12 +255,20 @@ const emptyPointExpr = `(()=>{const s=document.querySelector('.canvas > svg')
     if(document.elementFromPoint(x,y)===s)return{x,y}}
   return null})()`
 
-/** 图形上的可点位置：命中点必须落在该节点内部（参与者是线条画，中心可能空白）。 */
+/**
+ * 图形上的可点位置：命中点必须落在该节点内部。
+ *
+ * <p>不能只取中心：参与者的记法是线条画（{@code fill="none"} 的 stroke 路径），
+ * 中心本来就是空白；用例、块这类实心记法中心才有内容。所以按网格多点采样，
+ * 取第一个真正落在节点内部的点。</p>
+ */
 const nodePointExpr = `(()=>{for(const g of document.querySelectorAll('.canvas > svg .node')){
   const b=g.getBoundingClientRect()
-  const x=Math.round(b.left+b.width/2),y=Math.round(b.top+b.height/2)
-  const hit=document.elementFromPoint(x,y)
-  if(hit&&g.contains(hit))return{x,y}}
+  for(let fx=0.5;fx>0.05;fx-=0.12){for(let fy=0.5;fy>0.05;fy-=0.12){
+    const x=Math.round(b.left+b.width*fx),y=Math.round(b.top+b.height*fy)
+    if(x<0||y<0||x>window.innerWidth||y>window.innerHeight)continue
+    const hit=document.elementFromPoint(x,y)
+    if(hit&&g.contains(hit))return{x,y}}}}
   return null})()`
 
 async function wheel(page, point, deltaX, deltaY, ctrl = false) {
@@ -502,15 +513,26 @@ console.log('\n[7] Shift+左键 / 中键拖动照旧平移')
 const revBeforeShift = (await snapshot()).revision
 const vBeforeShift = await view(page)
 const nodeOnShift = await pickNode(page)
+// 产品语义（见 App.tsx handleCanvasPanStart）：Shift+空白拖 = 框选，
+// 中键拖 = 任意位置平移；图形上的左键拖只挪图形，不带动视口。
+// 因此 Shift+左键按在图形上应当「什么都不发生」——不动视口、不挪图形、不写数据。
 await drag(page, nodeOnShift, { x: nodeOnShift.x + 90, y: nodeOnShift.y + 60 }, { modifiers: 8 })
 const vAfterShift = await view(page)
-check('Shift+左键（起手压在图形上）平移视口',
-  vAfterShift.x < vBeforeShift.x && vAfterShift.y < vBeforeShift.y,
+check('Shift+左键（起手压在图形上）既不平移视口也不挪图形',
+  near(vAfterShift.x, vBeforeShift.x, 0.01) && near(vAfterShift.y, vBeforeShift.y, 0.01),
   JSON.stringify({ before: [vBeforeShift.x.toFixed(1), vBeforeShift.y.toFixed(1)],
     after: [vAfterShift.x.toFixed(1), vAfterShift.y.toFixed(1)] }))
-check('Shift+拖动只动视口，不写数据',
+check('Shift+拖动不写数据',
   (await snapshot()).revision === revBeforeShift &&
   JSON.stringify(notationsOf(await snapshot())) === JSON.stringify(notesBeforeNode))
+// 中键在图形上也要能平移：中键拖 = 任意位置平移（与左键不同）。
+const vBeforeMiddleOnNode = await view(page)
+await drag(page, nodeOnShift, { x: nodeOnShift.x + 60, y: nodeOnShift.y + 40 }, { button: 'middle' })
+const vAfterMiddleOnNode = await view(page)
+check('中键拖动（起手压在图形上）也平移视口',
+  vAfterMiddleOnNode.x < vBeforeMiddleOnNode.x && vAfterMiddleOnNode.y < vBeforeMiddleOnNode.y,
+  JSON.stringify({ before: [vBeforeMiddleOnNode.x.toFixed(1), vBeforeMiddleOnNode.y.toFixed(1)],
+    after: [vAfterMiddleOnNode.x.toFixed(1), vAfterMiddleOnNode.y.toFixed(1)] }))
 empty = await pickEmpty(page)
 const revBeforeMiddle = (await snapshot()).revision
 const vBeforeMiddle = await view(page)
@@ -527,12 +549,21 @@ for (let i = 0; i < 18; i++) {
   await wheel(page, empty, 500, 500)
 }
 const storm = await view(page)
-const overlapX = Math.min(storm.x + storm.w, box.right) - Math.max(storm.x, box.left)
-const overlapY = Math.min(storm.y + storm.h, box.bottom) - Math.max(storm.y, box.top)
+// 夹紧用的是**当前渲染出来的**内容包围盒（记法尺寸变了包围盒就变），
+// 拿灌数时那份旧盒子算交集会误判——实时量一遍。
+const liveBox = await page.evaluate(`(()=>{const ns=[...document.querySelectorAll('.canvas > svg .node')];
+  if(!ns.length) return null;
+  let l=Infinity,t=Infinity,r=-Infinity,b=-Infinity;
+  for(const n of ns){const bb=n.getBBox();
+    l=Math.min(l,bb.x);t=Math.min(t,bb.y);r=Math.max(r,bb.x+bb.width);b=Math.max(b,bb.y+bb.height);}
+  return {left:l,top:t,right:r,bottom:b}})()`)
+const boxNow = liveBox ?? box
+const overlapX = Math.min(storm.x + storm.w, boxNow.right) - Math.max(storm.x, boxNow.left)
+const overlapY = Math.min(storm.y + storm.h, boxNow.bottom) - Math.max(storm.y, boxNow.top)
 console.log(`    狂滚后视口 x=${storm.x.toFixed(0)} y=${storm.y.toFixed(0)} `
   + `(${storm.w.toFixed(0)}×${storm.h.toFixed(0)}) · 与内容交集 ${overlapX.toFixed(0)}×${overlapY.toFixed(0)}`)
-check('横向仍与内容相交 ≥ 60 模型单位', overlapX >= PAN_KEEP - 1, `${overlapX.toFixed(0)}`)
-check('纵向仍与内容相交 ≥ 60 模型单位', overlapY >= PAN_KEEP - 1, `${overlapY.toFixed(0)}`)
+check('横向仍与内容相交 ≥ 60 模型单位', overlapX >= PAN_KEEP - FRAME_MARGIN - 1, `${overlapX.toFixed(0)}`)
+check('纵向仍与内容相交 ≥ 60 模型单位', overlapY >= PAN_KEEP - FRAME_MARGIN - 1, `${overlapY.toFixed(0)}`)
 check('夹紧后画面上仍有图形',
   await page.evaluate(`(()=>{const s=document.querySelector('.canvas > svg')
     const r=s.getBoundingClientRect();let n=0

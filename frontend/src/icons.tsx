@@ -1,5 +1,12 @@
 import type { ReactNode } from 'react'
 import { normalizeRelKey, relationshipStyle } from './notation'
+// 图标字形与画布符号共用同一套参数化几何（shapeGlyphs.tsx），
+// 改一次记法两边同步，不会出现「图标是火柴人、画布上是火柴棍」这类漂移。
+import {
+  actorGlyph, artifactGlyph, commentGlyph, componentGlyph, datatypeGlyph,
+  enumerationGlyph, ICON_BOX, interfaceGlyph, nodeGlyph, packageGlyph,
+  requirementGlyph, stateGlyph, usecaseGlyph,
+} from './shapeGlyphs'
 
 /**
  * 元模型 / 九大图 / 关系图标系统。
@@ -267,7 +274,7 @@ function Glyph({ name }: { name: string }): ReactNode {
   }
   switch (name) {
     case 'folder':
-      return <path d="M2 5.2h4l1.4-2.2h6.6v10H2z" {...s} />
+      return packageGlyph(ICON_BOX, s)
     case 'model':
       return (
         <>
@@ -297,8 +304,8 @@ function Glyph({ name }: { name: string }): ReactNode {
     case 'requirement':
       return (
         <>
-          <path d="M2.6 2.3h7.2l3.6 3.4v8H2.6z" {...s} />
-          <path d="M9.8 2.3v3.4h3.6M5 8.4h6.2M5 10.8h4.4" {...s} />
+          {requirementGlyph(ICON_BOX, s)}
+          <path d="M4.6 8.4h6.4M4.6 10.8h4.4" {...s} />
         </>
       )
     case 'testcase':
@@ -422,48 +429,28 @@ function Glyph({ name }: { name: string }): ReactNode {
         </>
       )
     case 'state':
-      return <path d="M4 3.6h8a1.8 1.8 0 011.8 1.8v5.2A1.8 1.8 0 0112 12.4H4a1.8 1.8 0 01-1.8-1.8V5.4A1.8 1.8 0 014 3.6z" {...s} />
+      return stateGlyph(ICON_BOX, s)
     case 'transition':
       return <path d="M2.6 10.4c2.8-6 7.4-6 10.4-1.2M10.8 6.8l2.4 2.6-2.6 1.8" {...s} />
     case 'pseudostate':
       return <circle cx="8" cy="8" r="4.2" fill="currentColor" />
     case 'usecase':
-      return <ellipse cx="8" cy="8" rx="6" ry="4.2" {...s} />
+      return usecaseGlyph(ICON_BOX, s)
     case 'actor':
-      return (
-        <>
-          <circle cx="8" cy="4.4" r="2" {...s} />
-          <path d="M8 6.4v5.2M4.2 13.6l3.8-3.2 3.8 3.2M4.8 8.8h6.4" {...s} />
-        </>
-      )
+      return actorGlyph(ICON_BOX, s)
     case 'comment':
-      return (
-        <>
-          <path d="M2.4 2.6h8.2l3 3v7.8H2.4z" {...s} strokeDasharray="2.4 1.6" />
-          <path d="M10.6 2.6v3h3" {...s} />
-        </>
-      )
+      return commentGlyph(ICON_BOX, { ...s, dash: '2.4 1.6' })
     // ── 扩充类型的专用字形：分类器 / 特征 / 部署 ──
     case 'interface':
-      return (
-        <>
-          <path d="M2.6 8h5.4" {...s} />
-          <circle cx="10.6" cy="8" r="2.6" {...s} />
-        </>
-      )
+      return interfaceGlyph(ICON_BOX, s)
     case 'signal':
       return <path d="M8 2.8L13.6 13.2H2.4z" {...s} />
     case 'datatype':
-      return (
-        <>
-          <path d="M2.4 3h11.2v10H2.4z" {...s} />
-          <path d="M2.4 6.2h11.2M4.6 8.8h6.8M4.6 11h4" {...s} />
-        </>
-      )
+      return datatypeGlyph(ICON_BOX, s)
     case 'enum':
       return (
         <>
-          <path d="M2.4 3h11.2v10H2.4zM2.4 6.2h11.2" {...s} />
+          {enumerationGlyph(ICON_BOX, s)}
           <circle cx="5" cy="8.6" r="0.95" fill="currentColor" />
           <circle cx="8" cy="8.6" r="0.95" fill="currentColor" />
           <circle cx="11" cy="8.6" r="0.95" fill="currentColor" />
@@ -477,12 +464,7 @@ function Glyph({ name }: { name: string }): ReactNode {
         </>
       )
     case 'component':
-      return (
-        <>
-          <path d="M4.6 3h9v10h-9z" {...s} />
-          <path d="M2.4 5.2h4.4v2.2H2.4zM2.4 8.6h4.4v2.2H2.4z" {...s} />
-        </>
-      )
+      return componentGlyph(ICON_BOX, s)
     case 'collab':
       return <ellipse cx="8" cy="8" rx="6" ry="4.2" {...s} strokeDasharray="2.4 1.6" />
     case 'info':
@@ -510,19 +492,9 @@ function Glyph({ name }: { name: string }): ReactNode {
         </>
       )
     case 'node':
-      return (
-        <>
-          <path d="M8 2.2l5.4 2.9v5.8L8 13.8l-5.4-2.9V5.1z" {...s} />
-          <path d="M2.6 5.1L8 8l5.4-2.9M8 8v5.8" {...s} />
-        </>
-      )
+      return nodeGlyph(ICON_BOX, s)
     case 'artifact':
-      return (
-        <>
-          <path d="M3.2 2.4h6.2l3.4 3.4v7.8H3.2z" {...s} />
-          <path d="M9.4 2.4v3.4h3.4M5.4 9h5M5.4 11.2h3.4" {...s} />
-        </>
-      )
+      return artifactGlyph(ICON_BOX, s)
     case 'view':
       return (
         <>
@@ -602,29 +574,31 @@ function Glyph({ name }: { name: string }): ReactNode {
     case 'd-pkg':
       return (
         <>
-          <path d="M2.2 5.4h3.6l1.2-2h6.8v9.6H2.2z" {...s} />
-          <path d="M5.2 8.4h5.4" {...s} />
+          {packageGlyph({ x: 1, y: 3, w: 14, h: 10 }, s, { tabWidth: 6 })}
+          <path d="M4.2 8.6h7.4" {...s} />
         </>
       )
     case 'd-req':
       return (
         <>
-          <path d="M2.6 2.4h7l3.8 3.4v7.8H2.6z" {...s} />
-          <path d="M9.6 2.4v3.4h3.8M4.8 8h6.6M4.8 10.4h4.6" {...s} />
+          {requirementGlyph({ x: 1.5, y: 2, w: 13, h: 12 }, s)}
+          <path d="M4.4 7.4h6.6M4.4 9.8h4.4" {...s} />
         </>
       )
     case 'd-bdd':
       return (
         <>
-          <path d="M2.4 2.6h5v4.8h-5zM8.6 2.6h5v4.8h-5zM2.4 8.6h5v4.8h-5zM8.6 8.6h5v4.8h-5z" {...s} />
+          <rect x="1.6" y="2.4" width="5.4" height="4.6" {...s} />
+          <rect x="9" y="9" width="5.4" height="4.6" {...s} />
+          <path d="M7 4.7h2v6.6h.2" {...s} />
         </>
       )
     case 'd-ibd':
       return (
         <>
-          <path d="M3.6 4h8.8v8H3.6z" {...s} />
-          <path d="M1.8 6.4h3.2v2.4H1.8zM11 6.4h3.2v2.4H11z" {...s} />
-          <path d="M5 7.6h6" {...s} strokeDasharray="1.6 1.2" />
+          <rect x="3.4" y="3.6" width="9.2" height="8.8" {...s} />
+          <rect x="1.2" y="6.2" width="2.8" height="3.2" {...s} />
+          <rect x="12" y="6.2" width="2.8" height="3.2" {...s} />
         </>
       )
     case 'd-par':
@@ -640,8 +614,9 @@ function Glyph({ name }: { name: string }): ReactNode {
     case 'd-act':
       return (
         <>
-          <path d="M2.4 3.2h4.6L10 8l-3 4.8H2.4z" {...s} />
-          <path d="M10 8h3.6M11.8 6.2L13.8 8l-2 1.8" {...s} />
+          <circle cx="3" cy="8" r="1.7" fill="currentColor" stroke="none" />
+          <rect x="6" y="5.2" width="4.6" height="5.4" rx="2.7" {...s} />
+          <path d="M10.8 7.9h2.4M12 6.7l1.4 1.2-1.4 1.2" {...s} />
         </>
       )
     case 'd-seq':
@@ -655,19 +630,17 @@ function Glyph({ name }: { name: string }): ReactNode {
     case 'd-stm':
       return (
         <>
-          <circle cx="4" cy="4" r="2" fill="currentColor" />
-          <path d="M4 6v3.2a2.8 2.8 0 002.8 2.8h4" {...s} />
-          <path d="M9 10L11 12l-2 2" {...s} />
-          <path d="M6.2 4h6.4a2 2 0 012 2v6a2 2 0 01-2 2H8" {...s} />
+          <rect x="1.2" y="2.2" width="6" height="4.4" rx="1.8" {...s} />
+          <rect x="8.8" y="9.4" width="6" height="4.4" rx="1.8" {...s} />
+          <path d="M7.2 4.4h1.4v7.2h.2" {...s} />
         </>
       )
     case 'd-uc':
       return (
         <>
-          <ellipse cx="9.6" cy="8" rx="4.4" ry="3.2" {...s} />
-          <circle cx="3.2" cy="4.2" r="1.5" {...s} />
-          <path d="M3.2 5.7v4M1.6 12.6l1.6-2.3 1.6 2.3M2 8.4h2.4" {...s} />
-          <path d="M5.4 8h.8" {...s} />
+          {actorGlyph({ x: 0.6, y: 3, w: 5.2, h: 10 }, s)}
+          {usecaseGlyph({ x: 6.4, y: 4, w: 8.6, h: 6.4 }, s)}
+          <path d="M5.2 8.2h1.2" {...s} />
         </>
       )
     // ── 关系记法：线型 + 箭头形态，与画布连线一致 ──

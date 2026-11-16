@@ -51,9 +51,28 @@ export default function CustomizationPanel({
   const [section, setSection] = useState<'diagrams' | 'stereotypes'>('diagrams')
   const [editing, setEditing] = useState<string | null>(null)
 
+  /**
+   * 预置扩展图库里的图类型定义（产品随附的模板）。
+   *
+   * <p>它们与用户手建的定义**完全同构**（同样是一等模型元素，同样可改名改白名单），
+   * 区别只在归属：owner 是「扩展图库」包。分开计数是必须的——否则「新建图类型」
+   * 会从 17 开始编号，用户自定义图类型也永远等不到空态。</p>
+   */
+  const presetTypes = useMemo(
+    () => elements.filter((element) => isDiagramType(element)
+      && element.ownerId === customization?.presetPackage?.id),
+    [elements, customization],
+  )
+  /** 用户自建的图类型定义（不属于扩展域，也不属于预置图库）。 */
+  const customTypes = useMemo(
+    () => elements.filter((element) => isDiagramType(element) && !isExtensionId(element.id)
+      && element.ownerId !== customization?.presetPackage?.id),
+    [elements, customization],
+  )
+  /** 定制面板要列出的全部图类型定义：预置在前、自建在后。 */
   const diagramTypes = useMemo(
-    () => elements.filter((element) => isDiagramType(element) && !isExtensionId(element.id)),
-    [elements],
+    () => [...presetTypes, ...customTypes],
+    [presetTypes, customTypes],
   )
   const stereotypes = useMemo(
     // 扩展包里的规范构造型有几百条，面板只管用户自建的那些。
@@ -62,6 +81,16 @@ export default function CustomizationPanel({
   )
   const keyLabels = customization?.keyLabels ?? {}
   const tagTypes = customization?.tagTypes ?? ['STRING', 'BOOLEAN', 'INTEGER', 'REAL', 'ENUM']
+  /** 预置扩展图模板：已落库的（installed）不再重复创建。 */
+  const missingPresets = useMemo(
+    () => (customization?.presets ?? []).filter((preset) => !preset.installed),
+    [customization],
+  )
+  /** 预置定义所在的包是否已存在；不存在时载入时要一并建出来。 */
+  const libraryInstalled = useMemo(
+    () => elements.some((element) => element.id === customization?.presetPackage?.id),
+    [elements, customization],
+  )
 
   /**
    * 写一组定制属性。
@@ -118,7 +147,7 @@ export default function CustomizationPanel({
     const ok = await runCommand('CREATE_ELEMENT', {
       id,
       type: 'DiagramType',
-      name: t('自定义图 {count}', { count: diagramTypes.length + 1 }),
+      name: t('自定义图 {count}', { count: customTypes.length + 1 }),
       ownerId,
     })
     if (ok) {
@@ -192,6 +221,153 @@ export default function CustomizationPanel({
     enqueueWrite(element.id, key, next)
   }
 
+  /* ── 预置扩展图库 ── */
+  /**
+   * 载入预置扩展图模板。
+   *
+   * <p>预置模板与用户手建的扩展图完全同构——写进模型的是 DiagramType 元素，
+   * 因此载入后可改名、可改白名单、可删除，也能随快照与 XMI 往返。
+   * 整批走一条 CREATE_ELEMENTS：一个 revision、一步撤销。</p>
+   */
+  const loadPresets = async () => {
+    if (!canEdit || missingPresets.length === 0) return
+    const pack = customization?.presetPackage
+    const rows: Record<string, unknown>[] = []
+    if (pack && !libraryInstalled) {
+      rows.push({ id: pack.id, type: 'Package', name: pack.name, ownerId, properties: {} })
+    }
+    for (const preset of missingPresets) {
+      rows.push({
+        id: preset.id,
+        type: 'DiagramType',
+        name: preset.name,
+        ownerId: pack?.id ?? ownerId,
+        documentation: preset.documentation,
+        properties: {
+          [`${PREFIX}baseKind`]: preset.baseKind,
+          [`${PREFIX}allowedTypes`]: preset.allowedTypes,
+          [`${PREFIX}allowedRelationships`]: preset.allowedRelationships,
+          [`${PREFIX}frameTitle`]: preset.frameTitle,
+          [`${PREFIX}labelEn`]: preset.labelEn,
+        },
+      })
+    }
+    const ok = await runCommand('CREATE_ELEMENTS', { elements: rows })
+    if (ok) {
+      onNotice('已载入预置扩展图')
+    }
+  }
+
+  /**
+   * 渲染一张图类型定义卡片（预置与自建共用）。
+   *
+   * <p>预置图库里的定义同样可改名、可改白名单——与用户手建的完全同构，
+   * 只是头部多一个「预置」徽标，避免用户误以为是自己建的。</p>
+   */
+  const renderDiagramTypeCard = (definition: ModelElement) => {
+    const base = propText(definition, `${PREFIX}baseKind`) || 'bdd'
+    const allowed = currentList(definition, `${PREFIX}allowedTypes`)
+    const allowedRel = currentList(definition, `${PREFIX}allowedRelationships`)
+    const open = editing === definition.id
+    const isPreset = definition.ownerId === customization?.presetPackage?.id
+    return (
+      <div className={`cust-card${open ? ' open' : ''}${isPreset ? ' preset' : ''}`} key={definition.id}>
+        <button type="button" className="cust-card-head" onClick={() => {
+          setEditing(open ? null : definition.id)
+          onSelectElement(definition.id)
+        }}>
+          <span className="cust-name">{definition.name}</span>
+          {isPreset && <span className="cust-badge preset">{t('预置')}</span>}
+          <span className="cust-badge">{specs.find((spec) => spec.code === base)?.label ?? base}</span>
+        </button>
+        {open && (
+          <div className="cust-card-body">
+              <label className="cust-field">
+                <span>{t('名称')}</span>
+                <input
+                  defaultValue={definition.name}
+                  data-cust-field="name"
+                  disabled={!canEdit}
+                  onBlur={(event) => void runCommand('RENAME_ELEMENT', {
+                    id: definition.id, name: event.target.value,
+                  })}
+                />
+              </label>
+              <label className="cust-field">
+                <span>{t('英文名称')}</span>
+                <input
+                  defaultValue={propText(definition, `${PREFIX}labelEn`)}
+                  data-cust-field="labelEn"
+                  disabled={!canEdit}
+                  onBlur={(event) => void runCommand('UPDATE_PROPERTY', {
+                    id: definition.id, key: `${PREFIX}labelEn`, value: event.target.value,
+                  })}
+                />
+              </label>
+              <label className="cust-field">
+                <span>{t('布局基底图')}</span>
+                <select
+                  value={base}
+                  data-cust-field="baseKind"
+                  disabled={!canEdit}
+                  onChange={(event) => void runCommand('UPDATE_PROPERTY', {
+                    id: definition.id, key: `${PREFIX}baseKind`, value: event.target.value,
+                  })}
+                >
+                  {specs.map((spec) => (
+                    <option key={spec.code} value={spec.code}>{pick(spec.label, spec.labelEn)}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="cust-field">
+                <span>{t('图框标题模板')}</span>
+                <input
+                  defaultValue={propText(definition, `${PREFIX}frameTitle`)}
+                  data-cust-field="frameTitle"
+                  disabled={!canEdit}
+                  placeholder={t('如 {图种} · {图名}')}
+                  onBlur={(event) => void runCommand('UPDATE_PROPERTY', {
+                    id: definition.id, key: `${PREFIX}frameTitle`, value: event.target.value,
+                  })}
+                />
+              </label>
+              <div className="cust-pick">
+                <span className="cust-pick-title">{keyLabels[`${PREFIX}allowedTypes`] ?? t('允许的元素类型')}</span>
+                <div className="cust-pick-grid">
+                  {(containment?.types ?? []).map((type: ElementTypeInfo) => (
+                    <label key={type.code} className="cust-check">
+                      <input type="checkbox" checked={listHasType(allowed, type.code)}
+                        data-cust-check="allowedTypes" data-cust-code={type.code}
+                        disabled={!canEdit}
+                        onChange={() => void toggleList(definition, `${PREFIX}allowedTypes`, type.code)} />
+                      {pick(type.label, type.labelEn)}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <div className="cust-pick">
+                <span className="cust-pick-title">{keyLabels[`${PREFIX}allowedRelationships`] ?? t('允许的关系类型')}</span>
+                <div className="cust-pick-grid">
+                  {relations.map((relation) => (
+                    <label key={relation.code} className="cust-check">
+                      <input type="checkbox" checked={listHasType(allowedRel, relation.code)}
+                        data-cust-check="allowedRelationships" data-cust-code={relation.code}
+                        disabled={!canEdit}
+                        onChange={() => void toggleList(definition, `${PREFIX}allowedRelationships`, relation.code)} />
+                      {pick(relation.label, relation.labelEn)}
+                    </label>
+                  ))}
+                </div>
+              </div>
+              <button type="button" className="cust-del" data-cust-action="delete-diagram-type"
+                disabled={!canEdit || busy}
+                onClick={() => void removeElement(definition.id)}>{t('删除图类型')}</button>
+          </div>
+        )}
+      </div>
+    )
+  }
+
   return (
     <div className="cust-panel">
       <div className="cust-tabs">
@@ -208,112 +384,24 @@ export default function CustomizationPanel({
       {section === 'diagrams' ? (
         <div className="cust-body">
           <p className="cust-hint">{t('自定义图以规范图为底，限定可出现的元素与关系；定义随模型保存与交换。')}</p>
-          <button type="button" className="cust-add" data-cust-action="add-diagram-type"
-            disabled={!canEdit || busy} onClick={() => void createDiagramType()}>
-            ＋ {t('新建图类型')}
-          </button>
-          {diagramTypes.length === 0 && <p className="cust-empty">{t('尚无自定义图类型')}</p>}
-          {diagramTypes.map((definition) => {
-            const base = propText(definition, `${PREFIX}baseKind`) || 'bdd'
-            const allowed = currentList(definition, `${PREFIX}allowedTypes`)
-            const allowedRel = currentList(definition, `${PREFIX}allowedRelationships`)
-            const open = editing === definition.id
-            return (
-              <div className={`cust-card${open ? ' open' : ''}`} key={definition.id}>
-                <button type="button" className="cust-card-head" onClick={() => {
-                  setEditing(open ? null : definition.id)
-                  onSelectElement(definition.id)
-                }}>
-                  <span className="cust-name">{definition.name}</span>
-                  <span className="cust-badge">{specs.find((spec) => spec.code === base)?.label ?? base}</span>
-                </button>
-                {open && (
-                  <div className="cust-card-body">
-                    <label className="cust-field">
-                      <span>{t('名称')}</span>
-                      <input
-                        defaultValue={definition.name}
-                        data-cust-field="name"
-                        disabled={!canEdit}
-                        onBlur={(event) => void runCommand('RENAME_ELEMENT', {
-                          id: definition.id, name: event.target.value,
-                        })}
-                      />
-                    </label>
-                    <label className="cust-field">
-                      <span>{t('英文名称')}</span>
-                      <input
-                        defaultValue={propText(definition, `${PREFIX}labelEn`)}
-                        data-cust-field="labelEn"
-                        disabled={!canEdit}
-                        onBlur={(event) => void runCommand('UPDATE_PROPERTY', {
-                          id: definition.id, key: `${PREFIX}labelEn`, value: event.target.value,
-                        })}
-                      />
-                    </label>
-                    <label className="cust-field">
-                      <span>{t('布局基底图')}</span>
-                      <select
-                        value={base}
-                        data-cust-field="baseKind"
-                        disabled={!canEdit}
-                        onChange={(event) => void runCommand('UPDATE_PROPERTY', {
-                          id: definition.id, key: `${PREFIX}baseKind`, value: event.target.value,
-                        })}
-                      >
-                        {specs.map((spec) => (
-                          <option key={spec.code} value={spec.code}>{pick(spec.label, spec.labelEn)}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="cust-field">
-                      <span>{t('图框标题模板')}</span>
-                      <input
-                        defaultValue={propText(definition, `${PREFIX}frameTitle`)}
-                        data-cust-field="frameTitle"
-                        disabled={!canEdit}
-                        placeholder={t('如 {图种} · {图名}')}
-                        onBlur={(event) => void runCommand('UPDATE_PROPERTY', {
-                          id: definition.id, key: `${PREFIX}frameTitle`, value: event.target.value,
-                        })}
-                      />
-                    </label>
-                    <div className="cust-pick">
-                      <span className="cust-pick-title">{keyLabels[`${PREFIX}allowedTypes`] ?? t('允许的元素类型')}</span>
-                      <div className="cust-pick-grid">
-                        {(containment?.types ?? []).map((type: ElementTypeInfo) => (
-                          <label key={type.code} className="cust-check">
-                            <input type="checkbox" checked={listHasType(allowed, type.code)}
-                              data-cust-check="allowedTypes" data-cust-code={type.code}
-                              disabled={!canEdit}
-                              onChange={() => void toggleList(definition, `${PREFIX}allowedTypes`, type.code)} />
-                            {pick(type.label, type.labelEn)}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="cust-pick">
-                      <span className="cust-pick-title">{keyLabels[`${PREFIX}allowedRelationships`] ?? t('允许的关系类型')}</span>
-                      <div className="cust-pick-grid">
-                        {relations.map((relation) => (
-                          <label key={relation.code} className="cust-check">
-                            <input type="checkbox" checked={listHasType(allowedRel, relation.code)}
-                              data-cust-check="allowedRelationships" data-cust-code={relation.code}
-                              disabled={!canEdit}
-                              onChange={() => void toggleList(definition, `${PREFIX}allowedRelationships`, relation.code)} />
-                            {pick(relation.label, relation.labelEn)}
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    <button type="button" className="cust-del" data-cust-action="delete-diagram-type"
-                      disabled={!canEdit || busy}
-                      onClick={() => void removeElement(definition.id)}>{t('删除图类型')}</button>
-                  </div>
-                )}
-              </div>
-            )
-          })}
+          <div className="cust-actions">
+            <button type="button" className="cust-add" data-cust-action="add-diagram-type"
+              disabled={!canEdit || busy} onClick={() => void createDiagramType()}>
+              ＋ {t('新建图类型')}
+            </button>
+            {missingPresets.length > 0 && (
+              <button type="button" className="cust-add subtle" data-cust-action="load-presets"
+                disabled={!canEdit || busy} onClick={() => void loadPresets()}>
+                {t('载入预置扩展图 ({count})', { count: missingPresets.length })}
+              </button>
+            )}
+          </div>
+          {presetTypes.length > 0 && (
+            <p className="cust-section">{t('预置扩展图库（{count}）', { count: presetTypes.length })}</p>
+          )}
+          {presetTypes.map(renderDiagramTypeCard)}
+          {customTypes.length === 0 && <p className="cust-empty">{t('尚无自定义图类型')}</p>}
+          {customTypes.map(renderDiagramTypeCard)}
         </div>
       ) : (
         <div className="cust-body">

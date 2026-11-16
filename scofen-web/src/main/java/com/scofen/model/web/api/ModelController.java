@@ -207,6 +207,10 @@ public class ModelController {
                     .map(RelationshipType::code).sorted().toList());
             row.put("elementTypes", spec.elements().size());
             row.put("custom", Boolean.TRUE);
+            // 预置图库里的定义与用户手建的完全同构，只有归属不同：前端要据此分开展示，
+            // 否则「新建图类型」的编号会被预置模板顶高、定制面板也永远等不到空态。
+            row.put("preset", com.scofen.model.metamodel.DiagramTypeLibrary.LIBRARY_PACKAGE_ID
+                    .equals(definition.ownerId()));
             row.put("frameTitle", com.scofen.model.metamodel.EffectiveDiagramSpec.frameTitleTemplate(definition));
             diagramTypes.add(row);
         }
@@ -215,7 +219,38 @@ public class ModelController {
         result.put("keyLabels", com.scofen.model.metamodel.Customization.keyLabels());
         result.put("tagTypes", com.scofen.model.metamodel.Customization.tagTypes());
         result.put("prefix", com.scofen.model.metamodel.Customization.PREFIX);
+        result.put("presets", presetRows(snapshot));
+        result.put("presetPackage", Map.of(
+                "id", com.scofen.model.metamodel.DiagramTypeLibrary.LIBRARY_PACKAGE_ID,
+                "name", com.scofen.model.metamodel.DiagramTypeLibrary.LIBRARY_PACKAGE_NAME));
         return result;
+    }
+
+    /**
+     * 预置扩展图模板清单：随产品附带的一批 MBSE 图模板（对标 MagicDraw 的图种类库）。
+     *
+     * <p>每条都带 {@code installed} 标记——已落库为模型元素的说明项目里已经有了，
+     * 「载入预置扩展图」按钮据此只补缺失的那些。</p>
+     */
+    private static List<Map<String, Object>> presetRows(ModelSnapshot snapshot) {
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (com.scofen.model.metamodel.DiagramTypeLibrary.Preset preset
+                : com.scofen.model.metamodel.DiagramTypeLibrary.presets()) {
+            boolean installed = snapshot.elements().stream().anyMatch(e -> e.id().equals(preset.id()));
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("id", preset.id());
+            row.put("name", preset.name());
+            row.put("label", preset.name());
+            row.put("labelEn", preset.labelEn());
+            row.put("baseKind", preset.baseKind());
+            row.put("allowedTypes", preset.allowedTypes());
+            row.put("allowedRelationships", preset.allowedRels());
+            row.put("frameTitle", "{图种}");
+            row.put("documentation", preset.documentation());
+            row.put("installed", installed);
+            rows.add(row);
+        }
+        return rows;
     }
 
     /** 关系类型目录：组件工具箱「关系」分组与新建关系弹窗共用，前端不硬编码类型清单。 */

@@ -115,10 +115,20 @@ await page.goto(APP_URL)
 
 console.log('[1] 登录')
 await waitFor(page, `!!document.querySelector('input[name="scofen-admin-username"]')`)
-await page.evaluate(`(()=>{const set=(el,v)=>{const s=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value').set;s.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}))};
- set(document.querySelector('input[name="scofen-admin-username"]'),'scofen');
- set(document.querySelector('input[name="scofen-admin-password"]'),${JSON.stringify(PASSWORD)});
- [...document.querySelectorAll('button')].find(b=>/登录/.test(b.textContent)).click();return 1})()`)
+// 登录注入自带判空并重试：waitFor 通过后 React 仍可能重挂登录表单，那一瞬拿到 null 会崩。
+const loginOnce = `(()=>{const u=document.querySelector('input[name="scofen-admin-username"]')
+ const p=document.querySelector('input[name="scofen-admin-password"]')
+ if(!u||!p)return false
+ const set=(el,v)=>{const s=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value').set;s.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}))}
+ set(u,'scofen'); set(p,${JSON.stringify(PASSWORD)})
+ const b=[...document.querySelectorAll('button')].find(x=>/登录/.test(x.textContent))
+ if(!b)return false
+ b.click();return true})()`
+let loggedIn = false
+for (let i = 0; i < 20 && !loggedIn; i++) {
+  loggedIn = await page.evaluate(loginOnce).catch(() => false)
+  if (!loggedIn) await sleep(300)
+}
 check('登录成功进入工作台', await waitFor(page, `!!document.querySelector('.props-dock')`, 120, 250))
 await sleep(1800)
 
