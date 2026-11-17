@@ -1044,12 +1044,7 @@ body.row-resizing * { cursor: row-resize !important; }
 .prop-add-row { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .prop-add-row .prop-inline-add { width: 100%; }
 
-/* 「树上高亮」：模型树里被定位到的行短暂高亮。 */
-.tree-row.located {
-  background: #fdf0cd;
-  color: #8a5a00;
-  outline: 1px solid #e0b64a;
-}
+/* 画布容器。树上高亮复用 .selected 持久态（华望式），不再需要临时脉冲样式。 */
 .canvas { background: var(--surface); padding: 0; overflow: hidden; display: flex; flex-direction: column; min-height: 0; position: relative; }
 /* 只作用于画布本身；工具箱里的 16px 图标 SVG 是后代，不能被这条规则撑成宽 100% 的大块。 */
 .canvas > svg { width: 100%; flex: 1 1 auto; min-height: 0; display: block; touch-action: none; }

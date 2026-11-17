@@ -343,7 +343,6 @@ interface TreeRowProps {
   childCount: number
   isOpen: boolean
   isSelected: boolean
-  isLocated: boolean
   isDropTarget: boolean
   /** 关系行专属：挂载点元素 id、方向与对端元素 id。 */
   ownerId?: string
@@ -359,7 +358,7 @@ interface TreeRowProps {
  * 一次折叠只让变化的那几行重渲染，其余几千行直接跳过。</p>
  */
 const TreeRow = memo(function TreeRow(props: TreeRowProps) {
-  const { kind, id, depth, childCount, isOpen, isSelected, isLocated, isDropTarget } = props
+  const { kind, id, depth, childCount, isOpen, isSelected, isDropTarget } = props
   const data = useContext(TreeDataContext)!
   const actions = useContext(TreeActionsContext)!
   const indent: CSSProperties = { paddingLeft: 6 + depth * 15 }
@@ -487,6 +486,7 @@ const TreeRow = memo(function TreeRow(props: TreeRowProps) {
           target: target?.name ?? relation.targetId,
         })}
         onClick={() => actions.selectRelation(relation.id)}
+        onContextMenu={(event) => actions.openMenu(event, { kind: 'relation', id: relation.id })}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
             event.preventDefault()
@@ -512,7 +512,7 @@ const TreeRow = memo(function TreeRow(props: TreeRowProps) {
     }
     return (
       <div
-        className={`tree-row diagram${isSelected ? ' selected' : ''}${isDropTarget ? ' drop-target' : ''}${isLocated ? ' located' : ''}`}
+        className={`tree-row diagram${isSelected ? ' selected' : ''}${isDropTarget ? ' drop-target' : ''}`}
         data-tree-id={diagram.id}
         style={indent}
         title={t('图 · 点击切换 · 可接收拖入的元素')}
@@ -571,7 +571,7 @@ const TreeRow = memo(function TreeRow(props: TreeRowProps) {
   const info = data.typeLabel(element.type)
   return (
     <div
-      className={`tree-row element${isSelected ? ' selected' : ''}${isRoot ? ' root-node' : ''}${isLocated ? ' located' : ''}`}
+      className={`tree-row element${isSelected ? ' selected' : ''}${isRoot ? ' root-node' : ''}`}
       data-tree-id={element.id}
       style={indent}
       draggable={draggable}
@@ -621,6 +621,8 @@ const TreeRow = memo(function TreeRow(props: TreeRowProps) {
 type MenuTarget =
   | { kind: 'element'; id: string }
   | { kind: 'diagram'; id: string }
+  /** 关系也是模型对象：树上高亮后在关系行显示持久选中态。 */
+  | { kind: 'relation'; id: string }
   | { kind: 'root'; id: null }
   /** 引用型属性的目标元素：菜单提供「树上高亮」与「移除」。 */
   | { kind: 'reference'; id: string; propKey: string; index: number }
@@ -1000,8 +1002,6 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [propDialog, setPropDialog] = useState<{ targetId: string; key: string } | null>(null)
   /** 弹框内标量属性的草稿值。 */
   const [propDraft, setPropDraft] = useState('')
-  // 「树上高亮」：模型树中需要展开祖先并高亮定位的元素 id。
-  const [treeLocateId, setTreeLocateId] = useState<string | null>(null)
   // 引用选择器：当前打开的属性（key）与其在数组中的位置（-1 表示单值引用）。
   const [refPicker, setRefPicker] = useState<{ key: string; index: number } | null>(null)
   // 引用 / 构造型选择器的名称过滤：扩展包里有上百个元类，需要能按名字收敛。
@@ -4467,16 +4467,6 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     activeDiagramId, positions, copySelection, pasteClipboard,
     duplicateSelection, selectAllInDiagram, searchOpen, openSearch, closeSearch])
 
-  // 「树上高亮」的标记在 2.4 秒后自动消隐：用户看一眼就知道定位到了哪儿，
-  // 又不会被一直高亮干扰后续操作。
-  useEffect(() => {
-    if (!treeLocateId) {
-      return
-    }
-    const timer = window.setTimeout(() => setTreeLocateId(null), 2400)
-    return () => window.clearTimeout(timer)
-  }, [treeLocateId])
-
   const addToCurrentDiagram = async (elementId: string) => {
     if (!activeDiagramId) {
       return
@@ -4485,26 +4475,61 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     setMenu(null)
   }
 
+  type RevealKind = 'element' | 'diagram' | 'relation'
+
   /**
-   * 把模型树展开到目标元素并滚动到可视区，但不改变当前选中与提示。
+   * 把模型树展开到目标对象并滚动到可视区，但不改变当前选中与提示。
    *
-   * <p>祖先链按 ownerId 逐级上溯（含图节点：元素也可能只出现在某张图的节点列表里，
-   * 此时把那张图也展开），保证目标行确实渲染在树上。画布点选时用它做静默跟随定位。</p>
+   * <p>三类对象的行 identity 不同，祖先链也各异：
+   * 元素按 ownerId 逐级上溯（含图节点：元素也可能只出现在某张图的节点列表里）；
+   * 图按宿主元素的 ownerId 上溯；关系挂在源/目标元素下的虚拟「关系」分组里，
+   * 要把两端元素的祖先链都展开，并把关系分组从折叠集合中移除。
+   * 画布点选时用它做静默跟随定位。</p>
    */
-  const revealInTree = (elementId: string) => {
+  const revealInTree = (targetId: string, kind: RevealKind = 'element') => {
     // 定位即让模型树可见：搜索 / 引用面板可能在「图表」「模型库」页触发，
     // 不切回「项目」页的话目标行根本不在 DOM 里，高亮与滚动都会落空。
     setLeftTab('project')
     const chain: string[] = []
-    let cursor = elementById.get(elementId)
-    while (cursor?.ownerId) {
-      chain.push(cursor.ownerId)
-      cursor = elementById.get(cursor.ownerId)
-    }
-    // 元素可能只挂在图节点下：展开所有引用了它的图。
-    for (const diagram of model.diagrams) {
-      if (diagram.elementIds.includes(elementId)) {
-        chain.push(diagram.id)
+    if (kind === 'relation') {
+      const relation = relationById.get(targetId)
+      if (relation) {
+        for (const ownerId of [relation.sourceId, relation.targetId]) {
+          let cursor = elementById.get(ownerId)
+          while (cursor?.ownerId) {
+            chain.push(cursor.ownerId)
+            cursor = elementById.get(cursor.ownerId)
+          }
+        }
+        // 关系分组默认展开；若之前被手动折叠，定位时打开两端分组。
+        setCollapsedRelationGroups((previous) => {
+          if (!previous.has(relationGroupId(relation.sourceId)) && !previous.has(relationGroupId(relation.targetId))) {
+            return previous
+          }
+          const next = new Set(previous)
+          next.delete(relationGroupId(relation.sourceId))
+          next.delete(relationGroupId(relation.targetId))
+          return next
+        })
+      }
+    } else if (kind === 'diagram') {
+      const diagram = diagramById.get(targetId)
+      let cursor = diagram?.ownerId ? elementById.get(diagram.ownerId) : undefined
+      while (cursor?.ownerId) {
+        chain.push(cursor.ownerId)
+        cursor = elementById.get(cursor.ownerId)
+      }
+    } else {
+      let cursor = elementById.get(targetId)
+      while (cursor?.ownerId) {
+        chain.push(cursor.ownerId)
+        cursor = elementById.get(cursor.ownerId)
+      }
+      // 元素可能只挂在图节点下：展开所有引用了它的图。
+      for (const diagram of model.diagrams) {
+        if (diagram.elementIds.includes(targetId)) {
+          chain.push(diagram.id)
+        }
       }
     }
     setExpanded((previous) => {
@@ -4514,7 +4539,6 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       }
       return next
     })
-    setTreeLocateId(elementId)
     // 展开是异步渲染，等一帧再滚动，避免目标行尚未挂载。
     window.setTimeout(() => {
       const browser = browserRef.current
@@ -4522,26 +4546,67 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       // 虚拟化模式下目标行可能根本没挂载：行高统一，直接按行号算 scrollTop，
       // 滚动事件会把窗口移到目标附近，行随之渲染出来。
       if (browser && rows.length > TREE_VIRTUAL_THRESHOLD) {
-        const index = rows.findIndex((row) => row.id === elementId && row.kind !== 'relation' && row.kind !== 'relationGroup')
+        const index = rows.findIndex((row) => row.id === targetId && row.kind !== 'relationGroup')
         if (index >= 0) {
           browser.scrollTop = Math.max(0, 14 + index * TREE_ROW_H - (browser.clientHeight - TREE_ROW_H) / 2)
           return
         }
       }
-      document
-        .querySelector(`[data-tree-id="${CSS.escape(elementId)}"]`)
-        ?.scrollIntoView({ block: 'center', behavior: 'smooth' })
+      const selector = kind === 'relation'
+        ? `[data-relation-id="${CSS.escape(targetId)}"]`
+        : `[data-tree-id="${CSS.escape(targetId)}"]`
+      document.querySelector(selector)?.scrollIntoView({ block: 'center', behavior: 'smooth' })
     }, 60)
   }
 
-  /** 「树上高亮」菜单动作：静默定位 + 选中 + 提示，供属性面板/画布右键调用。 */
-  const locateInTree = (elementId: string) => {
-    revealInTree(elementId)
-    setSelectedId(elementId)
-    setSelectedDiagramId(null)
-    const target = elementById.get(elementId)
-    say('已在模型树中定位「{name}」', { name: target?.name ?? elementId })
+  /**
+   * 华望式「树上高亮」统一入口（对标 SelectOnTreeAction）：
+   * 切项目页 → 展开祖先 → 滚动居中 → 设为持久选中态。
+   *
+   * <p>高亮即树的选中态：element / diagram / relation 三态互斥，一直保持到用户
+   * 点选别的节点，不再像旧实现那样 2.4 秒后消失。引用型属性、画布、属性面板、
+   * 关系行都走这一个入口，行为与华望一致。</p>
+   */
+  const selectOnTree = (target: { kind: RevealKind | 'reference'; id: string }) => {
+    const id = target.id
+    const kind: RevealKind = target.kind === 'diagram' ? 'diagram'
+      : target.kind === 'relation' ? 'relation' : 'element'
+    // 持久选中：三态互斥，保证属性面板与树高亮指向同一对象。
+    if (target.kind === 'diagram') {
+      setSelectedDiagramId(id)
+      setSelectedId(null)
+      setSelectedRelationId(null)
+    } else if (target.kind === 'relation') {
+      setSelectedRelationId(id)
+      setSelectedId(null)
+      setSelectedDiagramId(null)
+    } else {
+      // element / reference 都指向一个元素。
+      setSelectedId(id)
+      setSelectedDiagramId(null)
+      setSelectedRelationId(null)
+    }
+    revealInTree(id, kind)
+    // 关系行是折叠分组里的虚拟行，其选中态经 memo / context 下发时可能滞后于 state。
+    // 华望等价做法：选中即给目标行打 class。展开后补一次 DOM 同步，保证行立刻呈现选中，
+    // 后续 React 提交若带上正确 state 也只是覆写同一个 class，不会闪烁。
+    if (kind === 'relation') {
+      const attr = 'data-relation-id'
+      window.setTimeout(() => {
+        document.querySelectorAll('.tree-row.selected').forEach((row) => row.classList.remove('selected'))
+        document.querySelector(`[${attr}="${CSS.escape(id)}"]`)?.classList.add('selected')
+      }, 80)
+    }
+    const name = target.kind === 'diagram'
+      ? diagramById.get(id)?.name
+      : target.kind === 'relation'
+        ? (relationById.get(id)?.name?.trim() || relationLabel(relationById.get(id)?.type ?? ''))
+        : elementById.get(id)?.name
+    say('已在模型树中定位「{name}」', { name: name ?? id })
   }
+
+  /** 兼容旧调用点（属性面板引用 / 画布点选）：按元素树上高亮。 */
+  const locateInTree = (elementId: string) => selectOnTree({ kind: 'element', id: elementId })
 
   /**
    * 模型树拖放：把已有元素拖到「图」节点上 → 真正加入该图并生成记法。
@@ -5898,7 +5963,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       const open = !collapsedRelationGroups.has(groupId)
       rows.push({
         kind: 'relationGroup', id: groupId, depth, childCount: items.length,
-        isOpen: open, isSelected: false, isLocated: false, isDropTarget: false, ownerId,
+        isOpen: open, isSelected: false, isDropTarget: false, ownerId,
       })
       if (!open) {
         return
@@ -5907,7 +5972,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         rows.push({
           kind: 'relation', id: item.relation.id, depth: depth + 1, childCount: 0,
           isOpen: false, isSelected: selectedRelationId === item.relation.id,
-          isLocated: false, isDropTarget: false,
+          isDropTarget: false,
           ownerId, direction: item.direction, peerId: item.peerId,
         })
       }
@@ -5918,7 +5983,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       const open = expanded.has(element.id)
       rows.push({
         kind: 'extensionElement', id: element.id, depth, childCount: kids.length,
-        isOpen: open, isSelected: false, isLocated: false, isDropTarget: false,
+        isOpen: open, isSelected: false, isDropTarget: false,
       })
       if (!open) {
         return
@@ -5941,7 +6006,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       const open = isOpen(diagram.id)
       rows.push({
         kind: 'diagram', id: diagram.id, depth, childCount: members.length, isOpen: open,
-        isSelected: selectedDiagramId === diagram.id, isLocated: treeLocateId === diagram.id,
+        isSelected: selectedDiagramId === diagram.id,
         isDropTarget: treeDropTarget === diagram.id,
       })
       if (!open) {
@@ -5965,7 +6030,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       rows.push({
         kind: 'element', id: element.id, depth,
         childCount: kids.length + diagrams.length + (relationItems ? 1 : 0), isOpen: open,
-        isSelected: selectedId === element.id, isLocated: treeLocateId === element.id,
+        isSelected: selectedId === element.id,
         isDropTarget: false,
       })
       if (!open) {
@@ -5999,7 +6064,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       rows.push({
         kind: 'extensionGroup', id: EXTENSION_GROUP_ID, depth: 0,
         childCount: extensionRoots.length, isOpen: open, isSelected: false,
-        isLocated: false, isDropTarget: false,
+        isDropTarget: false,
       })
       if (open) {
         for (const root of extensionRoots) {
@@ -6014,7 +6079,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }, [
     childrenByOwner, collapsedRelationGroups, diagramMembersByDiagram, diagramsByOwner, expanded,
     extensionChildrenByOwner, extensionRoots, relationsByOwner, rootNodes, selectedDiagramId,
-    selectedId, selectedRelationId, showExtensions, treeDropTarget, treeFilterHits, treeLocateId,
+    selectedId, selectedRelationId, showExtensions, treeDropTarget, treeFilterHits,
   ])
   // 定位大行号时按这份最新行表算 scrollTop（revealInTree 的定时器闭包读 ref，不读旧渲染）。
   visibleRowsRef.current = visibleRows
@@ -6250,6 +6315,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const menuDiagram =
     menuTarget?.kind === 'diagram'
       ? model.diagrams.find((diagram) => diagram.id === menuTarget.id) ?? null
+      : null
+  const menuRelation =
+    menuTarget?.kind === 'relation'
+      ? model.relationships.find((relation) => relation.id === menuTarget.id) ?? null
       : null
   const menuChildCount = menuElement ? descendants(menuElement.id).length : 0
   const menuInDiagram = menuElement
@@ -7746,7 +7815,21 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               >{t(label)}</button>
             ))}
           </div>
-          <div className="props-object">
+          <div
+            className="props-object"
+            title={t('右键可在模型树中高亮当前对象')}
+            onContextMenu={(event) => {
+              // 属性框顶部对象头与模型树 / 画布同源：按当前展示的对象派发对应右键菜单，
+              // 让「图上选一个图形 → 属性框右键 → 树中持久高亮」这条链路可用。
+              if (selectedDiagram) {
+                openMenu(event, { kind: 'diagram', id: selectedDiagram.id })
+              } else if (selectedRelation) {
+                openMenu(event, { kind: 'relation', id: selectedRelation.id })
+              } else if (selected) {
+                openMenu(event, { kind: 'element', id: selected.id })
+              }
+            }}
+          >
             {selectedDiagram ? (
               <DiagramIcon code={selectedDiagram.kind} size={20} />
             ) : selectedRelation ? (
@@ -9250,6 +9333,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         >
           <div className="menu-title">
             {menuDiagram && <DiagramIcon code={menuDiagram.kind} size={16} />}
+            {menuRelation && <RelationIcon code={menuRelation.type} size={16} />}
             {menuElement && <TypeIcon code={codeOf(menuElement.type)} size={16} />}
             {menuTarget?.kind === 'root' && projectRoot && <TypeIcon code={codeOf(projectRoot.type)} size={16} />}
             {/* 引用型右键目标：标题也指向被引用的目标元素，而不是退化成「项目根」。 */}
@@ -9259,11 +9343,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             })()}
             <span>{menuDiagram
               ? menuDiagram.name
-              : menuElement
-                ? menuElement.name
-                : menuTarget?.kind === 'reference'
-                  ? elementById.get(menuTarget.id)?.name ?? t('引用目标')
-                  : t('项目根')}</span>
+              : menuRelation
+                ? (menuRelation.name?.trim() || relationLabel(menuRelation.type))
+                : menuElement
+                  ? menuElement.name
+                  : menuTarget?.kind === 'reference'
+                    ? elementById.get(menuTarget.id)?.name ?? t('引用目标')
+                    : t('项目根')}</span>
           </div>
           {menuTarget?.kind === 'element' && (
             <>
@@ -9287,11 +9373,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               )}
               <button
                 type="button"
-                onClick={() => {
-                  setLeftTab('project')
-                  locateInTree(menuElement!.id)
-                  setMenu(null)
-                }}
+                onClick={() => { selectOnTree({ kind: 'element', id: menuElement!.id }); setMenu(null) }}
               >{t('树上高亮')}</button>
               {isProjectRoot(menuElement) ? (
                 <button type="button" className="disabled-hint" disabled title={t('项目根节点不可删除')}>
@@ -9328,6 +9410,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <button type="button" onClick={() => { setActiveDiagramId(menuDiagram!.id); setSelectedDiagramId(menuDiagram!.id); setMenu(null) }}>{t('在图中定位')}</button>
               <button
                 type="button"
+                onClick={() => { selectOnTree({ kind: 'diagram', id: menuDiagram!.id }); setMenu(null) }}
+              >{t('树上高亮')}</button>
+              <button
+                type="button"
                 onClick={() => {
                   openDiagramDialog(menuDiagram!.ownerId, menuDiagram!)
                   setMenu(null)
@@ -9344,9 +9430,27 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               >{t('删除图')}</button>
             </>
           )}
+          {menuTarget?.kind === 'relation' && (
+            <>
+              <button
+                type="button"
+                onClick={() => { selectOnTree({ kind: 'relation', id: menuRelation!.id }); setMenu(null) }}
+              >{t('树上高亮')}</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedRelationId(menuRelation!.id)
+                  setSelectedId(null)
+                  setSelectedDiagramId(null)
+                  setPropsTab('attrs')
+                  setMenu(null)
+                }}
+              >{t('查看关系属性')}</button>
+            </>
+          )}
           {menuTarget?.kind === 'reference' && (
             <>
-              <button type="button" onClick={() => { locateInTree(menuTarget.id); setMenu(null) }}>
+              <button type="button" onClick={() => { selectOnTree({ kind: 'reference', id: menuTarget.id }); setMenu(null) }}>
                 {t('树上高亮')}
               </button>
               {/* 引用目标已出现在某张图上时，可切图定位并把视口对准它（画上高亮）。 */}
