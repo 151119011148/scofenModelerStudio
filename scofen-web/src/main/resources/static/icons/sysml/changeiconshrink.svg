@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="18px" height="18px" viewBox="0 0 18 18" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>编组 6备份 10</title>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="变更影响分析追溯图-样式1" transform="translate(-1320.000000, -583.000000)">
+            <g id="编组-15" transform="translate(314.000000, 271.000000)">
+                <g id="编组-6备份-10" transform="translate(1006.000000, 312.000000)">
+                    <circle id="椭圆形" stroke="#999999" stroke-width="1.5" fill="#FFFFFF" cx="9" cy="9" r="8.25"></circle>
+                    <g id="编组-18" transform="translate(4.909091, 4.990909)" fill="#999999">
+                        <g id="编组-17" transform="translate(0.000000, -0.000000)">
+                            <rect id="矩形" x="0" y="3.19090909" width="8.18181818" height="1.8" rx="0.9"></rect>
+                            <path d="M0.9,3.19090909 L7.28181818,3.19090909 C7.77887446,3.19090909 8.18181818,3.59385282 8.18181818,4.09090909 C8.18181818,4.58796537 7.77887446,4.99090909 7.28181818,4.99090909 L0.9,4.99090909 C0.402943725,4.99090909 3.7220763e-13,4.58796537 3.72146758e-13,4.09090909 C3.72085886e-13,3.59385282 0.402943725,3.19090909 0.9,3.19090909 Z" id="矩形" transform="translate(4.090909, 4.090909) rotate(-90.000000) translate(-4.090909, -4.090909) "></path>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

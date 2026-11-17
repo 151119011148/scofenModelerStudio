@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Activity</title>
+    <defs>
+        <linearGradient x1="100%" y1="50.8111237%" x2="8.33129883%" y2="50.0792571%" id="linearGradient-1">
+            <stop stop-color="#E5E5C8" offset="0%"></stop>
+            <stop stop-color="#FFFFF1" offset="44.2039696%"></stop>
+            <stop stop-color="#E6E6CA" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="100%" y1="50.6408878%" x2="8.33129883%" y2="50.0626229%" id="linearGradient-2">
+            <stop stop-color="#E5E5C8" offset="0%"></stop>
+            <stop stop-color="#FFFFF1" offset="44.2039696%"></stop>
+            <stop stop-color="#E6E6CA" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1905.000000, -886.000000)">
+            <g id="Activity" transform="translate(1905.000000, 886.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" stroke="#4C4C4C" fill="#4C4C4C" x="2" y="3.5" width="13" height="10"></rect>
+                <rect id="矩形" fill="url(#linearGradient-1)" x="2.5" y="4" width="12" height="9"></rect>
+                <rect id="矩形" stroke="#48432E" fill="url(#linearGradient-2)" x="11.5" y="7.5" width="4" height="3"></rect>
+                <rect id="矩形" stroke="#48432E" fill="url(#linearGradient-2)" x="0.5" y="6.5" width="4" height="3"></rect>
+            </g>
+        </g>
+    </g>
+</svg>

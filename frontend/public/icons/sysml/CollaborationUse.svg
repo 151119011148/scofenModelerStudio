@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>CollaborationUse</title>
+    <defs>
+        <linearGradient x1="100%" y1="50.2503468%" x2="8.33129883%" y2="50.0244621%" id="linearGradient-1">
+            <stop stop-color="#FEF9DB" offset="0%"></stop>
+            <stop stop-color="#FEF4BD" offset="44.2039696%"></stop>
+            <stop stop-color="#FEEF9E" offset="60.7131546%"></stop>
+            <stop stop-color="#FCF0AC" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="模型全景图" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1981.000000, -369.000000)">
+            <g id="CollaborationUse" transform="translate(1981.000000, 369.000000)">
+                <rect id="矩形" x="0" y="0" width="16" height="16"></rect>
+                <path d="M8,10 C14,10 14,10 14,7.5 C14,5 14,5 8,5 C2,5 2,5 2,7.5 C2,10 2,10 8,10 Z" id="椭圆形" fill="url(#linearGradient-1)"></path>
+                <rect id="矩形" fill="#424242" x="4" y="4" width="2" height="1"></rect>
+                <rect id="矩形" fill="#424242" x="7" y="4" width="2" height="1"></rect>
+                <rect id="矩形" fill="#424242" x="10" y="4" width="2" height="1"></rect>
+                <rect id="矩形" fill="#424242" x="4" y="10" width="2" height="1"></rect>
+                <rect id="矩形" fill="#424242" x="7" y="10" width="2" height="1"></rect>
+                <rect id="矩形" fill="#424242" x="10" y="10" width="2" height="1"></rect>
+                <rect id="矩形" fill="#424242" x="14" y="6" width="1" height="3"></rect>
+                <rect id="矩形" fill="#424242" x="13" y="5" width="1" height="1"></rect>
+                <rect id="矩形" fill="#424242" x="13" y="9" width="1" height="1"></rect>
+                <rect id="矩形" fill="#424242" x="1" y="6" width="1" height="3"></rect>
+                <rect id="矩形" fill="#424242" x="2" y="5" width="1" height="1"></rect>
+                <rect id="矩形" fill="#424242" x="2" y="9" width="1" height="1"></rect>
+                <rect id="矩形" fill="#424242" x="7" y="6" width="1" height="1"></rect>
+                <rect id="矩形" fill="#424242" x="7" y="8" width="1" height="1"></rect>
+            </g>
+        </g>
+    </g>
+</svg>

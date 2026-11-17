@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>实现所有项流</title>
+    <defs>
+        <linearGradient x1="50%" y1="2.25375274e-12%" x2="50%" y2="100%" id="linearGradient-1">
+            <stop stop-color="#DADA58" offset="0%"></stop>
+            <stop stop-color="#DADA58" stop-opacity="0.643247378" offset="100%"></stop>
+            <stop stop-color="#F9FCED" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="实现所有项流">
+            <rect id="矩形" fill="#D8D8D8" opacity="0" x="0" y="0" width="16" height="16"></rect>
+            <path d="M2.59314503,3.21971788 L7.24492984,4.00539666 L3.43506215,7.78521313 L2.59314503,3.21971788 Z" id="矩形" stroke="#504F34" stroke-width="0.8" fill="url(#linearGradient-1)"></path>
+            <path d="M5.69642255,6.03489174 L10.3482074,6.82057051 L6.53833967,10.600387 L5.69642255,6.03489174 Z" id="矩形备份" stroke="#504F34" stroke-width="0.8" fill="url(#linearGradient-1)"></path>
+            <path d="M8.69642255,9.03489174 L13.3482074,9.82057051 L9.53833967,13.600387 L8.69642255,9.03489174 Z" id="矩形备份-2" stroke="#504F34" stroke-width="0.8" fill="url(#linearGradient-1)"></path>
+        </g>
+    </g>
+</svg>

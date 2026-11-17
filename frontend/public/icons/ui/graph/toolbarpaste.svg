@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>toolbarpaste</title>
+    <defs>
+        <linearGradient x1="0%" y1="50%" x2="100%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#DEDEDE" offset="0%"></stop>
+            <stop stop-color="#FFFFFF" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="icon" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(-821.000000, -738.000000)" id="toolbarpaste">
+            <g transform="translate(821.000000, 738.000000)">
+                <g id="编组-21">
+                    <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                    <path d="M13,0 L5,0 C4.53333333,0 4,0.53125 4,1 L4,11 C4,11.46875 4.53333333,12 5,12 L13,12 C13.4666667,12 14,11.46875 14,11 C14,9.0504397 14,5.71710636 14,1 C14,0.53125 13.4666667,0 13,0 Z" id="路径" fill="url(#linearGradient-1)"></path>
+                    <path d="M10,3 L2,3 C1.53333333,3 1,3.53125 1,4 L1,14 C1,14.46875 1.53333333,15 2,15 L10,15 C10.4666667,15 11,14.46875 11,14 C11,12.0504397 11,8.71710636 11,4 C11,3.53125 10.4666667,3 10,3 Z" id="路径" fill="url(#linearGradient-1)"></path>
+                    <path d="M1.6779133,3.6784118 C1.5867808,3.76954429 1.5,3.88300138 1.5,4 L1.5,14 C1.5,14.1169986 1.5867808,14.2304557 1.6779133,14.3215882 C1.76932307,14.412998 1.88314522,14.5 2,14.5 L10,14.5 C10.1168548,14.5 10.2306769,14.412998 10.3220867,14.3215882 C10.4132192,14.2304557 10.5,14.1169986 10.5,14 L10.5,4 C10.5,3.88300138 10.4132192,3.76954429 10.3220867,3.6784118 C10.2306769,3.58700202 10.1168548,3.5 10,3.5 L1.6779133,3.6784118 Z" id="路径" stroke="#414F58" fill-rule="nonzero"></path>
+                    <path d="M13,0 L5,0 C4.54762777,0 4,0.538461538 4,1 L4,3 L5,3 L5,1 L13,1 L13,11 L11,11 L11,12 L13,12 C13.4166667,12 14,11.4615385 14,11 L14,1 C14,0.538461538 13.4166667,0 13,0 Z" id="路径" fill="#414F58" fill-rule="nonzero"></path>
+                    <rect id="矩形" fill="#E8E8E8" x="7" y="0" width="1" height="1"></rect>
+                    <rect id="矩形" fill="#E8E8E8" transform="translate(13.500000, 2.500000) rotate(90.000000) translate(-13.500000, -2.500000) " x="13" y="2" width="1" height="1"></rect>
+                    <rect id="矩形" fill="#E8E8E8" transform="translate(13.500000, 5.500000) rotate(90.000000) translate(-13.500000, -5.500000) " x="13" y="5" width="1" height="1"></rect>
+                    <rect id="矩形" fill="#E8E8E8" transform="translate(13.500000, 8.500000) rotate(90.000000) translate(-13.500000, -8.500000) " x="13" y="8" width="1" height="1"></rect>
+                    <rect id="矩形" fill="#E8E8E8" transform="translate(10.500000, 0.500000) rotate(180.000000) translate(-10.500000, -0.500000) " x="10" y="0" width="1" height="1"></rect>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

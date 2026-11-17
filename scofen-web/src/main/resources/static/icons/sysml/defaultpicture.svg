@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>defaultpicture</title>
+    <defs>
+        <linearGradient x1="0%" y1="50%" x2="100%" y2="52.9811159%" id="linearGradient-1">
+            <stop stop-color="#FCF0AC" offset="0%"></stop>
+            <stop stop-color="#FEF0A3" offset="47.6498006%"></stop>
+            <stop stop-color="#FEF9DB" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-39.000000, -720.000000)">
+            <g id="defaultpicture" transform="translate(39.000000, 720.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" stroke="#4C4C4C" x="0.5" y="1.5" width="14" height="12"></rect>
+                <rect id="矩形" fill="url(#linearGradient-1)" fill-rule="nonzero" x="1" y="2" width="13" height="11"></rect>
+                <path d="M6.41546735,9.78549938 L5.40721354,8.54549953 C5.27363331,8.38122313 5.05707266,8.38123532 4.92349243,8.54549953 L3.06476137,10.8314774 C2.93118114,10.9957538 3.01088511,11.1289321 3.24277238,11.1289321 L11.7588137,11.1289321 C11.990838,11.1289321 12.0687598,10.9960462 11.9338772,10.8321232 L8.9882851,7.25227223 C8.85252514,7.08727687 8.63473069,7.0883614 8.49986182,7.25227223 L6.41548106,9.78549938 L6.41546735,9.78549938 Z" id="路径" fill="#4C4C4C" fill-rule="nonzero"></path>
+                <path d="M4,5.5 C4,5.77614237 4.22385763,6 4.5,6 C4.77614237,6 5,5.77614237 5,5.5 C5,5.22385763 4.77614237,5 4.5,5 C4.22385763,5 4,5.22385763 4,5.5 L4,5.5 Z" id="路径" fill="#4C4C4C" fill-rule="nonzero"></path>
+            </g>
+        </g>
+    </g>
+</svg>

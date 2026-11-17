@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="48px" height="48px" viewBox="0 0 48 48" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>welcomeiconxsglys</title>
+    <defs>
+        <linearGradient x1="12.2491073%" y1="14.6858551%" x2="92.3087619%" y2="7.38790761%" id="linearGradient-1">
+            <stop stop-color="#9DC3FF" offset="0%"></stop>
+            <stop stop-color="#70A6FE" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="100%" y1="51.401092%" x2="8.33129883%" y2="50.1369046%" id="linearGradient-2">
+            <stop stop-color="#FEF9DB" offset="0%"></stop>
+            <stop stop-color="#FEF4BD" offset="44.2039696%"></stop>
+            <stop stop-color="#FEEF9E" offset="60.7131546%"></stop>
+            <stop stop-color="#FCF0AC" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="公共组件" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd" opacity="0.75">
+        <g id="弹窗" transform="translate(-727.000000, -1879.000000)">
+            <g id="编组-41" transform="translate(207.000000, 1831.000000)">
+                <g id="编组-42" transform="translate(0.000000, 28.000000)">
+                    <g id="welcomeiconxsglys" transform="translate(520.000000, 20.000000)">
+                        <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="48" height="48"></rect>
+                        <g id="打开" transform="translate(0.778425, 1.000000)">
+                            <path d="M42.3825713,0.5 C43.2384202,0.5 44.0143558,0.848574296 44.5764665,1.4110984 C45.1387077,1.97375317 45.4871916,2.75060168 45.4874477,3.60752793 L45.4874477,3.60752793 L45.4874477,42.3918767 C45.4874477,43.2487529 45.1390109,44.0257575 44.5767669,44.5886007 C44.0147547,45.151212 43.2389168,45.5 42.3831659,45.5 L42.3831659,45.5 L3.60428175,45.5 C2.74853093,45.5 1.97269301,45.151212 1.41068079,44.5886007 C0.848436816,44.0257575 0.5,43.2487529 0.5,42.3918767 L0.5,42.3918767 L0.5,3.60752793 C0.5,2.7507207 0.848388629,1.97390016 1.41057085,1.41121161 C1.97259895,0.848677319 2.74848476,0.5 3.60428175,0.5 L3.60428175,0.5 Z" id="路径" stroke="#5C6A8E" fill="url(#linearGradient-1)" fill-rule="nonzero"></path>
+                            <path d="M39.9904006,4 C41.0944504,4 41.989085,4.89564883 41.989085,6 C41.989085,7.10512129 41.0944504,8 39.9904006,8 C38.884811,8 37.9901765,7.10435117 37.9901765,6 C37.9901765,4.89564883 38.8855809,4 39.9904006,4 Z M33.9904981,4 C35.0960877,4 35.9907222,4.89564883 35.9907222,6 C35.9907222,7.10512129 35.0960877,8 33.9904981,8 C32.8864482,8 31.9918137,7.10435117 31.9918137,6 C31.9925836,4.89564883 32.8872181,4 33.9904981,4 Z M43.9885392,44 L2,44 L2,12 L43.9885392,12 L43.9885392,44 Z" id="形状" fill="#F8F5F0" fill-rule="nonzero"></path>
+                            <g id="编组-35" transform="translate(11.221575, 16.000000)">
+                                <g id="Connector" transform="translate(2.374331, 0.334821)" fill="url(#linearGradient-2)" stroke="#607CA2">
+                                    <rect id="矩形" x="0.5" y="16.9285714" width="5.66666667" height="5.57142857"></rect>
+                                    <rect id="矩形" x="12.1666667" y="0.5" width="5.66666667" height="5.57142857"></rect>
+                                </g>
+                                <g id="ItemFlow" transform="translate(11.834821, 11.834821) rotate(-45.000000) translate(-11.834821, -11.834821) translate(3.466339, 3.466339)" fill="#2A5082">
+                                    <polygon id="矩形" transform="translate(8.368482, 8.368482) rotate(45.000000) translate(-8.368482, -8.368482) " points="1.46223249 6.24348249 12.8372325 6.24348249 12.8372325 3.43991106 15.2747325 3.43991106 15.2747325 9.49348249 7.96223249 9.49348249 3.89973249 9.49348249 3.89973249 13.2970539 1.46223249 13.2970539"></polygon>
+                                    <path d="M12.4583425,2.55504966 L11.2834421,10.5938577 L3.85010295,11.1632892 C9.58892934,5.42446285 12.4583425,2.55504966 12.4583425,2.55504966 Z" id="路径" fill-rule="nonzero"></path>
+                                </g>
+                            </g>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

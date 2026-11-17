@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>FullPort</title>
+    <defs>
+        <linearGradient x1="87.8173828%" y1="43.3929443%" x2="14.8284912%" y2="43.3929443%" id="linearGradient-1">
+            <stop stop-color="#EEEEEE" offset="0%"></stop>
+            <stop stop-color="#E5DAB2" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-104.000000, -1508.000000)">
+            <g id="FullPort" transform="translate(104.000000, 1508.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0.470588235" width="16" height="15.0588235"></rect>
+                <polygon id="矩形" fill="#4C4C4C" points="2 2 15 2 15 13 2 13"></polygon>
+                <polygon id="矩形" fill="url(#linearGradient-1)" points="2.5 3 14 3 14 12 2.5 12"></polygon>
+                <rect id="矩形" fill="#4C4C4C" x="0" y="1" width="3" height="1"></rect>
+                <rect id="矩形" fill="#4C4C4C" x="2" y="2" width="1" height="12"></rect>
+                <rect id="矩形" fill="#4C4C4C" x="0" y="13" width="3" height="1"></rect>
+                <polygon id="F" fill="#000000" fill-rule="nonzero" points="7.7578125 10.7265625 7.7578125 8.125 10.4453125 8.125 10.4453125 7.44921875 7.7578125 7.44921875 7.7578125 5.67578125 10.8632812 5.67578125 10.8632812 5 7 5 7 10.7265625"></polygon>
+            </g>
+        </g>
+    </g>
+</svg>

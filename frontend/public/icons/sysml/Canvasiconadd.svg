@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="9px" height="9px" viewBox="0 0 9 9" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Canvasiconadd</title>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="图元样式" transform="translate(-1468.000000, -2819.000000)">
+            <g id="Canvasiconadd" transform="translate(1468.000000, 2819.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="9" height="9"></rect>
+                <circle id="椭圆形" fill="#000000" cx="4.5" cy="4.5" r="4.5"></circle>
+                <circle id="椭圆形" fill="#FFFFFF" cx="4.5" cy="4.5" r="3.5"></circle>
+                <polygon id="路径" fill="#000000" points="5.00638511 2 4.1844205 2 4.1844205 4.00074352 2 4.00074352 2 4.81262068 4.1844205 4.81262068 4.1844205 6.86193848 5.00638511 6.86193848 5.00638511 4.81262068 7.19128418 4.81262068 7.19128418 4.00074352 5.00638511 4.00074352"></polygon>
+            </g>
+        </g>
+    </g>
+</svg>

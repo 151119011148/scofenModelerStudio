@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>SystemContext</title>
+    <defs>
+        <linearGradient x1="0%" y1="14.2011834%" x2="100%" y2="85.7988166%" id="linearGradient-1">
+            <stop stop-color="#DDCC8F" offset="0%"></stop>
+            <stop stop-color="#E1D4A6" offset="65.1868666%"></stop>
+            <stop stop-color="#FDF7E3" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="打勾图标" transform="translate(-555.000000, -1778.000000)">
+            <g id="SystemContext" transform="translate(555.000000, 1778.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" stroke="#4C4C4C" fill="#4C4C4C" x="0.5" y="1.5" width="14" height="12"></rect>
+                <rect id="矩形" fill="url(#linearGradient-1)" x="1" y="2" width="13" height="11"></rect>
+                <g id="D" transform="translate(8.533000, 3.002000)" fill="#000000" fill-rule="nonzero">
+                    <path d="M0,0 L0,4.998 L1.736,4.998 C2.52,4.998 3.122,4.767 3.542,4.312 C3.941,3.878 4.144,3.269 4.144,2.499 C4.144,1.715 3.955,1.106 3.584,0.686 C3.178,0.224 2.583,0 1.792,0 L0,0 Z M0.574,0.497 L1.701,0.497 C2.359,0.497 2.835,0.665 3.143,1.008 C3.43,1.33 3.577,1.827 3.577,2.499 C3.577,3.15 3.416,3.647 3.108,3.983 C2.779,4.326 2.289,4.501 1.638,4.501 L0.574,4.501 L0.574,0.497 Z" id="形状"></path>
+                </g>
+                <polygon id="矩形" fill="#4C4C4C" points="1 9.0291748 14 9.0291748 14 9.9708252 1 9.9708252"></polygon>
+                <polygon id="矩形" fill="#4C4C4C" points="1 11.0291748 14 11.0291748 14 11.9708252 1 11.9708252"></polygon>
+            </g>
+        </g>
+    </g>
+</svg>

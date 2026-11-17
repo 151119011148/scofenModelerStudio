@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>关键词筛选</title>
+    <defs>
+        <linearGradient x1="107.140933%" y1="34.6210182%" x2="-6.44889099%" y2="78.8618929%" id="linearGradient-1">
+            <stop stop-color="#FFFFFF" offset="0%"></stop>
+            <stop stop-color="#D4D4D4" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="客户端支持自定义文档模板" transform="translate(-2080.000000, -656.000000)">
+            <g id="编组-4" transform="translate(2067.000000, 168.000000)">
+                <g id="编组-17备份-2" transform="translate(0.000000, 354.000000)">
+                    <g id="编组-13备份" transform="translate(4.000000, 130.000000)">
+                        <g id="关键词筛选" transform="translate(9.000000, 4.000000)">
+                            <rect id="矩形" fill="#CFCFCF" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                            <polygon id="矩形" fill="url(#linearGradient-1)" points="1 2 14 2 14 8.05739992 14 14 8.1076506 14 1 14"></polygon>
+                            <polyline id="路径" stroke="#4C4C4C" points="7.64194098 14 1 14 1 2 14 2 14 7.59534351"></polyline>
+                            <g id="T" transform="translate(4.866534, 5.240701)" fill="#000000" fill-opacity="0.75" fill-rule="nonzero">
+                                <polygon id="路径" points="1.86269946e-13 6.12915318e-15 1.86269946e-13 0.9 2.106 0.9 2.106 5.29145381 3.159 5.29145381 3.159 0.9 5.265 0.9 5.265 6.12915318e-15"></polygon>
+                            </g>
+                            <path d="M11.4658366,8.91472738 C12.1561925,8.91472738 12.7811925,9.19454941 13.2336036,9.64696042 C13.6860146,10.0993714 13.9658366,10.7243714 13.9658366,11.4147274 C13.9658366,12.1050833 13.6860146,12.7300833 13.2336036,13.1824943 C12.7811925,13.6349053 12.1561925,13.9147274 11.4658366,13.9147274 C10.7754807,13.9147274 10.1504807,13.6349053 9.69806966,13.1824943 C9.24565864,12.7300833 8.96583661,12.1050833 8.96583661,11.4147274 C8.96583661,10.7243714 9.24565864,10.0993714 9.69806966,9.64696042 C10.1504807,9.19454941 10.7754807,8.91472738 11.4658366,8.91472738 Z" id="椭圆形" stroke="#4C4C4C" fill="#FFFFFF"></path>
+                            <line x1="13.6709625" y1="13.2789051" x2="15" y2="14.4147274" id="路径-2" stroke="#4C4C4C"></line>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

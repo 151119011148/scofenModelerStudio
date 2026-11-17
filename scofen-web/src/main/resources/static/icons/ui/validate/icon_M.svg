@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>M</title>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="打勾图标" transform="translate(-1850.000000, -1352.000000)">
+            <g id="M" transform="translate(1850.000000, 1352.000000)">
+                <rect id="矩形" fill="#BFBFBF" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <g id="编组-63">
+                    <polygon id="矩形" fill="#FFFFFF" points="1.95399252e-14 6.41708908e-14 8 0 8 8 1.95399252e-14 8"></polygon>
+                    <g id="M" transform="translate(1.297059, 1.486236)" fill="#000000" fill-rule="nonzero">
+                        <polygon id="路径" points="-6.29140955e-14 -4.49923499e-14 -6.29140955e-14 5.12058716 0.839087811 5.12058716 0.839087811 1.59211533 0.867774574 1.59211533 2.37382962 5.12058716 3.09817038 5.12058716 4.60422543 1.59211533 4.63291219 1.59211533 4.63291219 5.12058716 5.472 5.12058716 5.472 -4.49923499e-14 4.48947837 -4.49923499e-14 2.75392923 4.01614679 2.72524246 4.01614679 0.982521625 -4.49923499e-14"></polygon>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

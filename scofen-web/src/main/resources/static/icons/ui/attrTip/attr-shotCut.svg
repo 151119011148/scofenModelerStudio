@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="48px" height="48px" viewBox="0 0 48 48" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>编组 7</title>
+    <defs>
+        <linearGradient x1="12.2491073%" y1="14.6858551%" x2="92.3087619%" y2="7.38790761%" id="linearGradient-1">
+            <stop stop-color="#9DC3FF" offset="0%"></stop>
+            <stop stop-color="#70A6FE" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="12.2284962%" y1="43.0243664%" x2="92.3318614%" y2="41.5827966%" id="linearGradient-2">
+            <stop stop-color="#9DC3FF" offset="0%"></stop>
+            <stop stop-color="#70A6FE" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="50%" y1="0%" x2="50%" y2="100%" id="linearGradient-3">
+            <stop stop-color="#FFFFFF" offset="0%"></stop>
+            <stop stop-color="#E6F1F6" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="客户端主菜单调整" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="快捷键助手" transform="translate(-740, -48)">
+            <g id="编组-7" transform="translate(740, 48)">
+                <g id="welcomeprojectsettings--" opacity="0.75" fill-rule="nonzero">
+                    <rect id="矩形" fill="#000000" opacity="0" x="0" y="0" width="48" height="48"></rect>
+                    <g id="打开" transform="translate(0.7784, 1)">
+                        <path d="M42.3825713,0.5 C43.2384202,0.5 44.0143558,0.848574296 44.5764665,1.4110984 C45.1387077,1.97375317 45.4871916,2.75060168 45.4874477,3.60752793 L45.4874477,42.3918767 C45.4874477,43.2487529 45.1390109,44.0257575 44.5767669,44.5886007 C44.0147547,45.151212 43.2389168,45.5 42.3831659,45.5 L3.60428175,45.5 C2.74853093,45.5 1.97269301,45.151212 1.41068079,44.5886007 C0.848436816,44.0257575 0.5,43.2487529 0.5,42.3918767 L0.5,3.60752793 C0.5,2.7507207 0.848388629,1.97390016 1.41057085,1.41121161 C1.97259895,0.848677319 2.74848476,0.5 3.60428175,0.5 L42.3825713,0.5 Z" id="路径" stroke="#5C6A8E" fill="url(#linearGradient-1)"></path>
+                        <path d="M16.5890112,0.5 L13.2480054,7.5 L1.41075608,7.5 C1.22085177,7.5 1.04118017,7.48093943 0.883670355,7.44521547 L0.505462906,3.04527762 C0.578918333,2.7791904 0.883765022,1.81908419 1.6145139,1.14648941 C2.01551912,0.77739679 2.55274537,0.5 3.26283517,0.5 L16.5890112,0.5 Z" id="路径" stroke="#5C6A8E" fill="url(#linearGradient-2)"></path>
+                        <polygon id="形状" fill="#F8F5F0" points="43.9885392 44 2 44 2 12 43.9885392 12"></polygon>
+                        <path d="M22.2215754,29.5 C22.2215754,33.6421356 25.5794398,37 29.7215754,37 C33.863711,37 37.2215754,33.6421356 37.2215754,29.5 C37.2215754,25.3578644 33.863711,22 29.7215754,22 C25.5794398,22 22.2215754,25.3578644 22.2215754,29.5 L22.2215754,29.5 Z" id="路径" fill="#E9E9EB"></path>
+                        <g id="设置，齿轮，配置，后台管理" transform="translate(17, 20)" fill="#FFFFFF">
+                            <path d="M0,3 C0,4.65685425 1.34314575,6 3,6 C4.65685425,6 6,4.65685425 6,3 C6,1.34314575 4.65685425,0 3,0 C1.34314575,0 0,1.34314575 0,3 L0,3 Z" id="路径"></path>
+                        </g>
+                    </g>
+                </g>
+                <g id="编组-5" transform="translate(14, 19)">
+                    <path d="M18.4130165,0.586983522 L18.4130165,18.4130165 L0.586998202,18.4130165 L0.587184837,10.9505335 L10.9738233,10.9505335 L10.9750192,0.586983522 L18.4130165,0.586983522 Z" id="路径-4" stroke="#7E8DB3" stroke-width="1.17396704" fill="url(#linearGradient-3)"></path>
+                    <path d="M8.41301648,0.586983522 L8.41301648,8.41301648 L0.586983522,8.41301648 L0.586983522,0.586983522 L8.41301648,0.586983522 Z" id="矩形" stroke="#7E8DB3" stroke-width="1.17396704" fill="url(#linearGradient-3)"></path>
+                    <polyline id="路径-5" stroke="#7E8DB3" stroke-width="1.17396704" points="15 7 15 14.6144534 7 14.6144534"></polyline>
+                    <polygon id="路径-6" fill="#7E8DB3" points="9 12.0957034 6 14.5461247 9 17.0957034"></polygon>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

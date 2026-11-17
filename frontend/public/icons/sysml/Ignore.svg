@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Ignore</title>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1588.000000, -596.000000)">
+            <g id="Ignore" transform="translate(1588.000000, 596.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <g id="Block"></g>
+                <rect id="矩形" stroke="#4C4C4C" fill="#FFFFFF" x="1.5" y="2.5" width="13" height="12" rx="1"></rect>
+                <path d="M10,2.5 L1.5,3 L2,5.5 L10.5,5 L10,2.5 Z" id="矩形" stroke="#515151" fill="#F7F7F7"></path>
+                <polygon id="I" fill="#515151" fill-rule="nonzero" points="10.5039062 13 10.5039062 7.2734375 9.74609375 7.2734375 9.74609375 13"></polygon>
+            </g>
+        </g>
+    </g>
+</svg>

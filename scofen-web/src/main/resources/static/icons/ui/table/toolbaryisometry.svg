@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>toolbaryisometry </title>
+    <defs>
+        <linearGradient x1="0%" y1="50%" x2="100%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#DEDEDE" offset="0%"></stop>
+            <stop stop-color="#FFFFFF" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="组件" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="通用工具栏" transform="translate(-754.000000, -6.000000)">
+            <g id="toolbaryisometry-" transform="translate(754.000000, 6.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <path d="M3,6.15755627 C3,5.51446945 3.51245552,5 4.15302491,5 L10.8469751,5 C11.4875445,5 12,5.51446945 12,6.15755627 L12,8.84244373 C12,9.46945338 11.5035587,9.96784566 10.8790036,10 L4.15302491,10 C3.51245552,10 3,9.48553055 3,8.84244373 L3,6.15755627 Z M11,6.18848168 C11,6.09424084 10.9049774,6 10.8099548,6 L4.19004525,6 C4.09502262,6 4,6.09424084 4,6.18848168 L4,8.81151832 C4,8.90575916 4.09502262,9 4.19004525,9 L10.8099548,9 C10.9208145,8.98429319 11,8.92146597 11,8.81151832 L11,6.18848168 Z" id="形状" fill="#414F58" fill-rule="nonzero"></path>
+                <path d="M14.0613932,1.07386996 L14.0613932,2.07386996 L1.06139321,2.07386996 L1.06139321,1.07386996 L14.0613932,1.07386996 Z M13.9386068,12.92613 L13.9386068,13.92613 L0.93860679,13.92613 L0.93860679,12.92613 L13.9386068,12.92613 Z" id="形状" fill="#414F58" fill-rule="nonzero"></path>
+                <path d="M6.18848168,4 C6.09424084,4 6,4.09502262 6,4.19004525 L6,10.8099548 C6,10.9049774 6.09424084,11 6.18848168,11 L8.81151832,11 C8.90575916,11 9,10.9049774 9,10.8099548 L9,4.19004525 C8.98429319,4.07918552 8.92146597,4 8.81151832,4 L6.18848168,4 Z" id="路径" fill="url(#linearGradient-1)" transform="translate(7.500000, 7.500000) rotate(90.000000) translate(-7.500000, -7.500000) "></path>
+            </g>
+        </g>
+    </g>
+</svg>

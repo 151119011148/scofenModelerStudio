@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>ExecutionOccurrenceSpecification </title>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="九大图2" transform="translate(-1878.000000, -710.000000)">
+            <g id="ExecutionOccurrenceSpecification-" transform="translate(1877.000000, 709.000000)">
+                <rect id="矩形" fill="#4C4C4C" x="8" y="1" width="5" height="15" rx="1"></rect>
+                <rect id="矩形" fill="#E3F3D5" x="9" y="1.94117647" width="3" height="13" rx="1"></rect>
+                <rect id="矩形" fill="#4C4C4C" x="12" y="12" width="4" height="1" rx="0.5"></rect>
+                <line x1="1.5" y1="4.5" x2="5.5" y2="4.5" id="直线-8" stroke="#4C4C4C" stroke-linecap="square"></line>
+                <path d="M1.65163963,2.12344542 L6.85203235,1.84218419 L6.42562815,7.24292133 C6.33815975,7.24292133 1.65163963,2.12344542 1.65163963,2.12344542 Z" id="路径" fill="#4C4C4C" fill-rule="nonzero" transform="translate(4.251836, 4.542553) rotate(43.000000) translate(-4.251836, -4.542553) "></path>
+                <line x1="1.5" y1="12.5" x2="6" y2="12.5" id="直线-8" stroke="#4C4C4C" stroke-linecap="square"></line>
+                <path d="M1.65163963,10.1234454 L6.85203235,9.84218419 L6.42562815,15.2429213 C6.33815975,15.2429213 1.65163963,10.1234454 1.65163963,10.1234454 Z" id="路径" fill="#4C4C4C" fill-rule="nonzero" transform="translate(4.251836, 12.542553) rotate(43.000000) translate(-4.251836, -12.542553) "></path>
+            </g>
+        </g>
+    </g>
+</svg>

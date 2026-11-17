@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1px" height="17px" viewBox="0 0 1 17" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>矩形</title>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="M-DesignV4.0" transform="translate(-492.000000, -120.000000)" fill="#D0D0D0">
+            <polygon id="矩形" transform="translate(492.500000, 128.500000) scale(1, -1) rotate(-90.000000) translate(-492.500000, -128.500000) " points="484.5 128.001048 500.5 128.001048 500.5 128.998952 484.5 128.998952"></polygon>
+        </g>
+    </g>
+</svg>

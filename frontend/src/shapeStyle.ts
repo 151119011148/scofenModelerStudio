@@ -47,11 +47,11 @@ export const ACCENT = {
 
 /** 交互态颜色（选中 / 连线源）优先级高于用户样式。 */
 export const INTERACTIVE = {
-  selectedFill: '#e9f0fc',
-  selectedStroke: '#2b5cb8',
+  selectedFill: '#dcebfd',
+  selectedStroke: '#1890ff',
   linkSourceFill: '#e6f6f3',
   linkSourceStroke: '#0f766e',
-  multiSelectStroke: '#2b5cb8',
+  multiSelectStroke: '#1890ff',
 } as const
 
 /** 基础外观：绝大多数形状共用。 */

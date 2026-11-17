@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Choose</title>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="打勾图标" transform="translate(-1489.000000, -1735.000000)">
+            <g id="Choose" transform="translate(1489.000000, 1735.000000)">
+                <rect id="矩形" fill="#D8D8D8" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <path d="M3.5,4.10811375 L3.5,9.53547687 M2.75207629,9.04809935 L13.1159198,9.04809935" id="形状结合" stroke="#4B4B4B" stroke-width="1.5" transform="translate(7.933998, 6.828107) rotate(-45.000000) translate(-7.933998, -6.828107) "></path>
+            </g>
+        </g>
+    </g>
+</svg>

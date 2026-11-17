@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Timeline</title>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-453.000000, -1533.000000)" fill="#000000">
+            <g id="编组-19" transform="translate(453.000000, 1533.000000)">
+                <g id="Timeline">
+                    <rect id="矩形" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                    <rect id="矩形" x="1" y="10" width="14" height="1"></rect>
+                    <polygon id="矩形" points="5 12 5.96618652 12 6 15 5 15"></polygon>
+                    <polygon id="矩形" points="5 7 5.96618652 7 6 10 5 10"></polygon>
+                    <polygon id="矩形" points="5 1 5.96618652 1 6 6 5 6"></polygon>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

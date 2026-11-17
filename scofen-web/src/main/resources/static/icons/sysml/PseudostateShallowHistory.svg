@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>ShallowHistory</title>
+    <g id="九大图" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(-1180.000000, -300.000000)" fill-rule="nonzero" id="ShallowHistory">
+            <g transform="translate(1180.000000, 300.000000)">
+                <rect id="矩形" fill="#000000" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <g id="编组-12" transform="translate(2.000000, 2.000000)">
+                    <path d="M0,6 C0,9.3137085 2.6862915,12 6,12 C9.3137085,12 12,9.3137085 12,6 C12,2.6862915 9.3137085,0 6,0 C2.6862915,0 0,2.6862915 0,6 Z" id="路径" stroke="#4B4B4B" fill="#FFFFFF"></path>
+                    <polygon id="H" fill="#000000" points="4.68694736 7.9185791 4.68694736 5.9185791 6.78716709 5.9185791 6.78716709 7.9185791 7.68890048 7.9185791 7.68890048 3 6.78716709 3 6.78716709 4.94799805 4.68694736 4.94799805 4.68694736 3 3.77056552 3 3.77056552 7.9185791"></polygon>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

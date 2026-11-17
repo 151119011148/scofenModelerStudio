@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="48px" height="48px" viewBox="0 0 48 48" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>welcomeicondk</title>
+    <defs>
+        <linearGradient x1="12.2491073%" y1="14.6858551%" x2="92.3087619%" y2="7.38790761%" id="linearGradient-1">
+            <stop stop-color="#9DC3FF" offset="0%"></stop>
+            <stop stop-color="#70A6FE" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="87.8173828%" y1="43.3929443%" x2="14.8284912%" y2="43.3929443%" id="linearGradient-2">
+            <stop stop-color="#EEEEEE" offset="0%"></stop>
+            <stop stop-color="#C4EAC7" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="公共组件" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd" opacity="0.75">
+        <g id="弹窗" transform="translate(-2843.000000, -293.000000)">
+            <g id="编组-41" transform="translate(2323.000000, 245.000000)">
+                <g id="编组-42" transform="translate(0.000000, 28.000000)">
+                    <g id="welcomeicondk" transform="translate(520.000000, 20.000000)">
+                        <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="48" height="48"></rect>
+                        <g id="打开" transform="translate(0.778425, 1.000000)">
+                            <path d="M42.3825713,0.5 C43.2384202,0.5 44.0143558,0.848574296 44.5764665,1.4110984 C45.1387077,1.97375317 45.4871916,2.75060168 45.4874477,3.60752793 L45.4874477,3.60752793 L45.4874477,42.3918767 C45.4874477,43.2487529 45.1390109,44.0257575 44.5767669,44.5886007 C44.0147547,45.151212 43.2389168,45.5 42.3831659,45.5 L42.3831659,45.5 L3.60428175,45.5 C2.74853093,45.5 1.97269301,45.151212 1.41068079,44.5886007 C0.848436816,44.0257575 0.5,43.2487529 0.5,42.3918767 L0.5,42.3918767 L0.5,3.60752793 C0.5,2.7507207 0.848388629,1.97390016 1.41057085,1.41121161 C1.97259895,0.848677319 2.74848476,0.5 3.60428175,0.5 L3.60428175,0.5 Z" id="路径" stroke="#5C6A8E" fill="url(#linearGradient-1)" fill-rule="nonzero"></path>
+                            <path d="M39.9904006,4 C41.0944504,4 41.989085,4.89564883 41.989085,6 C41.989085,7.10512129 41.0944504,8 39.9904006,8 C38.884811,8 37.9901765,7.10435117 37.9901765,6 C37.9901765,4.89564883 38.8855809,4 39.9904006,4 Z M33.9904981,4 C35.0960877,4 35.9907222,4.89564883 35.9907222,6 C35.9907222,7.10512129 35.0960877,8 33.9904981,8 C32.8864482,8 31.9918137,7.10435117 31.9918137,6 C31.9925836,4.89564883 32.8872181,4 33.9904981,4 Z M43.9885392,44 L2,44 L2,12 L43.9885392,12 L43.9885392,44 Z" id="形状" fill="#F8F5F0" fill-rule="nonzero"></path>
+                            <g id="Port" opacity="0.849097842" transform="translate(13.221575, 17.000000)">
+                                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="23" height="22"></rect>
+                                <polygon id="矩形" fill="#2A5082" points="3 5 21 5 21 17 3 17"></polygon>
+                                <polygon id="矩形" fill="url(#linearGradient-2)" points="5 7 19 7 19 15 5 15"></polygon>
+                                <rect id="矩形" fill="#2A5082" x="0" y="3" width="4" height="2"></rect>
+                                <rect id="矩形" fill="#2A5082" x="3" y="3" width="2" height="16"></rect>
+                                <rect id="矩形" fill="#2A5082" x="0" y="17" width="4" height="2"></rect>
+                            </g>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

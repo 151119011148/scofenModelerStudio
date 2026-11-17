@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>文档模块图</title>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="客户端支持自定义文档模板" transform="translate(-211.000000, -776.000000)">
+            <g id="新建图表" transform="translate(194.000000, 168.000000)">
+                <g id="编组-10" transform="translate(0.000000, 28.000000)">
+                    <g id="编组-15" transform="translate(9.000000, 37.000000)">
+                        <g id="行备份" transform="translate(0.000000, 539.000000)">
+                            <g id="文档模块图" transform="translate(8.000000, 4.000000)">
+                                <g id="blank-空白文档" transform="translate(0.000000, 1.000000)">
+                                    <polygon id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" points="2.45246531e-13 0 15 0 15 15 2.13162821e-13 15"></polygon>
+                                    <polygon id="形状" fill="#97958C" fill-rule="nonzero" points="11.2371622 0 2.13162821e-13 0 2.13162821e-13 15 15 15 15 3.97748204"></polygon>
+                                    <polygon id="路径" fill="#FFFFFF" points="14 14 1 14 1 1 11.2261972 1 11.2706545 3.99329269 14 4.02481399"></polygon>
+                                </g>
+                                <polygon id="路径" fill="#4C4C4C" points="0 0 0 16 16 16 16 4 11.9863063 0"></polygon>
+                                <polygon id="路径" fill="#FFFFFF" points="1 1 1 15 15 15 15 4.5 11.488018 1"></polygon>
+                                <g id="表-表格_jurassic" transform="translate(1.000000, 1.000000)">
+                                    <polygon id="形状" fill="#FFFFFF" fill-rule="nonzero" points="0 0 0 14 14 14 14 3.5 10.488018 0"></polygon>
+                                    <polygon id="矩形" fill="#4C4C4C" points="7.32335436 5 12 5 12 6 7.32335436 6"></polygon>
+                                    <polygon id="矩形备份-13" fill="#4C4C4C" points="7.32335436 2 9 2 9 3 7.32335436 3"></polygon>
+                                    <polygon id="矩形备份-11" fill="#4C4C4C" points="7.32335436 8 12 8 12 9 7.32335436 9"></polygon>
+                                    <polygon id="矩形备份-12" fill="#4C4C4C" points="7.32335436 11 12 11 12 12 7.32335436 12"></polygon>
+                                    <rect id="矩形" stroke="#4C4C4C" fill="#A2BAFF" x="2.5" y="2.5" width="3" height="3"></rect>
+                                    <rect id="矩形备份-10" stroke="#4C4C4C" fill="#A2BAFF" x="2.5" y="8.5" width="3" height="3"></rect>
+                                </g>
+                                <polygon id="路径" fill="#4C4C4C" fill-rule="nonzero" points="10.6666667 0 12 0 16 4 16 5.33333333 10.6666667 5.33333333"></polygon>
+                                <polygon id="路径" fill="#FFFFFF" fill-rule="nonzero" points="11.6666667 1 15.0010173 4.33333333 11.6666667 4.33085124"></polygon>
+                            </g>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

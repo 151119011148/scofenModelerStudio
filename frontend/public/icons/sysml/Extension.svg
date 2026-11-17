@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="17px" viewBox="0 0 16 17" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Extension</title>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-2973.000000, -687.000000)">
+            <g id="Generalization" transform="translate(2972.000000, 687.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="1" width="16" height="16"></rect>
+                <line x1="2" y1="15" x2="12.5" y2="4.5" id="直线-8" stroke="#0283E2" stroke-width="1.2" stroke-linecap="square"></line>
+                <polygon id="三角形" stroke="#0283E2" stroke-width="1.2" fill="#0283E2" transform="translate(12.032909, 4.708117) rotate(45.000000) translate(-12.032909, -4.708117) " points="12.7249149 1.33790552 14.7323372 8.07832774 9.33348007 7.68912916"></polygon>
+                <g id="extension" transform="translate(7.000000, 0.000000)"></g>
+            </g>
+        </g>
+    </g>
+</svg>

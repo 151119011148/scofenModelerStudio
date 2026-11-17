@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="111px" height="100px" viewBox="0 0 111 100" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>coworkfail</title>
+    <defs>
+        <linearGradient x1="50%" y1="74.6517212%" x2="50%" y2="0%" id="linearGradient-1">
+            <stop stop-color="#A7C9FE" offset="0%"></stop>
+            <stop stop-color="#6CA5FF" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="50%" y1="5.64822635%" x2="50%" y2="100%" id="linearGradient-2">
+            <stop stop-color="#DDEAFE" offset="0%"></stop>
+            <stop stop-color="#C9DEFF" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="50%" y1="74.6517212%" x2="50%" y2="0%" id="linearGradient-3">
+            <stop stop-color="#A7C9FE" offset="0%"></stop>
+            <stop stop-color="#6CA5FF" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="关系图" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="关系图-初始" transform="translate(-789.000000, -328.000000)" fill-rule="nonzero">
+            <g id="无数据2" transform="translate(658.000000, 292.000000)">
+                <g id="coworkfail" transform="translate(131.000000, 36.000000)">
+                    <ellipse id="椭圆形" fill="#E8F1FF" cx="55.5" cy="84.5" rx="55.5" ry="15.5"></ellipse>
+                    <g id="编组" transform="translate(16.000000, 31.000000)">
+                        <path d="M66.914948,0 C67.2653292,0 67.5908061,0.181301513 67.7754497,0.47932779 L81,21.8245886 L72.39375,21.82454 L72.39375,50.0333333 C72.39375,51.1526304 71.4871266,52.06 70.36875,52.06 L10.63125,52.06 C9.51287338,52.06 8.60625,51.1526304 8.60625,50.0333333 L8.60625,21.82454 L0,21.8245886 L12.7588317,0.492867998 C12.9416914,0.187141577 13.2715531,0 13.6275765,0 L66.914948,0 Z" id="路径" fill="url(#linearGradient-1)"></path>
+                        <path d="M81,21.5333333 L81,46.8666667 C81,52.4631521 76.4668831,57 70.875,57 L10.125,57 C4.53311691,57 0,52.4631521 0,46.8666667 L0,21.5333333 L0,21.5333333 L21.375,21.5333333 C23.5496212,21.5333333 25.3125,23.297663 25.3125,25.4740742 L25.3125,27.3881481 C25.3125,28.5074452 26.2191234,29.4148148 27.3375,29.4148148 L53.6625,29.4148148 C54.7808766,29.4148148 55.6875,28.5074452 55.6875,27.3881481 L55.6875,25.4740742 C55.6875,23.297663 57.4503787,21.5333333 59.6250001,21.5333333 L81,21.5333333 L81,21.5333333 Z" id="路径" fill="url(#linearGradient-2)"></path>
+                    </g>
+                    <polygon id="路径" fill="url(#linearGradient-3)" points="74 22.519601 56 39.2727273 38 22.519601 50 22.519601 50 0 62 0 62 22.519601"></polygon>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

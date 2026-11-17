@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>gate</title>
+    <defs>
+        <linearGradient x1="23.4075917%" y1="50%" x2="82.5144972%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#BBBBBB" offset="0%"></stop>
+            <stop stop-color="#DBDBDB" offset="44.2039696%"></stop>
+            <stop stop-color="#F9F9F9" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1156.000000, -41.000000)">
+            <g id="gate" transform="translate(1156.000000, 41.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" stroke="#4C4C4C" fill="#4C4C4C" x="1.5" y="1.5" width="13" height="12"></rect>
+                <polygon id="矩形" fill="url(#linearGradient-1)" points="2 2 14 2 14 13 2 13"></polygon>
+            </g>
+        </g>
+    </g>
+</svg>

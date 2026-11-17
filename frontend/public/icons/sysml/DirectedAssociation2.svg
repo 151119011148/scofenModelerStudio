@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>DirectedAssociation2</title>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-3555.000000, -952.000000)">
+            <g id="DirectedAssociation2" transform="translate(3555.000000, 952.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <line x1="2" y1="14" x2="13" y2="3" id="直线-8" stroke="#0283E2" stroke-width="1.2" stroke-linecap="square"></line>
+                <path d="M5.03068858,15.0306886 L4.96849764,11.0323217 L1.03068858,10.9720413 C1.03068858,10.9720413 1.03068858,10.0306886 1.03068858,10.0306886 L5.97841019,10.0306886 L6.03068858,14.9704082 C5.94322018,14.9704082 5.3381063,15.0306886 5.03068858,15.0306886 Z" id="路径" fill="#0283E2" fill-rule="nonzero" transform="translate(3.530689, 12.530689) rotate(-180.000000) translate(-3.530689, -12.530689) "></path>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="14px" height="14px" viewBox="0 0 14 14" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>编组 32</title>
+    <defs>
+        <linearGradient x1="50%" y1="0%" x2="50%" y2="100%" id="linearGradient-1">
+            <stop stop-color="#FFFFFF" offset="0%"></stop>
+            <stop stop-color="#F4F7F9" offset="43.5246394%"></stop>
+            <stop stop-color="#E6EDF1" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="2024-3-产品需求迭代" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="编组-32" transform="translate(0, -0)">
+            <rect id="矩形备份-35" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="2.72848411e-12" width="14" height="14"></rect>
+            <g id="编组-31" transform="translate(1, 0)">
+                <polygon id="矩形备份-8" fill="url(#linearGradient-1)" points="1 1 9.00158691 1 12 3.17878606 12 13 1 13"></polygon>
+                <path d="M13,14 L0,14 L0,0 L9,0 L13,3 L13,4 L8.0022583,4 L8.0022583,1 L1,1 L1,13 L12.0046387,13 L12.0046387,4 L13,4 L13,14 Z M9.00158691,3 L11.4874878,3 L9.00158691,1 L9.00158691,3 Z" id="形状备份-3" fill="#7E8DB3" fill-rule="nonzero"></path>
+                <g id="编组-24" transform="translate(3.4576, 4.2158)" fill="#2CA8FE">
+                    <polygon id="路径" points="-7.85736818e-14 6.78419583 6 6.78419583 6 7.78419583 -7.85736818e-14 7.78419583"></polygon>
+                    <rect id="矩形" x="4.10338105" y="1" width="1" height="1"></rect>
+                    <rect id="矩形备份-31" x="4.10338105" y="4" width="1" height="1"></rect>
+                    <rect id="矩形备份-33" x="1.10338105" y="4" width="1" height="1"></rect>
+                    <rect id="矩形备份-30" x="5.10338105" y="2" width="1" height="2"></rect>
+                    <rect id="矩形" x="2.10338105" y="0" width="2" height="1"></rect>
+                    <rect id="矩形备份-32" x="2.10338105" y="5" width="2" height="1"></rect>
+                    <rect id="矩形备份-28" x="1.10338105" y="1" width="2" height="1"></rect>
+                    <rect id="矩形备份-29" x="0.10338105" y="2" width="4" height="1"></rect>
+                    <polygon id="矩形备份-34" points="0.10338105 3 3.10338105 3 3.10338105 4 0.10338105 4"></polygon>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

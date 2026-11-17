@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Create Diagram</title>
+    <defs>
+        <linearGradient x1="0%" y1="50%" x2="100%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#DEDEDE" offset="0%"></stop>
+            <stop stop-color="#FFFFFF" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="导航图" transform="translate(-1921.000000, -1199.000000)">
+            <g id="Create-Diagram" transform="translate(1921.000000, 1199.000000)">
+                <g id="blank-空白文档" transform="translate(0.000000, 1.000000)">
+                    <polygon id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" points="2.45246531e-13 0 15 0 15 15 2.13162821e-13 15"></polygon>
+                    <polygon id="形状" fill="#97958C" fill-rule="nonzero" points="11.2371622 0 2.13162821e-13 0 2.13162821e-13 15 15 15 15 3.97748204"></polygon>
+                    <polygon id="路径" fill="#FFFFFF" points="14 14 1 14 1 1 11.2261972 1 11.2706545 3.99329269 14 4.02481399"></polygon>
+                </g>
+                <polygon id="路径" fill="#4C4C4C" points="0 0 0 16 16 16 16 4 11.9863063 0"></polygon>
+                <polygon id="路径" fill="#FFFFFF" points="1 1 1 15 15 15 15 4.5 11.488018 1"></polygon>
+                <g id="表-表格_jurassic" transform="translate(1.000000, 0.543890)">
+                    <polygon id="形状" fill="url(#linearGradient-1)" fill-rule="nonzero" points="0 0.456109522 0 14.4561095 14 14.4561095 14 3.95610952 10.488018 0.456109522"></polygon>
+                    <path d="M10.8002901,8.256776 L10.7993724,9.8597914 L12.4032006,9.85987366 L12.4032006,11.2538654 L10.7993724,11.2529478 L10.80029,12.856776 L9.40629827,12.856776 L9.40621601,11.2529478 L7.80320061,11.2538655 L7.80320061,9.85987367 L9.40621601,9.8597914 L9.40629828,8.256776 L10.8002901,8.256776 Z" id="形状结合" stroke="#4C4C4C" stroke-width="0.6" fill="#4197EB" fill-rule="nonzero"></path>
+                    <polyline id="路径-2" stroke="#4C4C4C" stroke-width="0.5" points="0 3.78944286 5.05005315 3.78944286 8.63513616 1.46794753e-14"></polyline>
+                </g>
+                <polygon id="路径" fill="#4C4C4C" fill-rule="nonzero" points="10.6666667 0 12 0 16 4 16 5.33333333 10.6666667 5.33333333"></polygon>
+                <polygon id="路径" fill="#FFFFFF" fill-rule="nonzero" points="11.6666667 1 15.0010173 4.33333333 11.6666667 4.33085124"></polygon>
+            </g>
+        </g>
+    </g>
+</svg>

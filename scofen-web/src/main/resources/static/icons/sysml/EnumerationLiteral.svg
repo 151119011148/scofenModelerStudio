@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>EnumerationLiteral</title>
+    <defs>
+        <linearGradient x1="8.33129883%" y1="32.5463867%" x2="93.0472238%" y2="32.5463867%" id="linearGradient-1">
+            <stop stop-color="#FFD598" offset="0%"></stop>
+            <stop stop-color="#FDF5EB" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1904.000000, -1234.000000)">
+            <g id="EnumerationLiteral" transform="translate(1904.000000, 1234.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <path d="M7,12 L9,12 C9.96575186,11.7014688 10.6324185,11.3681354 11,11 C11.3040133,10.6955285 11.6373467,10.0288618 12,9 L12,7 C11.7273935,6.04733343 11.3940601,5.38066676 11,5 C10.5243681,4.54053397 9.57038242,4.20220772 9,4 L8,4 L7,4 C6.28283544,4.18008401 5.50008332,4.46738479 5,5 C4.61493883,5.41011054 4.1586427,6.16267716 4,7 C3.86573688,7.70864638 4,8.49624765 4,9 C4,10.2272765 4.40425669,10.2662507 5,11 C5.47661469,11.5870241 6.0181375,12 7,12 Z" id="SignalReception" fill="url(#linearGradient-1)"></path>
+                <rect id="矩形" fill="#515151" x="7" y="3" width="2" height="1"></rect>
+                <rect id="矩形" fill="#515151" x="9" y="4" width="2" height="1"></rect>
+                <rect id="矩形" fill="#515151" x="9" y="11" width="2" height="1"></rect>
+                <rect id="矩形" fill="#515151" x="7" y="12" width="2" height="1"></rect>
+                <rect id="矩形" fill="#515151" x="5" y="11" width="2" height="1"></rect>
+                <rect id="矩形" fill="#515151" x="4" y="9" width="1" height="2"></rect>
+                <rect id="矩形" fill="#515151" x="4" y="5" width="1" height="2"></rect>
+                <rect id="矩形" fill="#515151" x="5" y="4" width="2" height="1"></rect>
+                <rect id="矩形" fill="#515151" x="3" y="7" width="1" height="2"></rect>
+                <rect id="矩形" fill="#515151" x="11" y="5" width="1" height="2"></rect>
+                <rect id="矩形" fill="#515151" x="12" y="7" width="1" height="2"></rect>
+                <rect id="矩形" fill="#515151" x="11" y="9" width="1" height="2"></rect>
+            </g>
+        </g>
+    </g>
+</svg>

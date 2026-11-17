@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>获取子包</title>
+    <defs>
+        <linearGradient x1="108.325098%" y1="50%" x2="7.54103842%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#FFF8CD" offset="0%"></stop>
+            <stop stop-color="#FEEF9F" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="108.325098%" y1="50%" x2="7.54103842%" y2="50%" id="linearGradient-2">
+            <stop stop-color="#FFF8CD" offset="0%"></stop>
+            <stop stop-color="#FEEF9F" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="客户端支持自定义文档模板" transform="translate(-2080.000000, -450.000000)">
+            <g id="编组-4" transform="translate(2067.000000, 168.000000)">
+                <g id="编组-17备份" transform="translate(0.000000, 244.000000)">
+                    <g id="编组-12" transform="translate(4.000000, 34.000000)">
+                        <g id="获取子包" transform="translate(9.000000, 4.000000)">
+                            <rect id="矩形" fill="#D7D7D7" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                            <rect id="矩形" fill="#4C4C4C" x="1" y="1" width="4" height="1"></rect>
+                            <polyline id="路径-7" stroke="#4C4C4C" points="3 2 3 9.66666667 5.33474606 9.66666667"></polyline>
+                            <g id="编组-24" transform="translate(5.654423, 4.666667)">
+                                <g id="编组-22" fill-rule="nonzero">
+                                    <rect id="矩形" fill="url(#linearGradient-1)" x="1.10700255" y="2.21400509" width="8.85602038" height="6.64201528"></rect>
+                                    <path d="M0.016746647,8.08930291 L0,0 L2.84311949,0 L3.55389936,1.4760034 L9.6075753,1.44728763 L9.6075753,4.74819011 M3.80057566,8.85602038 L0.0135532269,8.85602038 L0.0135532269,1.4760034" id="形状结合" stroke="#4C4C4C" fill="url(#linearGradient-2)"></path>
+                                </g>
+                                <path d="M6.9867504,5.00083273 C7.61290499,5.00083273 8.17978159,5.25463203 8.59011953,5.66496997 C9.00045747,6.07530791 9.25425677,6.64218451 9.25425677,7.2683391 C9.25425677,7.89449369 9.00045747,8.46137028 8.59011953,8.87170823 C8.17978159,9.28204617 7.61290499,9.53584547 6.9867504,9.53584547 C6.36059581,9.53584547 5.79371921,9.28204617 5.38338127,8.87170823 C4.97304333,8.46137028 4.71924403,7.89449369 4.71924403,7.2683391 C4.71924403,6.64218451 4.97304333,6.07530791 5.38338127,5.66496997 C5.79371921,5.25463203 6.36059581,5.00083273 6.9867504,5.00083273 Z" id="椭圆形" stroke="#4C4C4C" fill="#FFFFFF"></path>
+                                <line x1="8.87432906" y1="8.77848727" x2="9.96302292" y2="9.6980203" id="路径-2" stroke="#4C4C4C"></line>
+                            </g>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

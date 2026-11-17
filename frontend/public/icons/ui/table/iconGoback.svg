@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>iconMoveup</title>
+    <defs>
+        <linearGradient x1="0%" y1="50%" x2="100%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#DEDEDE" offset="0%"></stop>
+            <stop stop-color="#FFFFFF" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="M-DesignV4.0" transform="translate(-296.000000, -120.000000)">
+            <g id="通用工具栏" transform="translate(248.000000, 114.000000)">
+                <g id="iconMoveup" transform="translate(56.000000, 14.000000) scale(-1, 1) translate(-56.000000, -14.000000) translate(48.000000, 6.000000)">
+                    <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                    <path d="M8.96240823,2.20422602 L14.7368132,8.004573 L8.97921329,13.64095 L6.97440195,11.437877 L9.19588004,9.5 L2.5,9.5 L2.5,6.5 L9.177711,6.5 L6.99257735,4.6276183 L8.96240823,2.20422602 Z" id="路径" stroke="#414F58" fill="url(#linearGradient-1)" transform="translate(8.513367, 7.935791) rotate(-180.000000) translate(-8.513367, -7.935791) "></path>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

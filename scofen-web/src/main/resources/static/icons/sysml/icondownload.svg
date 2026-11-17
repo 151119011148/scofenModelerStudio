@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="109px" height="64px" viewBox="0 0 109 64" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>icondownload</title>
+    <defs>
+        <rect id="path-1" x="0" y="0" width="109" height="64" rx="2"></rect>
+        <mask id="mask-2" maskContentUnits="userSpaceOnUse" maskUnits="objectBoundingBox" x="0" y="0" width="109" height="64" fill="white">
+            <use xlink:href="#path-1"></use>
+        </mask>
+        <linearGradient x1="0%" y1="50%" x2="100%" y2="50%" id="linearGradient-3">
+            <stop stop-color="#DEDEDE" offset="0%"></stop>
+            <stop stop-color="#FFFFFF" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="icon" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(-432.000000, -136.000000)" id="icondownload">
+            <g transform="translate(432.000000, 136.000000)">
+                <use id="矩形" stroke="#B1CEE2" mask="url(#mask-2)" stroke-width="2" stroke-dasharray="3,3" xlink:href="#path-1"></use>
+                <g id="下载" transform="translate(31.000000, 8.000000)">
+                    <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="48" height="48"></rect>
+                    <path d="M29.5,5.5 L18.5,5.5 L18.5,28.019601 L7.27110552,28.019601 L24,43.5896722 L40.7288945,28.019601 L29.5,28.019601 L29.5,5.5 Z" id="路径" stroke="#414F58" fill="url(#linearGradient-3)"></path>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

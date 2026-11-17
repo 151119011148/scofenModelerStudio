@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Namespace</title>
+    <defs>
+        <linearGradient x1="8.33129883%" y1="32.5463867%" x2="93.0472238%" y2="32.5463867%" id="linearGradient-1">
+            <stop stop-color="#FFD598" offset="0%"></stop>
+            <stop stop-color="#FDF5EB" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-2308.000000, -1547.000000)">
+            <g id="Namespace" transform="translate(2308.000000, 1547.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <path d="M7.5,11.6666667 C8.22483174,11.6666667 9.4915217,11.0424289 10.6225586,9.94049072 C11.5953215,8.99275454 12.5,7.59210856 12.5,7.08333333 C12.5,6.5974378 11.6974704,5.37315591 10.6225586,4.34102376 C9.56613543,3.32664445 8.24363036,2.5 7.5,2.5 C6.79606981,2.5 5.33999979,3.26436325 4.21844482,4.34102376 C3.21517196,5.30413686 2.5,6.55758225 2.5,7.08333333 C2.5,7.72133931 3.11982251,8.9590957 4.21844482,9.94049072 C5.33020246,10.9336195 6.9242769,11.6666667 7.5,11.6666667 Z" id="椭圆形" stroke="#4C4C4C" fill="url(#linearGradient-1)"></path>
+            </g>
+        </g>
+    </g>
+</svg>

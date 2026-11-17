@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="14px" height="14px" viewBox="0 0 14 14" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>icon_生成追溯图</title>
+    <defs>
+        <linearGradient x1="50%" y1="18.182373%" x2="50%" y2="77.2186279%" id="linearGradient-1">
+            <stop stop-color="#986060" offset="0%"></stop>
+            <stop stop-color="#654040" offset="33.3212716%"></stop>
+            <stop stop-color="#000000" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="0%" y1="50%" x2="100%" y2="50%" id="linearGradient-2">
+            <stop stop-color="#DEDEDE" offset="0%"></stop>
+            <stop stop-color="#FFFFFF" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="单击单元格交互状态" transform="translate(-131.000000, -788.000000)">
+            <g id="右键选择项" transform="translate(121.000000, 778.000000)">
+                <g id="iconadd3" transform="translate(10.000000, 10.000000)">
+                    <rect id="矩形" fill="url(#linearGradient-1)" fill-rule="nonzero" opacity="0" x="0" y="0" width="14" height="14"></rect>
+                    <rect id="矩形" fill="url(#linearGradient-1)" fill-rule="nonzero" opacity="0" x="1" y="1" width="12" height="12"></rect>
+                    <rect id="矩形" fill="url(#linearGradient-2)" x="2" y="2" width="10" height="10"></rect>
+                    <rect id="矩形" stroke="#414F58" fill-rule="nonzero" x="8.179922" y="3.5" width="2" height="2" rx="1"></rect>
+                    <rect id="矩形备份-10" stroke="#414F58" fill-rule="nonzero" x="3.179922" y="6.5" width="2" height="2" rx="1"></rect>
+                    <rect id="矩形备份-11" stroke="#414F58" fill-rule="nonzero" x="7.179922" y="8.5" width="2" height="2" rx="1"></rect>
+                    <path d="M11.9090909,1 C12.5115966,1 13,1.48842045 13,2.09090909 L13,11.9090909 C13,12.5115966 12.5115966,13 11.9090909,13 L2.09090909,13 C1.48842045,13 1,12.5115966 1,11.9090909 L1,2.09090909 C1,1.48842045 1.48842045,1 2.09090909,1 Z M11.4444444,2 L2.55555556,2 C2.24873264,2 2,2.24873264 2,2.55555556 L2,11.4444444 C2,11.7512674 2.24873264,12 2.55555556,12 L11.4444444,12 C11.7512674,12 12,11.7512674 12,11.4444444 L12,2.55555556 C12,2.24873264 11.7512674,2 11.4444444,2 Z" id="形状" fill="#414F58" fill-rule="nonzero"></path>
+                    <path d="M8.179922,4.5 C6.69634391,5.39052429 5.69634391,6.22385763 5.179922,7 C4.40528913,8.16421356 5.88876625,9.5 7.179922,10" id="路径-3" stroke="#414F58" stroke-width="0.8"></path>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

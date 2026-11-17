@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>GeneralizationSet</title>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-76.000000, -902.000000)">
+            <g id="GeneralizationSet" transform="translate(76.000000, 902.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <polygon id="矩形" fill="#0283E2" points="7.5 7 8.5 7 8.5 11 7.5 11"></polygon>
+                <polygon id="矩形" fill="#0283E2" points="2 12 3 12 3 15 2 15"></polygon>
+                <polygon id="矩形" fill="#0283E2" points="13 12 14 12 14 15 13 15"></polygon>
+                <polygon id="矩形" fill="#0283E2" points="2 10.9974365 14 10.9974365 14 11.9974365 2 11.9974365"></polygon>
+                <path d="M8,3.11803399 L5.80901699,7.5 L10.190983,7.5 L8,3.11803399 Z" id="三角形" stroke="#0283E2" fill="#FFFFFF"></path>
+            </g>
+        </g>
+    </g>
+</svg>

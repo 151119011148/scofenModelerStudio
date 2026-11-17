@@ -243,7 +243,7 @@ const viewExpr = `(()=>{const s=document.querySelector('.canvas > svg')
   const m=s.getScreenCTM()
   return {x:v[0],y:v[1],w:v[2],h:v[3],pxPerUnit:m?m.a:1}})()`
 const zoomExpr = `parseInt(document.querySelector('.sb-zoom')?.textContent||'',10)`
-const selectedExpr = `document.querySelectorAll('.node [stroke="#2b5cb8"]').length`
+const selectedExpr = `document.querySelectorAll('.node [stroke="#1890ff"]').length`
 const relationSelectedExpr
   = `(()=>{const k=document.querySelector('.props-object-kind')?.textContent||'';return k.includes('关系')})()`
 

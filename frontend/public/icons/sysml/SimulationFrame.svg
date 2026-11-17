@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="17px" height="16px" viewBox="0 0 17 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>编组 35</title>
+    <defs>
+        <linearGradient x1="87.8173828%" y1="43.3929443%" x2="14.8284912%" y2="43.3929443%" id="linearGradient-1">
+            <stop stop-color="#EEEEEE" offset="0%"></stop>
+            <stop stop-color="#AFDDFF" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="6.3-仿真UI配置图元素" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="仿真-初始备份" transform="translate(-262, -414)">
+            <g id="编组-35" transform="translate(262.0309, 414)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <g id="编组-33" transform="translate(0.9691, 2)">
+                    <rect id="矩形" stroke="#4C4C4C" x="0.5" y="0.5" width="13" height="11"></rect>
+                    <rect id="矩形备份-5" fill="url(#linearGradient-1)" x="1" y="4" width="12" height="7"></rect>
+                    <rect id="矩形" fill="#4C4C4C" x="1" y="3" width="12" height="1"></rect>
+                    <polygon id="矩形" fill="#4C4C4C" points="9 1.49475906 10 1.49475906 10 2.49475906 9 2.49475906"></polygon>
+                    <polygon id="矩形备份-16" fill="#4C4C4C" points="5 1.49475906 8 1.49475906 8 2.49475906 5 2.49475906"></polygon>
+                    <polygon id="矩形备份-15" fill="#4C4C4C" points="11 1.49475906 12 1.49475906 12 2.49475906 11 2.49475906"></polygon>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

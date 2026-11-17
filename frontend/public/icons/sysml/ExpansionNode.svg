@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>ExpansionNode</title>
+    <defs>
+        <linearGradient x1="100%" y1="50.6408878%" x2="8.33129883%" y2="50.0626229%" id="linearGradient-1">
+            <stop stop-color="#E5E5C8" offset="0%"></stop>
+            <stop stop-color="#FFFFF1" offset="44.2039696%"></stop>
+            <stop stop-color="#E6E6CA" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="打勾图标" transform="translate(-1065.000000, -1803.000000)">
+            <g id="ExpansionNode" transform="translate(1065.000000, 1803.000000)">
+                <rect id="矩形" fill="#DBDBDB" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <polygon id="矩形" fill="url(#linearGradient-1)" points="2 3 14 3 14 11 2 11"></polygon>
+                <polygon id="路径" stroke="#4C4C4C" points="2.00751659 11 2 3 14 3 14.0075166 11"></polygon>
+                <polyline id="路径备份-6" stroke="#4C4C4C" transform="translate(7.974131, 7.623784) rotate(180.000000) translate(-7.974131, -7.623784) " points="5.47413066 8.75175126 7.94981181 6.49581752 10.4741307 8.75175126"></polyline>
+                <line x1="1.24051652" y1="7.20758978" x2="8.79241022" y2="7.24051652" id="路径备份-3" stroke="#4C4C4C" transform="translate(5.016463, 7.224053) rotate(90.000000) translate(-5.016463, -7.224053) "></line>
+                <line x1="4.20796599" y1="7.21582146" x2="11.7598597" y2="7.23228483" id="路径备份-4" stroke="#4C4C4C" transform="translate(7.983913, 7.224053) rotate(90.000000) translate(-7.983913, -7.224053) "></line>
+                <line x1="7.24051652" y1="7.20758978" x2="14.7924102" y2="7.24051652" id="路径备份-5" stroke="#4C4C4C" transform="translate(11.016463, 7.224053) rotate(90.000000) translate(-11.016463, -7.224053) "></line>
+                <rect id="矩形" fill="#4C4C4C" x="0" y="6" width="1" height="2"></rect>
+                <rect id="矩形备份-10" fill="#4C4C4C" x="0" y="9" width="1" height="2"></rect>
+                <rect id="矩形备份-11" fill="#4C4C4C" x="0" y="12" width="1" height="2"></rect>
+                <rect id="矩形备份-16" fill="#4C4C4C" x="15" y="6" width="1" height="2"></rect>
+                <polygon id="矩形备份-118" fill="#4C4C4C" transform="translate(14.500000, 6.500000) rotate(90.000000) translate(-14.500000, -6.500000) " points="14 5.5 15 5.5 15 7.5 14 7.5"></polygon>
+                <rect id="矩形备份-15" fill="#4C4C4C" x="15" y="9" width="1" height="2"></rect>
+                <rect id="矩形备份-14" fill="#4C4C4C" x="15" y="12" width="1" height="2"></rect>
+            </g>
+        </g>
+    </g>
+</svg>

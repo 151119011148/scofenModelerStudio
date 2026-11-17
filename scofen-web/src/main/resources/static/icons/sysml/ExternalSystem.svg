@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>ExternalSystem</title>
+    <defs>
+        <linearGradient x1="26.6302673%" y1="0%" x2="50%" y2="100%" id="linearGradient-1">
+            <stop stop-color="#E3E6B7" offset="0%"></stop>
+            <stop stop-color="#EEF0CC" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-809.000000, -1410.000000)">
+            <g id="ExternalSystem" transform="translate(809.000000, 1410.000000)">
+                <g id="编组-5" transform="translate(1.000000, 0.000000)">
+                    <polygon id="矩形" fill="url(#linearGradient-1)" points="0 2.9878766 11.6756757 2.9878766 11.6756757 14.9215783 0 14.9215783"></polygon>
+                    <polygon id="路径" fill="#FFFBE4" points="0.523147171 2.4077661 3.10626056 0 14.4310072 0 11.8485272 2.4077661"></polygon>
+                    <polygon id="路径" fill="#D8DE9E" points="12.2696896 14.6228634 12.2696896 2.81322838 14.9410895 0.374061205 14.9410895 11.9463268"></polygon>
+                </g>
+                <path d="M3.44028304,0 L-7.99360578e-15,3.13233698 L-7.99360578e-15,16 L12.6435587,16 L16,12.6155481 L16,0 L3.44028304,0 Z M11.84127,15.1944616 L0.567495485,15.1944616 L0.567495485,3.57312126 L12.2416883,3.57312126 L12.2416883,15.1944616 L11.84127,15.1944616 Z M1.09057621,3.00424446 L3.67336154,0.643104167 L14.9966699,0.643104167 L12.4145179,3.00424446 L1.09057621,3.00424446 Z M12.8356268,14.9827994 L12.8356268,3.40185506 L15.5066874,1.00992177 L15.5066874,12.3580933 L12.8356268,14.9827994 Z" id="形状" fill="#4C4C4C" fill-rule="nonzero"></path>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react'
 import { normalizeRelKey, relationshipStyle } from './notation'
+import { svgUrl, typeSvgName, diagramSvgName, relationSvgName } from './iconAssets'
 // 图标字形与画布符号共用同一套参数化几何（shapeGlyphs.tsx），
 // 改一次记法两边同步，不会出现「图标是火柴人、画布上是火柴棍」这类漂移。
 import {
@@ -19,6 +20,8 @@ import {
 export interface IconSpec {
   glyph: string
   color: string
+  /** 华望 M-Design 成品 SVG 文件名；有值时优先渲染图片，未命中回退内联 Glyph。 */
+  svg?: string
 }
 
 export interface FamilyInfo {
@@ -205,11 +208,13 @@ export function typeIcon(code: string): IconSpec {
   return {
     glyph: meta?.glyph ?? 'default',
     color: family?.color ?? '#64748b',
+    svg: typeSvgName(code),
   }
 }
 
 export function diagramIcon(code: string): IconSpec {
-  return DIAGRAM_ICONS[code] ?? { glyph: 'default', color: '#64748b' }
+  const base = DIAGRAM_ICONS[code]
+  return base ? { ...base, svg: diagramSvgName(code) } : { glyph: 'default', color: '#64748b' }
 }
 
 /**
@@ -258,9 +263,11 @@ const RELATION_GLYPHS: Record<string, string> = {
 }
 
 export function relationshipIcon(code: string): IconSpec {
+  const key = normalizeRelKey(code)
   return {
-    glyph: RELATION_GLYPHS[normalizeRelKey(code)] ?? 'rel-solid-open',
+    glyph: RELATION_GLYPHS[key] ?? 'rel-solid-open',
     color: relationshipStyle(code).color,
+    svg: relationSvgName(key),
   }
 }
 
@@ -715,17 +722,29 @@ interface IconProps {
 }
 
 function Tile({ spec, size, className, title }: { spec: IconSpec } & Omit<IconProps, 'code'>) {
+  // 华望成品 SVG：自带规范配色，透明背景直接用，不再叠族色底块（否则浅色渐变图标会发脏）。
+  // 未命中映射的类型回退到内联参数化 Glyph，保证零图标缺失、且仍可随主题色变化。
+  const asset = spec.svg ? svgUrl(spec.svg) : undefined
   return (
     <span
-      className={`icon-tile ${className ?? ''}`}
+      className={`icon-tile ${asset ? 'icon-tile-asset' : ''} ${className ?? ''}`}
       title={title}
-      style={{ width: size, height: size, color: spec.color, background: `${spec.color}16` }}
+      style={{
+        width: size,
+        height: size,
+        color: spec.color,
+        background: asset ? undefined : `${spec.color}16`,
+      }}
       aria-hidden={!title}
       role={title ? 'img' : undefined}
     >
-      <svg viewBox="0 0 16 16" width={size} height={size}>
-        <Glyph name={spec.glyph} />
-      </svg>
+      {asset ? (
+        <img src={asset} alt={title ?? ''} width={size} height={size} draggable={false} />
+      ) : (
+        <svg viewBox="0 0 16 16" width={size} height={size}>
+          <Glyph name={spec.glyph} />
+        </svg>
+      )}
     </span>
   )
 }

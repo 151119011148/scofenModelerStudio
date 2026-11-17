@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>SubmachineState</title>
+    <defs>
+        <linearGradient x1="100%" y1="50.7357131%" x2="8.33129883%" y2="50.0718886%" id="linearGradient-1">
+            <stop stop-color="#FEF9DB" offset="0%"></stop>
+            <stop stop-color="#FEF4BD" offset="44.2039696%"></stop>
+            <stop stop-color="#FEEF9E" offset="60.7131546%"></stop>
+            <stop stop-color="#FCF0AC" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1216.000000, -452.000000)">
+            <g id="SubmachineState" transform="translate(1216.000000, 452.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <g id="Block"></g>
+                <rect id="矩形" stroke="#4C4C4C" fill="url(#linearGradient-1)" x="1.5" y="3.5" width="13" height="9" rx="4"></rect>
+                <g id="jx"></g>
+                <path d="M10.2439429,6.67050186 C9.87041594,7.08672393 9.2958536,7.70154262 8.4793253,8.51467675 L10.2933165,10.303361 L12.0112485,8.5142796 C11.3748324,7.84856753 10.8852654,7.33725941 10.2439429,6.67050186 Z" id="路径" stroke="#48432E"></path>
+                <path d="M6.1899889,6.67732976 C5.83011692,7.09228954 5.27948027,7.70257684 4.50037905,8.50794167 L6.24035313,10.2978183 L7.9801977,8.50807499 C7.33447023,7.84598837 6.837607,7.33733037 6.1899889,6.67732976 Z" id="路径" stroke="#48432E"></path>
+            </g>
+        </g>
+    </g>
+</svg>

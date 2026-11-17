@@ -82,7 +82,7 @@ function stereotypeText(stereotypes: string[] | undefined): string {
 const CSS = `
 :root{
   --ink:#1c2430; --ink-2:#46536a; --ink-3:#7a8699;
-  --brand:#2b5cb8; --brand-deep:#1e3f86; --brand-soft:#e9f0fc;
+  --brand:#1890ff; --brand-deep:#096dd9; --brand-soft:#e6f4ff;
   --line:#d7dee8; --line-2:#e7ecf3; --paper:#ffffff; --wash:#f4f7fb;
   --ok:#1f8a4c; --ok-soft:#e4f4ea; --info:#2b6cb0; --info-soft:#e6f0fa;
   --warn:#b7791f; --warn-soft:#fbf0db; --bad:#c0392b; --bad-soft:#fbe7e4;

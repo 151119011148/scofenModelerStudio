@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>ReqDiagram</title>
+    <g id="模型全景图" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-2790.000000, -2056.000000)">
+            <g id="ReqDiagram" transform="translate(2790.000000, 2056.000000)">
+                <g id="SysMLPackageDiagram">
+                    <g id="blank-空白文档" transform="translate(0.000000, 1.000000)">
+                        <polygon id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" points="2.45246531e-13 0 15 0 15 15 2.13162821e-13 15"></polygon>
+                        <polygon id="形状" fill="#97958C" fill-rule="nonzero" points="11.2371622 0 2.13162821e-13 0 2.13162821e-13 15 15 15 15 3.97748204"></polygon>
+                        <polygon id="路径" fill="#FFFFFF" points="14 14 1 14 1 1 11.2261972 1 11.2706545 3.99329269 14 4.02481399"></polygon>
+                    </g>
+                    <polygon id="路径" fill="#4C4C4C" points="2.27373675e-12 9.09494702e-12 2.27373675e-12 16 16 16 16 4 11.9863063 9.09494702e-12"></polygon>
+                    <polygon id="路径" fill="#FFFFFF" points="1 1 1 15 15 15 15 4.5 11.488018 1"></polygon>
+                    <g id="表-表格_jurassic" transform="translate(1.000000, 1.000000)" fill="#EAEDC5" fill-rule="nonzero">
+                        <polygon id="形状" points="0 0 0 14 14 14 14 3.5 10.488018 0"></polygon>
+                    </g>
+                    <g id="编组-11" transform="translate(10.000000, 3.000000)">
+                        <rect id="矩形" fill="#97958C" x="0" y="0" width="3" height="3"></rect>
+                        <rect id="矩形" fill="#FFFFCF" x="1" y="1" width="1" height="1"></rect>
+                    </g>
+                    <polygon id="路径" fill="#4C4C4C" fill-rule="nonzero" points="10.6666667 9.09494702e-12 12 9.09494702e-12 16 4 16 5.33333333 10.6666667 5.33333333"></polygon>
+                    <polygon id="路径" fill="#FFFFFF" fill-rule="nonzero" points="11.6666667 1 15.0010173 4.33333333 11.6666667 4.33085124"></polygon>
+                    <g id="EndPathMultiplicity" fill="#000000" fill-rule="nonzero" opacity="0">
+                        <g id="jiantou" transform="translate(8.000000, 8.000000) rotate(90.000000) translate(-8.000000, -8.000000) ">
+                            <rect id="矩形" x="0" y="2.34141816e-14" width="16" height="16"></rect>
+                        </g>
+                    </g>
+                </g>
+                <g id="编组-11" transform="translate(6.000000, 2.000000)">
+                    <rect id="矩形" fill="#97958C" x="0" y="0" width="3" height="3"></rect>
+                    <rect id="矩形" fill="#FFFFCF" x="1" y="1" width="1" height="1"></rect>
+                </g>
+                <g id="编组-11" transform="translate(11.000000, 7.000000)">
+                    <rect id="矩形" fill="#97958C" x="0" y="0" width="3" height="3"></rect>
+                    <rect id="矩形" fill="#FFFFCF" x="1" y="1" width="1" height="1"></rect>
+                </g>
+                <g id="编组-11" transform="translate(10.000000, 11.000000)">
+                    <rect id="矩形" fill="#97958C" x="0" y="0" width="3" height="3"></rect>
+                    <rect id="矩形" fill="#FFFFCF" x="1" y="1" width="1" height="1"></rect>
+                </g>
+                <g id="编组-11" transform="translate(1.000000, 7.000000)">
+                    <rect id="矩形" fill="#97958C" x="0" y="0" width="3" height="3"></rect>
+                    <rect id="矩形" fill="#FFFFCF" x="1" y="1" width="1" height="1"></rect>
+                </g>
+                <g id="编组-11" transform="translate(10.000000, 11.000000)">
+                    <rect id="矩形" fill="#97958C" x="0" y="0" width="3" height="3"></rect>
+                    <rect id="矩形" fill="#FFFFCF" x="1" y="1" width="1" height="1"></rect>
+                </g>
+                <g id="编组-11" transform="translate(6.000000, 12.000000)">
+                    <rect id="矩形" fill="#97958C" x="0" y="0" width="3" height="3"></rect>
+                    <rect id="矩形" fill="#FFFFCF" x="1" y="1" width="1" height="1"></rect>
+                </g>
+                <g id="编组-11" transform="translate(1.000000, 3.000000)">
+                    <rect id="矩形" fill="#97958C" x="1" y="0" width="3" height="3"></rect>
+                    <rect id="矩形" fill="#FFFFCF" x="2" y="1" width="1" height="1"></rect>
+                    <rect id="矩形" fill="#97958C" x="6" y="2" width="1" height="7"></rect>
+                    <path d="M9.62132034,1.67157288 L10.3284271,2.37867966 L6.32,6.37057288 L6.32842712,6.37867966 L0.684234619,12 L-6.21724894e-15,12 L2.28972397e-11,11.3046875 L5.62132034,5.67157288 L5.625,5.67557288 L9.62132034,1.67157288 Z" id="形状结合" fill="#97958C"></path>
+                    <polygon id="形状结合" fill="#97958C" transform="translate(6.500000, 5.094301) rotate(90.000000) translate(-6.500000, -5.094301) " points="5.91895722 0.587419318 6.99165858 0.928931522 6.87765789 9.52821358 6.39383095 10.0120405 5.90217077 9.52038034"></polygon>
+                    <rect id="矩形" fill="#97958C" x="3" y="5" width="7" height="1"></rect>
+                </g>
+                <path d="M7.12291351,11 L7.12291351,8.91268759 L7.35053111,8.91268759 C7.60849772,8.91268759 7.79691452,8.93144611 7.91578149,8.96896317 C8.03464846,9.00648022 8.14719272,9.07582992 8.25341426,9.17701228 C8.35963581,9.27819463 8.5569044,9.52319236 8.84522003,9.91200546 L9.65705615,11 L11,11 L10.3209408,10.0245566 C10.0528579,9.63574352 9.8397825,9.36516598 9.68171472,9.21282401 C9.52364694,9.06048204 9.323217,8.92064575 9.08042489,8.79331514 C9.56853819,8.72964984 9.93525544,8.57560255 10.1805766,8.33117326 C10.4258978,8.08674397 10.5485584,7.77694407 10.5485584,7.40177353 C10.5485584,7.10618463 10.4676277,6.84356526 10.3057663,6.61391542 C10.1439049,6.38426558 9.92830046,6.22453388 9.65895296,6.13472033 C9.38960546,6.04490678 8.95776429,6 8.36342944,6 L6,6 L6,11 L7.12291351,11 Z M7.81439863,7.99983257 L7,8 L7,7 L7.84594482,7.0000525 C8.20338629,7.00057754 8.41973244,7.00504032 8.49498328,7.01344086 C8.65551839,7.03494624 8.77982163,7.08646953 8.86789298,7.16801075 C8.95596433,7.24955197 9,7.35663082 9,7.48924731 C9,7.60752688 8.96655518,7.70609319 8.89966555,7.78494624 C8.83277592,7.86379928 8.74024526,7.91935484 8.62207358,7.9516129 C8.5039019,7.98387097 8.20735786,8 7.73244147,8 L7.81439863,7.99983257 Z" id="R" fill="#000000" fill-rule="nonzero"></path>
+            </g>
+        </g>
+    </g>
+</svg>

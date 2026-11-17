@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>InterfaceRealization</title>
+    <defs>
+        <linearGradient x1="87.8173828%" y1="43.3929443%" x2="14.8284912%" y2="43.3929443%" id="linearGradient-1">
+            <stop stop-color="#EEEEEE" offset="0%"></stop>
+            <stop stop-color="#C4EAC7" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1905.000000, -753.000000)">
+            <g id="InterfaceRealization" transform="translate(1905.000000, 753.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <line x1="2" y1="14" x2="8.36396103" y2="7.63603897" id="直线-8" stroke="#0283E2" stroke-width="1.2" stroke-linecap="square"></line>
+                <path d="M9.05462097,5.82681337 L6.0167354,9.76776695 L12.0017436,9.76776695 L9.05462097,5.82681337 Z" id="三角形" stroke="#0283E2" fill="#FFFFFF" transform="translate(9.000000, 7.633883) rotate(45.000000) translate(-9.000000, -7.633883) "></path>
+                <circle id="Operation" stroke="#4C4C4C" fill="url(#linearGradient-1)" cx="12.5" cy="3.5" r="1.5"></circle>
+            </g>
+        </g>
+    </g>
+</svg>

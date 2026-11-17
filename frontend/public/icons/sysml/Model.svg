@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Model</title>
+    <defs>
+        <linearGradient x1="100%" y1="50.853253%" x2="8.33129883%" y2="50.0833737%" id="linearGradient-1">
+            <stop stop-color="#FEF9DB" offset="0%"></stop>
+            <stop stop-color="#FEF4BD" offset="44.2039696%"></stop>
+            <stop stop-color="#FEEF9E" offset="60.7131546%"></stop>
+            <stop stop-color="#FCF0AC" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1588.000000, -1574.000000)">
+            <g id="Model" transform="translate(1588.000000, 1574.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <polygon id="路径备份-2" fill="#FEEF9F" fill-rule="nonzero" points="13.5021191 13 0.502119095 12.9610898 0.981635236 2 4.83409181 2 5.79720595 4 13.5021191 4"></polygon>
+                <path d="M-0.000125733196,13 C0.00265049798,5.33333333 0.00265049798,1.33333333 -0.000125733196,1 L5.09994507,1 C5.60024036,2 5.60024036,2 5.60024036,2 L6.06690362,3 L15,3 L15,13 L-0.000125733196,13 Z M1.00432712,13 L14.0043271,13 L14,4 L5.64718426,4 L4.71459479,2 L1.00432712,2 L1.00432712,13 Z" id="形状备份-2" fill="#4C4C4C" fill-rule="nonzero"></path>
+                <polygon id="路径备份" fill="url(#linearGradient-1)" points="1 4 14 4 14 14 1 14"></polygon>
+                <path d="M15,15 C5.66666667,15 0.666666667,15 -2.16004992e-12,15 L-2.16004992e-12,3 L5.5,3 C11.8333333,3 15,3.33333333 15,4 C15,7.25340039 15,10.9200671 15,15 Z M1,14 L14,14 L14,3 L1,3 L1,14 Z" id="形状备份" fill="#4C4C4C" fill-rule="nonzero"></path>
+                <path d="M10.021875,8.4078736 L5.3953125,5.0484986 C5.2296875,4.9281861 5,5.0453736 5,5.2500611 L5,11.9688111 C5,12.1734986 5.23125,12.2891236 5.3953125,12.1703736 L10.021875,8.8109986 C10.159375,8.7109986 10.159375,8.5078736 10.021875,8.4078736 Z M5.996875,6.7172486 L8.6015625,8.6094361 L5.996875,10.5016236 L5.996875,6.7172486 Z" id="形状" fill="#4C4C4C" fill-rule="nonzero" transform="translate(7.562500, 8.609097) rotate(-90.000000) translate(-7.562500, -8.609097) "></path>
+            </g>
+        </g>
+    </g>
+</svg>

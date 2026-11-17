@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Metaclass</title>
+    <defs>
+        <linearGradient x1="8.33129883%" y1="32.5463867%" x2="93.0472238%" y2="32.5463867%" id="linearGradient-1">
+            <stop stop-color="#FCD4A2" offset="0%"></stop>
+            <stop stop-color="#FDEBEE" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1215.000000, -1347.000000)">
+            <g id="Metaclass" transform="translate(1215.000000, 1347.000000)">
+                <g id="jx" fill="#000000" fill-rule="nonzero" opacity="0">
+                    <rect id="矩形" x="0" y="0" width="16" height="16"></rect>
+                </g>
+                <path d="M14.5,1.5 L1.5,1.5 L1.5,14.5 L14.5,14.5 L14.5,1.5 Z" id="矩形" stroke="#4C4C4C" fill="url(#linearGradient-1)"></path>
+                <path d="M8.32421875,9 L8.32421875,4.125 L9.98046875,9 L10.6640625,9 L12.328125,4.20703125 L12.328125,9 L13.0585938,9 L13.0585938,3.2734375 L12.0390625,3.2734375 L10.6679688,7.2578125 C10.5299479,7.66145833 10.4283854,7.96744792 10.3632812,8.17578125 C10.3059896,7.98828125 10.2148438,7.70572917 10.0898438,7.328125 L10.0898438,7.328125 L8.734375,3.2734375 L7.59375,3.2734375 L7.59375,9 L8.32421875,9 Z" id="M" fill="#000000" fill-rule="nonzero"></path>
+                <line x1="1.77777778" y1="12.5" x2="14.2222222" y2="12.5" id="直线-9" stroke="#4C4C4C" stroke-linecap="square"></line>
+                <line x1="1.77777778" y1="10.5" x2="14.2222222" y2="10.5" id="直线-9" stroke="#4C4C4C" stroke-linecap="square"></line>
+            </g>
+        </g>
+    </g>
+</svg>

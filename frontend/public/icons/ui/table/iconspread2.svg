@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="11px" height="11px" viewBox="0 0 11 11" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>iconspread2</title>
+    <defs>
+        <linearGradient x1="0%" y1="50%" x2="100%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#DEDEDE" offset="0%"></stop>
+            <stop stop-color="#FFFFFF" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="icon" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(-1205.000000, -50.000000)" id="iconspread2">
+            <g transform="translate(1205.000000, 50.000000)">
+                <rect id="矩形" fill="url(#linearGradient-1)" x="1" y="1" width="9" height="9"></rect>
+                <path d="M8,4.99998438 L6.00009375,4.99998438 L4.99990625,5.00014063 L3,5.00014063 L3,6.00009375 L4.99990625,6.00009375 L6.00009375,6.00009375 L8,6.00009375 L8,4.99998438 Z M10,0 C10.5522969,0 11,0.44771875 11,1 L11,1 L11,10 C11,10.5522969 10.5522969,11 10,11 L10,11 L1,11 C0.44771875,11 0,10.5522969 0,10 L0,10 L0,1 C0,0.44771875 0.44771875,0 1,0 L1,0 Z M9.5,1 L1.5,1 C1.22385937,1 1,1.22385937 1,1.5 L1,1.5 L1,9.5 C1,9.77614063 1.22385937,10 1.5,10 L1.5,10 L9.5,10 C9.77614063,10 10,9.77614063 10,9.5 L10,9.5 L10,1.5 C10,1.22385937 9.77614063,1 9.5,1 L9.5,1 Z" id="形状" fill="#414F58" fill-rule="nonzero"></path>
+            </g>
+        </g>
+    </g>
+</svg>

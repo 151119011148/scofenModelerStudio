@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>DirectedRelationshipPropertyPath</title>
+    <defs>
+        <linearGradient x1="8.33129883%" y1="32.5463867%" x2="93.0472238%" y2="32.5463867%" id="linearGradient-1">
+            <stop stop-color="#FFD598" offset="0%"></stop>
+            <stop stop-color="#FDF5EB" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-2313.000000, -1146.000000)">
+            <g id="DirectedRelationshipPropertyPath" transform="translate(2313.000000, 1146.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <path d="M7.5,13.5 C8.36979808,13.5 9.88982604,12.7509147 11.2470703,11.4285889 C12.4143858,10.2913054 13.5,8.61053027 13.5,8 C13.5,7.41692536 12.5369645,5.94778709 11.2470703,4.70922852 C9.97936252,3.49197334 8.39235643,2.5 7.5,2.5 C6.65528378,2.5 4.90799975,3.4172359 3.56213379,4.70922852 C2.35820635,5.86496423 1.5,7.3690987 1.5,8 C1.5,8.76560717 2.24378702,10.2509148 3.56213379,11.4285889 C4.89624296,12.6203434 6.80913228,13.5 7.5,13.5 Z" id="椭圆形" stroke="#4C4C4C" fill="url(#linearGradient-1)"></path>
+            </g>
+        </g>
+    </g>
+</svg>

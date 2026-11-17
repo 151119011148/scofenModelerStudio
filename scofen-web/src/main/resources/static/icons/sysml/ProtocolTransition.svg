@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>ProtocolTransition</title>
+    <defs>
+        <rect id="path-1" x="2.27373675e-13" y="0" width="16" height="16"></rect>
+    </defs>
+    <g id="模型全景图" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-2318.000000, -1790.000000)">
+            <g id="ProtocolTransition" transform="translate(2318.000000, 1790.000000)">
+                <mask id="mask-2" fill="white">
+                    <use xlink:href="#path-1"></use>
+                </mask>
+                <g id="蒙版"></g>
+                <g id="编组" mask="url(#mask-2)" fill="#0283E2">
+                    <g transform="translate(7.282486, 6.717514) rotate(45.000000) translate(-7.282486, -6.717514) translate(3.746952, -2.782486)" id="矩形">
+                        <polygon points="3.53553391 2.48680993e-11 4.43719863 1.07478398 4.48107937 19 3.48107937 19"></polygon>
+                        <polygon transform="translate(2.121320, 2.121320) rotate(-45.000000) translate(-2.121320, -2.121320) " points="-0.378679656 1.62132034 4.62132034 1.62132034 3.62132034 2.62132034 -0.378679656 2.62132034"></polygon>
+                        <polygon transform="translate(4.949747, 2.121320) rotate(45.000000) translate(-4.949747, -2.121320) " points="2.44974747 1.62132034 7.44974747 1.62132034 7.44974747 2.62132034 3.44974747 2.62132034"></polygon>
+                    </g>
+                </g>
+                <g id="[]/" mask="url(#mask-2)" fill="#262626" fill-rule="nonzero">
+                    <g transform="translate(7.000000, 9.000000)" id="路径">
+                        <polygon points="0 0 0 6 2 6 2 4.99719238 0.597533796 4.99719238 0.597533796 1.0032959 2 1.0032959 2 0"></polygon>
+                        <polygon points="3 0 3 1.00372314 4.39591837 1.00372314 4.39591837 5 3 5 3 6 5 6 5 0"></polygon>
+                        <polygon points="7.5 0 5.28820801 6 5.92047119 6 8 0"></polygon>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

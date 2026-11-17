@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="9px" height="9px" viewBox="0 0 9 9" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Canvasiconaddh</title>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="图元样式" transform="translate(-1427.000000, -2819.000000)">
+            <g id="Canvasiconaddh" transform="translate(1427.000000, 2819.000000)">
+                <g id="编组-2">
+                    <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="9" height="9"></rect>
+                    <circle id="椭圆形" fill="#000000" cx="4.5" cy="4.5" r="4.5"></circle>
+                    <polygon id="路径" fill="#FFFFFF" points="4.91147544 2.09655762 4.08951083 2.09655762 4.08951083 4.09730114 1.90509033 4.09730114 1.90509033 4.9091783 4.08951083 4.9091783 4.08951083 6.95849609 4.91147544 6.95849609 4.91147544 4.9091783 7.09637451 4.9091783 7.09637451 4.09730114 4.91147544 4.09730114"></polygon>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

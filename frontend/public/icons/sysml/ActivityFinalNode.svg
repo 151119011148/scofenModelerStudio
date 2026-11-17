@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>ActivityFinal</title>
+    <g id="九大图" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(-806.000000, -468.000000)" fill-rule="nonzero" id="ActivityFinal">
+            <g transform="translate(806.000000, 468.000000)">
+                <rect id="矩形" fill="#000000" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <path d="M3,8 C3,10.7614237 5.23857625,13 8,13 C10.7614237,13 13,10.7614237 13,8 C13,5.23857625 10.7614237,3 8,3 C5.23857625,3 3,5.23857625 3,8 Z" id="路径" stroke="#4B4B4B" fill="#FFFFFF"></path>
+                <path d="M4.75,8 C4.75,9.79492544 6.20507456,11.25 8,11.25 C9.79492544,11.25 11.25,9.79492544 11.25,8 C11.25,6.20507456 9.79492544,4.75 8,4.75 C6.20507456,4.75 4.75,6.20507456 4.75,8 Z" id="形状" fill="#4B4B4B"></path>
+            </g>
+        </g>
+    </g>
+</svg>

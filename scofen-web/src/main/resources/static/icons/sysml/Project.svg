@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Project</title>
+    <defs>
+        <linearGradient x1="0%" y1="14.2011834%" x2="100%" y2="85.7988166%" id="linearGradient-1">
+            <stop stop-color="#DDCC8F" offset="0%"></stop>
+            <stop stop-color="#E1D4A6" offset="65.1868666%"></stop>
+            <stop stop-color="#FDF7E3" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="模块定义图" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(-441.000000, -391.000000)" id="编组-23">
+            <g transform="translate(408.000000, 360.000000)">
+                <g id="编组-13" transform="translate(4.000000, 4.000000)">
+                    <g id="编组-8" transform="translate(0.000000, 23.000000)">
+                        <g id="Project" transform="translate(29.000000, 4.000000)">
+                            <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                            <rect id="矩形" stroke="#4C4C4C" fill="#4C4C4C" x="0.5" y="1.5" width="14" height="12"></rect>
+                            <rect id="矩形" fill="url(#linearGradient-1)" x="1" y="2" width="13" height="11"></rect>
+                            <polygon id="矩形" fill="#4C4C4C" points="1 9.0291748 14 9.0291748 14 9.9708252 1 9.9708252"></polygon>
+                            <polygon id="矩形" fill="#4C4C4C" points="1 11.0291748 14 11.0291748 14 11.9708252 1 11.9708252"></polygon>
+                            <g id="P" transform="translate(7.617188, 3.000000)" fill="#000000" fill-rule="nonzero">
+                                <path d="M0,5.7265625 L0,0 L2.16015625,0 C2.54036458,0 2.83072917,0.0182291667 3.03125,0.0546875 C3.3125,0.1015625 3.54817708,0.190755208 3.73828125,0.322265625 C3.92838542,0.453776042 4.08138021,0.638020833 4.19726562,0.875 C4.31315104,1.11197917 4.37109375,1.37239583 4.37109375,1.65625 C4.37109375,2.14322917 4.21614583,2.55533854 3.90625,2.89257812 C3.59635417,3.22981771 3.03645833,3.3984375 2.2265625,3.3984375 L0.7578125,3.3984375 L0.7578125,5.7265625 L0,5.7265625 Z M0.7578125,2.72265625 L2.23828125,2.72265625 C2.72786458,2.72265625 3.07552083,2.63151042 3.28125,2.44921875 C3.48697917,2.26692708 3.58984375,2.01041667 3.58984375,1.6796875 C3.58984375,1.44010417 3.52929688,1.23502604 3.40820312,1.06445312 C3.28710938,0.893880208 3.12760417,0.78125 2.9296875,0.7265625 C2.80208333,0.692708333 2.56640625,0.67578125 2.22265625,0.67578125 L0.7578125,0.67578125 L0.7578125,2.72265625 Z" id="形状"></path>
+                            </g>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

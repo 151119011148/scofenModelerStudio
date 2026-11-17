@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>NumberingScheme</title>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="NumberingScheme">
+            <rect id="矩形" fill="#D8D8D8" opacity="0" x="0" y="0" width="16" height="16"></rect>
+            <g id="#" transform="translate(2.099000, 5.744000)" fill="#000000" fill-opacity="0.85" fill-rule="nonzero">
+                <path d="M2.16,0 L1.872,1.503 L2.673,1.503 L2.961,0 L3.654,0 L3.366,1.503 L3.987,1.503 L3.987,2.25 L3.249,2.25 L3.06,3.222 L3.78,3.222 L3.78,3.969 L2.898,3.969 L2.655,5.256 L1.962,5.256 L2.205,3.969 L1.404,3.969 L1.152,5.256 L0.459,5.256 L0.711,3.969 L0,3.969 L0,3.222 L0.846,3.222 L1.044,2.25 L0.297,2.25 L0.297,1.503 L1.17,1.503 L1.467,0 L2.16,0 Z M1.548,3.222 L2.358,3.222 L2.565,2.25 L1.737,2.25 L1.548,3.222 Z" id="形状"></path>
+            </g>
+            <g id="-" transform="translate(7.315000, 8.178000)" fill="#000000" fill-opacity="0.85" fill-rule="nonzero">
+                <polygon id="路径" points="1.764 0.086 1.764 0.914 0 0.914 0 0.086"></polygon>
+            </g>
+            <g id="#备份" transform="translate(10.099000, 5.744000)" fill="#000000" fill-opacity="0.85" fill-rule="nonzero">
+                <path d="M2.16,0 L1.872,1.503 L2.673,1.503 L2.961,0 L3.654,0 L3.366,1.503 L3.987,1.503 L3.987,2.25 L3.249,2.25 L3.06,3.222 L3.78,3.222 L3.78,3.969 L2.898,3.969 L2.655,5.256 L1.962,5.256 L2.205,3.969 L1.404,3.969 L1.152,5.256 L0.459,5.256 L0.711,3.969 L0,3.969 L0,3.222 L0.846,3.222 L1.044,2.25 L0.297,2.25 L0.297,1.503 L1.17,1.503 L1.467,0 L2.16,0 Z M1.548,3.222 L2.358,3.222 L2.565,2.25 L1.737,2.25 L1.548,3.222 Z" id="形状"></path>
+            </g>
+        </g>
+    </g>
+</svg>

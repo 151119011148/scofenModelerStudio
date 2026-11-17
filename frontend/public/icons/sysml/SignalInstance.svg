@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>SignalInstance</title>
+    <defs>
+        <linearGradient x1="0.335992133%" y1="50%" x2="100%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#C0E0FE" offset="0%"></stop>
+            <stop stop-color="#7DC1FF" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="UI建模图" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="仿真新增图标" transform="translate(-128.000000, -286.000000)">
+            <g id="SignalInstance" transform="translate(128.000000, 286.000000)">
+                <rect id="矩形" x="0" y="0" width="16" height="16"></rect>
+                <circle id="椭圆形" fill="#4C4C4C" cx="8" cy="8" r="6"></circle>
+                <circle id="椭圆形" fill="url(#linearGradient-1)" cx="8" cy="8" r="5"></circle>
+                <text id="S" font-family="SourceHanSansCN-Medium, Source Han Sans CN" font-size="8" font-weight="400" fill="#000002">
+                    <tspan x="6" y="11">S</tspan>
+                </text>
+            </g>
+        </g>
+    </g>
+</svg>

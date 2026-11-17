@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>icon_变更影响分析</title>
+    <defs>
+        <linearGradient x1="0%" y1="14.2011834%" x2="100%" y2="85.7988166%" id="linearGradient-1">
+            <stop stop-color="#DDCC8F" offset="0%"></stop>
+            <stop stop-color="#E1D4A6" offset="65.1868666%"></stop>
+            <stop stop-color="#FDF7E3" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="变更影响分析追溯图---多选变更元素" transform="translate(-341.000000, -384.000000)">
+            <g id="icon_变更影响分析" transform="translate(341.000000, 384.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" stroke="#4C4C4C" fill="#4C4C4C" x="0.5" y="1.5" width="14" height="12"></rect>
+                <rect id="矩形" fill="url(#linearGradient-1)" x="1" y="2" width="13" height="11"></rect>
+                <polyline id="路径-15" stroke="#4C4C4C" points="3.8250933 9.73636565 5.7000933 7.23636565 8.38430594 8.66364208 11.5334266 4.73636565"></polyline>
+            </g>
+        </g>
+    </g>
+</svg>

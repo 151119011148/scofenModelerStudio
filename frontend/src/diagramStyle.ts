@@ -90,7 +90,7 @@ export const FRAME_STYLE_GROUPS: Array<{ label: string; fields: StyleField[] }> 
 /** 常用色板：颜色输入旁边的一键色块，避免每次都开系统取色器。 */
 export const SWATCHES = [
   '#1c2430', '#55616f', '#8a95a3', '#ffffff',
-  '#2b5cb8', '#0f766e', '#b7791f', '#b23c3c',
+  '#1890ff', '#0f766e', '#b7791f', '#b23c3c',
   '#e9f0fc', '#e6f6f3', '#fff2cc', '#fde8e8',
 ]
 
@@ -110,7 +110,7 @@ export const NODE_PRESETS: StylePreset[] = [
 
 export const LINE_PRESETS: StylePreset[] = [
   { label: '默认', style: {} },
-  { label: '主色', style: { lineColor: '#2b5cb8', lineWidth: '2.5' } },
+  { label: '主色', style: { lineColor: '#1890ff', lineWidth: '2.5' } },
   { label: '虚线', style: { lineColor: '#b7791f', lineDash: 'dashed' } },
   { label: '警示', style: { lineColor: '#b23c3c', lineWidth: '2' } },
 ]

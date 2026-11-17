@@ -161,7 +161,7 @@ const triangle = await page.evaluate(`(()=>{
   const cs=getComputedStyle(tri);
   return {color:cs.borderLeftColor, transform:cs.transform, expanded:btn.getAttribute('aria-expanded')}})()`)
 check('项目根有折叠三角', !!triangle)
-check('三角为飞书蓝 rgb(51, 112, 255)', !!triangle && triangle.color === 'rgb(51, 112, 255)', triangle && triangle.color)
+check('三角为华望蓝 rgb(24, 144, 255)', !!triangle && triangle.color === 'rgb(24, 144, 255)', triangle && triangle.color)
 check('展开态三角旋转 90°', !!triangle && triangle.transform !== 'none' && /matrix/.test(triangle.transform), triangle && triangle.transform)
 const before = await page.evaluate(`document.querySelectorAll('.tree-row[data-tree-id]').length`)
 await page.evaluate(`(()=>{const r=document.querySelector('.tree-row.root-node[data-tree-id] .twisty');r.click();return 1})()`)

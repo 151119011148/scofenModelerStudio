@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>PackageMerge</title>
+    <defs>
+        <rect id="path-1" x="0" y="0" width="16" height="16"></rect>
+    </defs>
+    <g id="模型全景图" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-2753.000000, -1038.000000)">
+            <g id="PackageMerge" transform="translate(2753.000000, 1038.000000)">
+                <mask id="mask-2" fill="white">
+                    <use xlink:href="#path-1"></use>
+                </mask>
+                <g id="蒙版"></g>
+                <g id="编组" mask="url(#mask-2)" fill="#0283E2">
+                    <g transform="translate(7.791243, 7.308757) rotate(45.000000) translate(-7.791243, -7.308757) translate(4.184998, -1.683883)">
+                        <path d="M2.98616514,15.6783713 L4.19316514,15.7073713 L4.19461761,17.9852814 L2.99461761,17.9852814 L2.98616514,15.6783713 Z M2.96716514,10.3743713 L4.19216514,10.3903713 L4.19316514,13.7063713 L2.97816514,13.6783713 L2.96716514,10.3743713 Z M2.95016514,5.77837127 L4.19016514,5.80737127 L4.19116514,8.38937127 L2.95916514,8.37437127 L2.95016514,5.77837127 Z M2.93416514,1.32137127 L4.1898321,1.36140498 L4.19016514,3.80737127 L2.94316514,3.77837127 L2.93416514,1.32137127 Z" id="形状结合"></path>
+                        <polygon id="矩形" transform="translate(2.192031, 2.333452) rotate(-45.000000) translate(-2.192031, -2.333452) " points="-0.307968978 1.73345238 4.69203102 1.73345238 4.69203102 2.93345238 -0.307968978 2.93345238"></polygon>
+                        <polygon id="矩形" transform="translate(5.020458, 2.192031) rotate(45.000000) translate(-5.020458, -2.192031) " points="2.52045815 1.59203102 7.52045815 1.59203102 7.52045815 2.79203102 2.52045815 2.79203102"></polygon>
+                    </g>
+                </g>
+                <text id="M" mask="url(#mask-2)" font-family="Arial-BoldMT, Arial" font-size="8" font-weight="bold" fill="#0283E2">
+                    <tspan x="9" y="14">M</tspan>
+                </text>
+            </g>
+        </g>
+    </g>
+</svg>

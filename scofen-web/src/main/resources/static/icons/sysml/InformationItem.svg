@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>InformationItem</title>
+    <defs>
+        <linearGradient x1="8.33129883%" y1="32.5463867%" x2="93.0472238%" y2="32.5463867%" id="linearGradient-1">
+            <stop stop-color="#FCD4A2" offset="0%"></stop>
+            <stop stop-color="#FDEBEE" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="InformationItem">
+            <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+            <rect id="矩形" stroke="#4C4C4C" fill="#4C4C4C" x="0.5" y="1.5" width="14" height="12"></rect>
+            <polygon id="矩形" fill="url(#linearGradient-1)" points="1 2 14 2 14 13 1 13"></polygon>
+            <polygon id="三角形" fill="#000000" transform="translate(7.976923, 7.500252) rotate(90.000000) translate(-7.976923, -7.500252) " points="7.92042131 4.52332869 10.4766713 10.4771748 5.47717485 10.4771748"></polygon>
+        </g>
+    </g>
+</svg>

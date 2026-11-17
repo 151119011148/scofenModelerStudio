@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="14px" height="14px" viewBox="0 0 14 14" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>iconchoosedelete2</title>
+    <defs>
+        <linearGradient x1="100%" y1="50.2027809%" x2="9.17327275%" y2="50.0214948%" id="linearGradient-1">
+            <stop stop-color="#98CAEB" offset="0%"></stop>
+            <stop stop-color="#CEE6F6" offset="43.5969172%"></stop>
+            <stop stop-color="#8BC6ED" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="100%" y1="50.2027809%" x2="8.33129883%" y2="50.0198143%" id="linearGradient-2">
+            <stop stop-color="#E5E5C8" offset="0%"></stop>
+            <stop stop-color="#FFFFF1" offset="44.2039696%"></stop>
+            <stop stop-color="#E6E6CA" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="编号管理" transform="translate(-1293.000000, -536.000000)">
+            <g id="iconchoosedelete2" transform="translate(1293.000000, 536.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="14" height="14"></rect>
+                <rect id="矩形" fill="#4C4C4C" x="1" y="1" width="10" height="5"></rect>
+                <rect id="矩形" fill="#4C4C4C" x="2" y="6" width="1" height="4"></rect>
+                <rect id="矩形" fill="#4C4C4C" x="2" y="10" width="3" height="1"></rect>
+                <rect id="矩形" fill="url(#linearGradient-1)" x="2" y="2" width="8" height="3"></rect>
+                <rect id="矩形" fill="#4C4C4C" x="4" y="8" width="10" height="5"></rect>
+                <rect id="矩形" fill="url(#linearGradient-2)" x="5" y="9" width="8" height="3"></rect>
+            </g>
+        </g>
+    </g>
+</svg>

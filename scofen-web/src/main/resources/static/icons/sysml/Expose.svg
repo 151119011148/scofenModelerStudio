@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Expose</title>
+    <defs>
+        <rect id="path-1" x="0" y="0" width="16" height="16"></rect>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Expose">
+            <mask id="mask-2" fill="white">
+                <use xlink:href="#path-1"></use>
+            </mask>
+            <g id="蒙版"></g>
+            <g id="编组" mask="url(#mask-2)">
+                <g transform="translate(7.282486, 6.717514) rotate(45.000000) translate(-7.282486, -6.717514) translate(3.746952, -2.782486)" id="矩形">
+                    <polygon fill="#0283E2" points="3.53553391 2.46841353e-11 4.43719863 1.07478398 4.48107937 19 3.48107937 19"></polygon>
+                    <polygon fill="#FFFFFF" transform="translate(3.610016, 4.652600) rotate(89.000000) translate(-3.610016, -4.652600) " points="2.65452802 3.54914829 4.65460574 3.60079088 4.56542574 5.75605127 2.56542574 5.75605127"></polygon>
+                    <polygon fill="#FFFFFF" transform="translate(3.652950, 9.241873) rotate(89.000000) translate(-3.652950, -9.241873) " points="2.69746274 7.74187313 4.69754046 7.81207457 4.60836046 10.7418731 2.60836046 10.7418731"></polygon>
+                    <polygon fill="#FFFFFF" transform="translate(3.610016, 14.552095) rotate(89.000000) translate(-3.610016, -14.552095) " points="2.65452802 13.4486432 4.65460574 13.5002858 4.56542574 15.6555462 2.56542574 15.6555462"></polygon>
+                    <polygon fill="#0283E2" transform="translate(2.121320, 2.121320) rotate(-45.000000) translate(-2.121320, -2.121320) " points="-0.378679656 1.62132034 4.62132034 1.62132034 3.62132034 2.62132034 -0.378679656 2.62132034"></polygon>
+                    <polygon fill="#0283E2" transform="translate(4.949747, 2.121320) rotate(45.000000) translate(-4.949747, -2.121320) " points="2.44974747 1.62132034 7.44974747 1.62132034 7.44974747 2.62132034 3.44974747 2.62132034"></polygon>
+                </g>
+            </g>
+            <text id="X" mask="url(#mask-2)" font-family="ArialMT, Arial" font-size="8" font-weight="normal" fill="#262626">
+                <tspan x="10" y="15">X</tspan>
+            </text>
+        </g>
+    </g>
+</svg>

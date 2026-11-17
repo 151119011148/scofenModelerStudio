@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>ElementGroup</title>
+    <defs>
+        <linearGradient x1="99.9843785%" y1="51.4419976%" x2="8.34431735%" y2="50.1409016%" id="linearGradient-1">
+            <stop stop-color="#FEF9DB" offset="0%"></stop>
+            <stop stop-color="#FEF4BD" offset="44.2039696%"></stop>
+            <stop stop-color="#FEEF9E" offset="60.7131546%"></stop>
+            <stop stop-color="#FCF0AC" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-459.000000, -526.000000)">
+            <g id="ElementGroup" transform="translate(459.000000, 526.000000)">
+                <rect id="矩形" fill="#97958C" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <path d="M10.3137085,5 L0.313708499,5 L0.313708499,15 L10.3137085,15 L10.3137085,5 Z M1.6917122,2.74094204 L12.0520136,2.74094204 L12.0520136,12.2528395 L11.0404815,12.2528395 L11.0404815,3.71714703 C10.9625093,3.71714703 7.84625283,3.71714703 1.6917122,3.71714703 L1.6917122,2.74094204 Z M4.97703627,0.740942038 L13.9357048,0.740942038 L13.9357048,9.30164979 L13.0161302,9.30164979 L13.0161302,1.61952653 L4.97559945,1.61952653 L4.97703627,0.740942038 Z" id="形状" fill="#4C4C4C" fill-rule="nonzero"></path>
+                <polygon id="路径" fill="url(#linearGradient-1)" points="9.31245868 14 1.3137085 14 1.3137085 6 9.31245868 6"></polygon>
+            </g>
+        </g>
+    </g>
+</svg>

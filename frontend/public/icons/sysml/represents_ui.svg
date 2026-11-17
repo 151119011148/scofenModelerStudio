@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>NestedUIConfig</title>
+    <g id="UI建模图" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="仿真新增图标" transform="translate(-110.000000, -81.000000)">
+            <g id="NestedUIConfig" transform="translate(110.000000, 81.000000)">
+                <rect id="矩形" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" fill="#808080" x="0" y="1" width="16" height="14"></rect>
+                <rect id="矩形" fill="#000000" x="0" y="1" width="16" height="7"></rect>
+                <g id="GUI" transform="translate(2.364000, 1.694000)" fill="#FFFFFF" fill-rule="nonzero">
+                    <path d="M2.583,5.404 C3.311,5.404 3.955,5.117 4.319,4.767 L4.319,2.331 L2.38,2.331 L2.38,3.353 L3.206,3.353 L3.206,4.193 C3.094,4.277 2.898,4.326 2.709,4.326 C1.743,4.326 1.281,3.724 1.281,2.688 C1.281,1.673 1.834,1.071 2.604,1.071 C3.038,1.071 3.311,1.246 3.563,1.477 L4.228,0.679 C3.871,0.322 3.325,0 2.562,0 C1.169,0 -4.54747351e-13,0.994 -4.54747351e-13,2.73 C-4.54747351e-13,4.494 1.134,5.404 2.583,5.404 Z" id="路径"></path>
+                    <path d="M7.455,5.404 C8.841,5.404 9.541,4.613 9.541,2.856 L9.541,0.098 L8.337,0.098 L8.337,2.989 C8.337,3.976 8.022,4.326 7.455,4.326 C6.881,4.326 6.587,3.976 6.587,2.989 L6.587,0.098 L5.341,0.098 L5.341,2.856 C5.341,4.613 6.062,5.404 7.455,5.404 Z" id="路径"></path>
+                    <polygon id="路径" points="10.71 5.306 11.963 5.306 11.963 0.098 10.71 0.098"></polygon>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

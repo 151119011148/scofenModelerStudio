@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="17px" height="16px" viewBox="0 0 17 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>编组 14</title>
+    <defs>
+        <linearGradient x1="87.8173828%" y1="43.3929443%" x2="14.8284912%" y2="43.3929443%" id="linearGradient-1">
+            <stop stop-color="#EEEEEE" offset="0%"></stop>
+            <stop stop-color="#AFDDFF" offset="100%"></stop>
+        </linearGradient>
+        <rect id="path-2" x="2.96912384" y="3" width="10" height="10"></rect>
+        <mask id="mask-3" maskContentUnits="userSpaceOnUse" maskUnits="objectBoundingBox" x="0" y="0" width="10" height="10" fill="white">
+            <use xlink:href="#path-2"></use>
+        </mask>
+    </defs>
+    <g id="6.3-仿真UI配置图元素" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="仿真-初始备份" transform="translate(-262, -390)">
+            <g id="编组-14" transform="translate(262.0309, 390)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" stroke="#4C4C4C" x="1.46912384" y="1.5" width="13" height="13"></rect>
+                <rect id="矩形" fill="url(#linearGradient-1)" x="1.96912384" y="2" width="12" height="12"></rect>
+                <use id="矩形" stroke="#4C4C4C" mask="url(#mask-3)" stroke-width="2" stroke-dasharray="1" xlink:href="#path-2"></use>
+            </g>
+        </g>
+    </g>
+</svg>

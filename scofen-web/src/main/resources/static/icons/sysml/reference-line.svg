@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>编组 23</title>
+    <defs>
+        <linearGradient x1="0%" y1="50%" x2="100%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#DEDEDE" offset="0%"></stop>
+            <stop stop-color="#FFFFFF" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="10.16导出图片功能优化&amp;参考线功能" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="显示参考线" transform="translate(-1170.000000, -120.000000)">
+            <g id="编组-28" transform="translate(1170.000000, 120.000000)">
+                <g id="编组-23" transform="translate(0.004397, 0.000000)">
+                    <rect id="矩形" x="0" y="0" width="16" height="16"></rect>
+                    <g id="编组-14" transform="translate(0.000000, 1.000000)">
+                        <rect id="矩形" stroke="#414F58" fill="url(#linearGradient-1)" x="0.5" y="0.5" width="12.0030007" height="12.0030007" rx="1"></rect>
+                        <g id="编组-10" transform="translate(6.501500, 4.219670) rotate(-180.000000) translate(-6.501500, -4.219670) translate(0.000000, 3.715143)" fill="#414F58">
+                            <rect id="矩形" x="2.64663397e-14" y="0" width="1.69604357" height="1.00905307"></rect>
+                            <rect id="矩形" x="2.82673928" y="0" width="1.853439" height="1.00905307"></rect>
+                            <rect id="矩形" x="5.65347855" y="0" width="1.69604357" height="1.00905307"></rect>
+                            <rect id="矩形" x="8.48021783" y="0" width="1.69604357" height="1.00905307"></rect>
+                            <rect id="矩形" x="11.3069571" y="0" width="1.69604357" height="1.00905307"></rect>
+                        </g>
+                        <g id="编组-8" transform="translate(8.823465, 6.501500) rotate(-270.000000) translate(-8.823465, -6.501500) translate(2.321964, 5.996974)" fill="#414F58">
+                            <rect id="矩形" x="0" y="1.21456209e-14" width="1.69604357" height="1.00905307"></rect>
+                            <rect id="矩形" x="2.82673928" y="6.84697762e-14" width="1.90203263" height="1.00905307"></rect>
+                            <rect id="矩形" x="5.65347855" y="1.11070937e-14" width="1.69604357" height="1.00905307"></rect>
+                            <rect id="矩形" x="8.48021783" y="1.05878301e-14" width="1.69604357" height="1.00905307"></rect>
+                            <rect id="矩形" x="11.3069571" y="1.00685666e-14" width="1.69604357" height="1.00905307"></rect>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

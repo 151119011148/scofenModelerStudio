@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="17px" height="17px" viewBox="0 0 17 17" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Transition2</title>
+    <defs>
+        <filter id="filter-1">
+            <feColorMatrix in="SourceGraphic" type="matrix" values="0 0 0 0 0.007843 0 0 0 0 0.513725 0 0 0 0 0.886275 0 0 0 1.000000 0"></feColorMatrix>
+        </filter>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-3554.000000, -621.000000)">
+            <g id="编组-20" transform="translate(3554.000000, 608.000000)">
+                <g filter="url(#filter-1)" id="Transition">
+                    <g transform="translate(12.359363, 12.446015) rotate(-48.000000) translate(-12.359363, -12.446015) translate(3.859363, 3.946015)">
+                        <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0.592113753" y="0.701796545" width="16" height="16"></rect>
+                        <g id="jx" transform="translate(0.592114, 0.701797)"></g>
+                    </g>
+                </g>
+                <g id="编组-51" transform="translate(1.663716, 22.651079)" fill="#0283E2">
+                    <g id="编组-26" transform="translate(0.146447, 0.000000)">
+                        <g id="Allocate">
+                            <polygon id="路径" transform="translate(2.689837, 4.848921) rotate(-180.000000) translate(-2.689837, -4.848921) " points="0.189837244 4.34892091 5.18983724 4.34892091 5.18983724 5.34892091 0.189837244 5.34892091"></polygon>
+                            <polygon id="路径" transform="translate(0.689837, 2.848921) rotate(-180.000000) translate(-0.689837, -2.848921) " points="0.189837244 0.348920913 1.18983724 0.348920913 1.18983724 5.34892091 0.189837244 5.34892091"></polygon>
+                        </g>
+                    </g>
+                </g>
+                <line x1="3.16371615" y1="27.1510791" x2="14.5" y2="15.5" id="直线-3" stroke="#0283E2" stroke-width="1.2" stroke-linecap="square"></line>
+            </g>
+        </g>
+    </g>
+</svg>

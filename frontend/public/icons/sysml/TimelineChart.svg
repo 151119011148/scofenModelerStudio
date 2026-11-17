@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>TimelineChart</title>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="打勾图标" transform="translate(-2730.000000, -1787.000000)">
+            <g id="TimelineChart" transform="translate(2730.000000, 1787.000000)">
+                <rect id="矩形" fill="#D8D8D8" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" stroke="#4C4C4C" stroke-width="0.5" fill="#FFFFFF" x="1.25" y="1.25" width="13.5" height="13.5"></rect>
+                <g id="编组-26" transform="translate(3.500000, 1.469769)" stroke="#A8AABD" stroke-width="0.5">
+                    <line x1="0.5" y1="-8.68080105e-14" x2="0.5" y2="13.0523804" id="路径-10"></line>
+                    <line x1="3.2967174" y1="-8.68080105e-14" x2="3.2967174" y2="13.0523804" id="路径-10备份-2"></line>
+                    <line x1="6.0533465" y1="-8.68080105e-14" x2="6.0533465" y2="13.0523804" id="路径-10备份-3"></line>
+                    <line x1="8.6496848" y1="-8.68080105e-14" x2="8.6496848" y2="13.0523804" id="路径-10备份-4"></line>
+                </g>
+                <g id="编组-26备份" transform="translate(8.044019, 7.995960) rotate(90.000000) translate(-8.044019, -7.995960) translate(3.469177, 1.500592)" stroke="#A8AABD" stroke-width="0.5">
+                    <line x1="0.5" y1="2.43996083e-13" x2="0.5" y2="12.9907345" id="路径-10"></line>
+                    <line x1="3.2967174" y1="2.44338582e-13" x2="3.2967174" y2="12.9907345" id="路径-10备份-2"></line>
+                    <line x1="6.0533465" y1="2.44676172e-13" x2="6.0533465" y2="12.9907345" id="路径-10备份-3"></line>
+                    <line x1="8.6496848" y1="2.44994132e-13" x2="8.6496848" y2="12.9907345" id="路径-10备份-4"></line>
+                </g>
+                <polyline id="路径-78" stroke="#475AC1" points="1.54865221 12.0708019 6.7967174 12.0708019 6.7967174 5.07939157 12.1496848 5.07939157 12.1496848 9.47446362 14.5393868 9.47446362"></polyline>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>CallOperationAction</title>
+    <defs>
+        <linearGradient x1="100%" y1="50.7357131%" x2="8.33129883%" y2="50.0718886%" id="linearGradient-1">
+            <stop stop-color="#E5E5C8" offset="0%"></stop>
+            <stop stop-color="#FFFFF1" offset="44.2039696%"></stop>
+            <stop stop-color="#E6E6CA" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-809.000000, -453.000000)">
+            <g id="CallOperationAction" transform="translate(809.000000, 453.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" stroke="#4C4C4C" fill="url(#linearGradient-1)" x="1.5" y="3.5" width="13" height="9" rx="4"></rect>
+                <g id="编组-7" transform="translate(5.085786, 7.792893) rotate(-45.000000) translate(-5.085786, -7.792893) translate(2.085786, 4.792893)" fill="#0283E2" fill-rule="nonzero">
+                    <path d="M5.01900209,1.09653072 L4.8621874,5.03073884 C4.86004514,5.06227761 3.49412367,5.15915248 0.764422989,5.32136345 C0.768390182,5.26295753 5.01900209,1.09653072 5.01900209,1.09653072 Z" id="路径"></path>
+                    <path d="M2.04012985,0.899033026 C2.04012985,0.899033026 2.87031748,1.72922065 4.53069273,3.38959591 C4.5847512,3.46201072 3.26942084,4.77644958 3.21574343,4.70454521 C1.56325177,3.05205355 0.737005943,2.22580773 0.737005943,2.22580773 C0.737005943,2.19009336 1.17138058,1.74783513 2.04012985,0.899033026 Z" id="路径"></path>
+                </g>
+                <path d="M10.459399,6.66342255 C10.0904415,7.08268604 9.51987717,7.70568069 8.70704459,8.5321321 L10.4947034,10.3036648 L12.2979234,8.43852735 C11.641323,7.8027927 11.135657,7.31398234 10.459399,6.66342255 Z" id="路径" stroke="#161614" opacity="0.577055432"></path>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>InstanceValue</title>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1588.000000, -1212.000000)">
+            <g id="InstanceValue" transform="translate(1588.000000, 1212.000000)">
+                <g id="jx" fill="#000000" fill-rule="nonzero" opacity="0">
+                    <rect id="矩形" x="0" y="0" width="16" height="16"></rect>
+                </g>
+                <rect id="矩形" fill="#515151" x="1" y="13" width="13" height="1"></rect>
+                <path d="M8.19815195,12 L11.5,3 L9.98049281,3 L8.04209446,8.49152542 C7.80663929,9.15819209 7.62320329,9.72881356 7.49178645,10.2033898 C7.3220397,9.57627119 7.13586585,8.97175141 6.93326489,8.38983051 L5.06057495,3 L3.5,3 L6.81827515,12 L8.19815195,12 Z" id="v" fill="#515151" fill-rule="nonzero"></path>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>importMap</title>
+    <defs>
+        <linearGradient x1="100%" y1="50%" x2="5.04773696%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#579674" offset="0%"></stop>
+            <stop stop-color="#97BAA7" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="50%" y1="-13.3449204%" x2="54.8351414%" y2="100%" id="linearGradient-2">
+            <stop stop-color="#459469" offset="0%"></stop>
+            <stop stop-color="#266844" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="importMap">
+            <rect id="矩形" x="0" y="0" width="16" height="16"></rect>
+            <g id="编组" transform="translate(1.777011, 1.250000)">
+                <rect id="矩形" stroke="#8BBCA1" stroke-width="0.5" fill="#FFFFFF" fill-rule="nonzero" x="4.14370241" y="0" width="8.79100256" height="12.2751285" rx="0.5"></rect>
+                <rect id="矩形" stroke="#75A88C" stroke-width="0.5" fill="#C1DDCD" fill-rule="nonzero" x="5.30507773" y="1.74206298" width="6.1" height="4.14550128"></rect>
+                <line x1="5.66319871" y1="8.25" x2="11.6550777" y2="8.25" id="路径" stroke="url(#linearGradient-1)" stroke-width="0.5"></line>
+                <line x1="5.66319871" y1="10.1328472" x2="11.6550777" y2="10.1328472" id="路径备份" stroke="url(#linearGradient-1)" stroke-width="0.5"></line>
+                <path d="M1.27047592,1.98309843 L8.01510728,1.98309843 C8.29124966,1.98309843 8.51510728,2.20695605 8.51510728,2.48309843 L8.51510728,13.0968517 C8.51510728,13.372994 8.29124966,13.5968517 8.01510728,13.5968517 L1.27047592,13.5968517 C0.994333541,13.5968517 0.770475916,13.372994 0.770475916,13.0968517 L0.770475916,2.48309843 C0.770475916,2.20695605 0.994333541,1.98309843 1.27047592,1.98309843 Z" id="矩形" fill="url(#linearGradient-2)" fill-rule="nonzero" transform="translate(4.642792, 7.789975) rotate(-8.000000) translate(-4.642792, -7.789975) "></path>
+            </g>
+        </g>
+    </g>
+</svg>

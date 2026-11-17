@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="120px" height="120px" viewBox="0 0 120 120" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>packageplaceholder 2</title>
+    <defs>
+        <linearGradient x1="72.9874321%" y1="100%" x2="72.9874321%" y2="9.02056208e-14%" id="linearGradient-1">
+            <stop stop-color="#B9DAFF" offset="0%"></stop>
+            <stop stop-color="#92BCFF" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="扩展库配置" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="设置图片库--" transform="translate(-1531.000000, -1527.000000)">
+            <g id="编组-5" transform="translate(1531.000000, 1527.000000)">
+                <rect id="矩形" x="0" y="0" width="120" height="120"></rect>
+                <g id="编组-3" transform="translate(10.000000, 19.000000)" fill-rule="nonzero">
+                    <path d="M0,3.08452454 C0,1.38098869 1.3665155,0 3.0521978,0 L32.6806423,0 C33.7217435,0 34.6910377,0.536288295 35.2519599,1.42265123 L42.4689219,12.8269745 L97.9478023,12.8270655 C99.6334845,12.8270655 101,14.2080544 101,15.9115902 L101,79.9154755 C101,81.6190113 99.6334845,83 97.9478023,83 L3.0521978,83 C1.3665155,83 0,81.6190113 0,79.9154755 L0,3.08452454 Z" id="形状结合" fill="#B2CDFB"></path>
+                    <rect id="矩形" fill="url(#linearGradient-1)" x="5" y="20" width="92" height="59"></rect>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

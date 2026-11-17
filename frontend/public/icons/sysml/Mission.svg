@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Mission</title>
+    <defs>
+        <linearGradient x1="0%" y1="14.2011834%" x2="100%" y2="85.7988166%" id="linearGradient-1">
+            <stop stop-color="#DDCC8F" offset="0%"></stop>
+            <stop stop-color="#E1D4A6" offset="65.1868666%"></stop>
+            <stop stop-color="#FDF7E3" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="模块定义图" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(-441.000000, -368.000000)" id="编组-23">
+            <g transform="translate(408.000000, 360.000000)">
+                <g id="编组-13" transform="translate(4.000000, 4.000000)">
+                    <g id="Mission" transform="translate(29.000000, 4.000000)">
+                        <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                        <rect id="矩形" stroke="#4C4C4C" fill="#4C4C4C" x="0.5" y="1.5" width="14" height="12"></rect>
+                        <rect id="矩形" fill="url(#linearGradient-1)" x="1" y="2" width="13" height="11"></rect>
+                        <g id="M" transform="translate(7.593750, 3.000000)" fill="#000000" fill-rule="nonzero">
+                            <path d="M0,5.7265625 L0,0 L1.140625,0 L2.49609375,4.0546875 C2.62109375,4.43229167 2.71223958,4.71484375 2.76953125,4.90234375 C2.83463542,4.69401042 2.93619792,4.38802083 3.07421875,3.984375 L4.4453125,0 L5.46484375,0 L5.46484375,5.7265625 L4.734375,5.7265625 L4.734375,0.93359375 L3.0703125,5.7265625 L2.38671875,5.7265625 L0.73046875,0.8515625 L0.73046875,5.7265625 L0,5.7265625 Z" id="路径"></path>
+                        </g>
+                        <polygon id="矩形" fill="#4C4C4C" points="1 9.0291748 14 9.0291748 14 9.9708252 1 9.9708252"></polygon>
+                        <polygon id="矩形" fill="#4C4C4C" points="1 11.0291748 14 11.0291748 14 11.9708252 1 11.9708252"></polygon>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

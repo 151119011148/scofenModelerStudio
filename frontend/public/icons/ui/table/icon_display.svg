@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>icon_展示</title>
+    <defs>
+        <linearGradient x1="0%" y1="50%" x2="100%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#DEDEDE" offset="0%"></stop>
+            <stop stop-color="#FFFFFF" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="0%" y1="50%" x2="100%" y2="50%" id="linearGradient-2">
+            <stop stop-color="#DEDEDE" offset="0%"></stop>
+            <stop stop-color="#FFFFFF" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="自定义属性隔间配置" transform="translate(-756.000000, -234.000000)">
+            <g id="编组-31" transform="translate(140.000000, 140.000000)">
+                <g id="🍥-Kitchen-ProTable" transform="translate(16.000000, 63.000000)">
+                    <g id="单元格" transform="translate(0.000000, 26.000000)">
+                        <g id="icon_展示" transform="translate(600.000000, 5.000000)">
+                            <rect id="矩形" fill="#B8B8B8" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                            <path d="M7.875,3.19902779 C10.4153913,3.19902779 12.6989679,4.66284444 14.7619773,7.50192819 C12.6988282,10.3738627 10.4158134,11.855812 7.875,11.855812 C5.33402643,11.855812 3.05088395,10.3736759 0.988108538,7.50128579 C3.05132004,4.66265988 5.33476887,3.19902779 7.875,3.19902779 Z" id="椭圆形" stroke="#414F58" fill="url(#linearGradient-1)"></path>
+                            <path d="M7.89661155,5.5274199 C8.4488963,5.5274199 8.9488963,5.75127753 9.31082511,6.11320634 C9.67275392,6.47513515 9.89661155,6.97513515 9.89661155,7.5274199 C9.89661155,8.07970465 9.67275392,8.57970465 9.31082511,8.94163347 C8.9488963,9.30356228 8.4488963,9.5274199 7.89661155,9.5274199 C7.3443268,9.5274199 6.8443268,9.30356228 6.48239798,8.94163347 C6.12046917,8.57970465 5.89661155,8.07970465 5.89661155,7.5274199 C5.89661155,6.97513515 6.12046917,6.47513515 6.48239798,6.11320634 C6.8443268,5.75127753 7.3443268,5.5274199 7.89661155,5.5274199 Z" id="椭圆形" stroke="#414F58" fill="url(#linearGradient-2)"></path>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

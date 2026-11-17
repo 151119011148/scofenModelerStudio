@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>ElementValue</title>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1588.000000, -1164.000000)">
+            <g id="ElementValue" transform="translate(1588.000000, 1164.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" stroke="#4C4C4C" x="0.5" y="1.5" width="14" height="12"></rect>
+                <rect id="矩形" fill="#FFFFFF" x="1" y="2" width="13" height="11" rx="1"></rect>
+                <path d="M10.0722656,10.7041016 L12.2314453,5 L11.237793,5 L9.97021484,8.48046875 C9.81624349,8.90299479 9.69628906,9.26464844 9.61035156,9.56542969 C9.49934896,9.16796875 9.37760417,8.78483073 9.24511719,8.41601562 L9.24511719,8.41601562 L8.02050781,5 L7,5 L9.16992188,10.7041016 L10.0722656,10.7041016 Z" id="v" fill="#000000" fill-rule="nonzero"></path>
+            </g>
+        </g>
+    </g>
+</svg>

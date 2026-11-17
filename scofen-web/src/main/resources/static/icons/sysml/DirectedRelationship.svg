@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>DirectedRelationship</title>
+    <defs>
+        <rect id="path-1" x="0" y="0" width="16" height="16"></rect>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="DirectedRelationship">
+            <mask id="mask-2" fill="white">
+                <use xlink:href="#path-1"></use>
+            </mask>
+            <g id="蒙版"></g>
+            <rect id="矩形" fill="#0283E2" mask="url(#mask-2)" transform="translate(9.792893, 8.707107) rotate(45.000000) translate(-9.792893, -8.707107) " x="9.29289322" y="0.707106781" width="1" height="16"></rect>
+            <g id="编组" mask="url(#mask-2)" fill="#0283E2">
+                <g transform="translate(6.364499, 5.635501) rotate(45.000000) translate(-6.364499, -5.635501) translate(2.828965, -2.334301)" id="矩形">
+                    <polygon points="3.53553391 2.43517771e-11 4.43719863 0.901664726 4.48107937 15.9396029 3.48107937 15.9396029"></polygon>
+                    <polygon transform="translate(2.121320, 2.121320) rotate(-45.000000) translate(-2.121320, -2.121320) " points="-0.378679656 1.62132034 4.62132034 1.62132034 3.62132034 2.62132034 -0.378679656 2.62132034"></polygon>
+                    <polygon transform="translate(4.949747, 2.121320) rotate(45.000000) translate(-4.949747, -2.121320) " points="2.44974747 1.62132034 7.44974747 1.62132034 7.44974747 2.62132034 3.44974747 2.62132034"></polygon>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

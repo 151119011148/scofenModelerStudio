@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="17px" height="16px" viewBox="0 0 17 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>编组 44</title>
+    <defs>
+        <rect id="path-1" x="1" y="1" width="14" height="14"></rect>
+        <mask id="mask-2" maskContentUnits="userSpaceOnUse" maskUnits="objectBoundingBox" x="0" y="0" width="14" height="14" fill="white">
+            <use xlink:href="#path-1"></use>
+        </mask>
+    </defs>
+    <g id="6.3-仿真UI配置图元素" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="仿真-初始备份" transform="translate(-262, -510)">
+            <g id="编组-44" transform="translate(262, 510)">
+                <rect id="矩形备份-14" fill="#000000" fill-rule="nonzero" opacity="0" x="0.0308761597" y="0" width="16" height="16"></rect>
+                <use id="矩形备份-18" stroke="#4C4C4C" mask="url(#mask-2)" stroke-width="2" stroke-dasharray="1" xlink:href="#path-1"></use>
+                <rect id="矩形" fill="#4C4C4C" x="0" y="0" width="3" height="3"></rect>
+                <rect id="矩形备份-19" fill="#4C4C4C" x="13" y="0" width="3" height="3"></rect>
+                <rect id="矩形备份-20" fill="#4C4C4C" x="13" y="13" width="3" height="3"></rect>
+                <rect id="矩形备份-21" fill="#4C4C4C" x="0" y="13" width="3" height="3"></rect>
+                <g id="编组-30" transform="translate(4.5107, 4)" fill="#0283E2" stroke="#0283E2" stroke-width="0.4">
+                    <polygon id="矩形" points="9.63390066e-14 0 7 0 7 1 9.63390066e-14 1"></polygon>
+                    <polygon id="矩形备份-22" transform="translate(3.4893, 4.2486) rotate(90) translate(-3.4893, -4.2486)" points="-0.259339103 3.74859593 7.23785276 3.74859593 7.23785276 4.74859593 -0.259339103 4.74859593"></polygon>
+                </g>
+                <polygon id="矩形" fill="#0283E2" points="4 3.80165577 4.5 3.80165577 4.5 5.50575436 4 5.50575436"></polygon>
+                <polygon id="矩形备份-24" fill="#0283E2" transform="translate(8.0375, 11.9525) rotate(90) translate(-8.0375, -11.9525)" points="7.78747823 10.8533155 8.28747823 10.8533155 8.28747823 13.0516597 7.78747823 13.0516597"></polygon>
+                <polygon id="矩形备份-23" fill="#0283E2" points="11.2087928 3.80165577 11.7087928 3.80165577 11.7087928 5.50575436 11.2087928 5.50575436"></polygon>
+            </g>
+        </g>
+    </g>
+</svg>

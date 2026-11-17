@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>iconnone</title>
+    <g id="属性" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="单选1" transform="translate(-410.000000, -305.000000)">
+            <g transform="translate(375.000000, 96.000000)" id="编组-40">
+                <g transform="translate(16.000000, 209.000000)">
+                    <g id="iconnone" transform="translate(19.000000, 0.000000)">
+                        <rect id="矩形" x="0" y="0" width="16" height="16"></rect>
+                        <circle id="椭圆形" stroke="#999999" fill="#FFFFFF" cx="8.32934802" cy="7.86396103" r="5.5"></circle>
+                        <rect id="矩形" fill="#999999" transform="translate(8.400416, 7.935029) rotate(45.000000) translate(-8.400416, -7.935029) " x="7.90041584" y="-1.56497116" width="1" height="19"></rect>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

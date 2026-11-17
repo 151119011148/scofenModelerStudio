@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>DiagonalMessage</title>
+    <g id="九大图" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(-1574.000000, -642.000000)" id="DiagonalMessage">
+            <g transform="translate(1574.000000, 642.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <line x1="2.03068858" y1="2.5" x2="13.0306886" y2="13.5" id="直线-8" stroke="#0283E2" stroke-width="1.2" stroke-linecap="square"></line>
+                <path d="M13,15 L13,11 L9,11 C9,11 9,10 9,10 L14,10 L14,15 C13.9416877,15 13.6083544,15 13,15 Z" id="路径" fill="#0283E2" fill-rule="nonzero" transform="translate(11.500000, 12.500000) rotate(90.000000) translate(-11.500000, -12.500000) "></path>
+            </g>
+        </g>
+    </g>
+</svg>

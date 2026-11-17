@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>SelectPropertiesConfig</title>
+    <defs>
+        <linearGradient x1="100%" y1="51.4419976%" x2="8.33129883%" y2="50.1409016%" id="linearGradient-1">
+            <stop stop-color="#FEF9DB" offset="0%"></stop>
+            <stop stop-color="#FEF4BD" offset="44.2039696%"></stop>
+            <stop stop-color="#FEEF9E" offset="60.7131546%"></stop>
+            <stop stop-color="#FCF0AC" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="UI建模图" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="仿真新增图标" transform="translate(-128.000000, -126.000000)">
+            <g id="SelectPropertiesConfig" transform="translate(128.000000, 126.000000)">
+                <rect id="矩形" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" fill="#D8D8D8" x="1" y="1" width="5" height="4"></rect>
+                <rect id="矩形" fill="#FFFFFF" x="2" y="2" width="3" height="2"></rect>
+                <rect id="矩形" fill="#202020" x="13" y="8" width="3" height="2"></rect>
+                <rect id="矩形" fill="#202020" x="13" y="2" width="3" height="2"></rect>
+                <rect id="矩形" fill="#202020" x="13" y="13" width="3" height="2"></rect>
+                <rect id="矩形" fill="#807A74" x="8" y="7" width="4" height="4"></rect>
+                <rect id="矩形" fill="url(#linearGradient-1)" x="9" y="8" width="2" height="2"></rect>
+                <rect id="矩形" fill="#807A74" x="6" y="0" width="6" height="6"></rect>
+                <rect id="矩形" fill="url(#linearGradient-1)" x="7" y="1" width="4" height="4"></rect>
+                <path d="M3.08571429,7 L6.91428571,7 C6.96162441,7 7,7.03837559 7,7.08571429 L7,10.9142857 C7,10.9616244 6.96162441,11 6.91428571,11 L3.08571429,11 C3.03837559,11 3,10.9616244 3,10.9142857 L3,7.08571429 C3,7.03837559 3.03837559,7 3.08571429,7 Z" id="形状" fill="#B4DBFF" fill-rule="nonzero"></path>
+                <polygon id="路径" fill="#314E8E" fill-rule="nonzero" points="6.46225 8 4.37025 9.96810989 3.53175 9.19648165 3 9.73339224 4.376 11 7 8.531127"></polygon>
+                <path d="M3.08571429,12 L6.91428571,12 C6.96162441,12 7,12.0383756 7,12.0857143 L7,15.9142857 C7,15.9616244 6.96162441,16 6.91428571,16 L3.08571429,16 C3.03837559,16 3,15.9616244 3,15.9142857 L3,12.0857143 C3,12.0383756 3.03837559,12 3.08571429,12 Z" id="形状" fill="#B4DBFF" fill-rule="nonzero"></path>
+                <polygon id="路径" fill="#314E8E" fill-rule="nonzero" points="6.46225 13 4.37025 14.9681099 3.53175 14.1964816 3 14.7333922 4.376 16 7 13.531127"></polygon>
+                <path d="M3.08571429,12 L6.91428571,12 C6.96162441,12 7,12.0383756 7,12.0857143 L7,15.9142857 C7,15.9616244 6.96162441,16 6.91428571,16 L3.08571429,16 C3.03837559,16 3,15.9616244 3,15.9142857 L3,12.0857143 C3,12.0383756 3.03837559,12 3.08571429,12 Z" id="路径"></path>
+                <rect id="矩形" fill="#807A74" x="8" y="12" width="4" height="4"></rect>
+                <rect id="矩形" fill="url(#linearGradient-1)" x="9" y="13" width="2" height="2"></rect>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>获取元素</title>
+    <defs>
+        <linearGradient x1="107.140933%" y1="31.9510561%" x2="-6.44889099%" y2="83.8726382%" id="linearGradient-1">
+            <stop stop-color="#FFFFFF" offset="0%"></stop>
+            <stop stop-color="#D4D4D4" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="客户端支持自定义文档模板" transform="translate(-2080.000000, -292.000000)">
+            <g id="编组-4" transform="translate(2067.000000, 168.000000)">
+                <g id="编组-17" transform="translate(0.000000, 87.000000)">
+                    <g id="编组-12" transform="translate(4.000000, 33.000000)">
+                        <g id="获取元素" transform="translate(9.000000, 4.000000)">
+                            <rect id="矩形" fill="#CFCFCF" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                            <rect id="矩形" stroke="#4C4C4C" fill="url(#linearGradient-1)" x="1.5" y="1.5" width="13" height="13"></rect>
+                            <rect id="矩形" fill="#4C4C4C" x="3" y="3" width="1" height="1"></rect>
+                            <rect id="矩形备份-4" fill="#4C4C4C" x="5" y="3" width="1" height="1"></rect>
+                            <rect id="矩形备份-5" fill="#4C4C4C" x="7" y="3" width="1" height="1"></rect>
+                            <rect id="矩形备份-3" stroke="#4C4C4C" fill="#FFFFFF" x="1.5" y="5.5" width="13" height="9"></rect>
+                            <path d="M7.73930375,7.75993298 C8.2915885,7.75993298 8.7915885,7.98379061 9.15351731,8.34571942 C9.51544612,8.70764823 9.73930375,9.20764823 9.73930375,9.75993298 C9.73930375,10.3122177 9.51544612,10.8122177 9.15351731,11.1741465 C8.7915885,11.5360754 8.2915885,11.759933 7.73930375,11.759933 C7.187019,11.759933 6.687019,11.5360754 6.32509019,11.1741465 C5.96316137,10.8122177 5.73930375,10.3122177 5.73930375,9.75993298 C5.73930375,9.20764823 5.96316137,8.70764823 6.32509019,8.34571942 C6.687019,7.98379061 7.187019,7.75993298 7.73930375,7.75993298 Z" id="椭圆形" stroke="#4C4C4C" fill="#FFFFFF"></path>
+                            <line x1="9.4444296" y1="11.1241107" x2="10.7734671" y2="12.259933" id="路径-2" stroke="#4C4C4C"></line>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

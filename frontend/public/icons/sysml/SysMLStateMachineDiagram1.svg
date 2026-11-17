@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="48px" height="48px" viewBox="0 0 48 48" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>SysMLStateMachineDiagram1</title>
+    <defs>
+        <linearGradient x1="100%" y1="50.2707751%" x2="8.33129883%" y2="50.0264582%" id="linearGradient-1">
+            <stop stop-color="#FEF9DB" offset="0%"></stop>
+            <stop stop-color="#FEF4BD" offset="44.2039696%"></stop>
+            <stop stop-color="#FEEF9E" offset="60.7131546%"></stop>
+            <stop stop-color="#FCF0AC" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="100%" y1="51.4419976%" x2="8.33129883%" y2="50.1409016%" id="linearGradient-2">
+            <stop stop-color="#FEF9DB" offset="0%"></stop>
+            <stop stop-color="#FEF4BD" offset="44.2039696%"></stop>
+            <stop stop-color="#FEEF9E" offset="60.7131546%"></stop>
+            <stop stop-color="#FCF0AC" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="用例图图元SVG" transform="translate(-1399.000000, -639.000000)">
+            <g id="SysMLStateMachineDiagram1" transform="translate(1399.000000, 639.000000)">
+                <g id="blank-空白文档" transform="translate(0.000000, 3.000000)">
+                    <polygon id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" points="7.35739594e-13 0 45 0 45 45 6.39488462e-13 45"></polygon>
+                    <polygon id="形状" fill="#97958C" fill-rule="nonzero" points="33.7114865 0 6.39488462e-13 0 6.39488462e-13 45 45 45 45 11.9324461"></polygon>
+                    <polygon id="路径" fill="#FFFFFF" points="42 42 3 42 3 3 33.6785915 3 33.8119634 11.9798781 42 12.074442"></polygon>
+                </g>
+                <polygon id="路径" fill="#4C4C4C" points="0 0 0 48 48 48 48 12 35.958919 0"></polygon>
+                <polygon id="路径" fill="#FFFFFF" points="3 3 3 45 45 45 45 13.5 34.4640541 3"></polygon>
+                <g id="表-表格_jurassic" transform="translate(3.000000, 3.000000)" fill="#EAEDC5" fill-rule="nonzero">
+                    <polygon id="形状" points="0 0 0 42 42 42 42 10.5 31.4640541 0"></polygon>
+                </g>
+                <path d="M8,6 L35.1970824,6 C35.7156505,6.00002279 36.2139457,6.201442 36.5868544,6.56179187 C40.1956181,10.0490193 42,12.4258579 42,13.6923077 C42,16.8284818 42,19.9646559 42,23.1008301 C42,24.2053996 41.1045695,25.1008301 40,25.1008301 L8,25.1008301 C6.8954305,25.1008301 6,24.2053996 6,23.1008301 L6,8 C6,6.8954305 6.8954305,6 8,6 Z" id="矩形" fill="#4B4B4B"></path>
+                <path d="M11,9 L37,9 C38.1045695,9 39,9.8954305 39,11 L39,20 C39,21.1045695 38.1045695,22 37,22 L11,22 C9.8954305,22 9,21.1045695 9,20 L9,11 C9,9.8954305 9.8954305,9 11,9 Z" id="矩形" fill="url(#linearGradient-1)"></path>
+                <g id="编组-7" transform="translate(23.000000, 10.192308)">
+                    <polygon id="矩形" fill="#4B4B4B" points="0 0.807692308 12 0.807692308 12 9.80769231 0 9.80769231"></polygon>
+                    <polygon id="矩形" fill="#FFFFFF" points="3 3.80769231 9 3.80769231 9 6.80769231 3 6.80769231"></polygon>
+                    <rect id="矩形" fill="#484848" x="7" y="23.8076923" width="3" height="3"></rect>
+                    <rect id="矩形" fill="#484848" x="10" y="14.8076923" width="3" height="12"></rect>
+                </g>
+                <polygon id="矩形" fill="#4B4B4B" points="9 28 24 28 24 43 9 43"></polygon>
+                <polygon id="矩形" fill="url(#linearGradient-2)" points="12 30.894165 21 30.894165 21 39.894165 12 39.894165"></polygon>
+                <polygon id="矩形" fill="#4B4B4B" transform="translate(16.500000, 35.500000) rotate(90.000000) translate(-16.500000, -35.500000) " points="15 34 18 34 18 37 15 37"></polygon>
+                <rect id="矩形" fill="#4B4B4B" x="24" y="34" width="3" height="3"></rect>
+                <polygon id="矩形" fill="#4B4B4B" transform="translate(28.500000, 35.500000) rotate(90.000000) translate(-28.500000, -35.500000) " points="24 34 33 34 33 37 24 37"></polygon>
+                <g id="编组-9" transform="translate(33.000000, 0.000000)" fill-rule="nonzero">
+                    <polygon id="路径" fill="#4C4C4C" points="0 0 15 15 0 15"></polygon>
+                    <polygon id="路径" fill="#FFFFFF" points="1.99694824 3 12 13 1.99694824 12.9925537"></polygon>
+                </g>
+                <line x1="15.5" y1="12.6923077" x2="15.5" y2="18.6923077" id="直线-2" stroke-opacity="0.65" stroke="#000000" stroke-width="3" stroke-linecap="square"></line>
+                <line x1="18.5" y1="15.6923077" x2="21.5" y2="15.6923077" id="直线-3" stroke-opacity="0.65" stroke="#000000" stroke-width="3" stroke-linecap="square"></line>
+            </g>
+        </g>
+    </g>
+</svg>

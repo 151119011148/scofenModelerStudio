@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>InterfaceRequirement</title>
+    <defs>
+        <linearGradient x1="8.33129883%" y1="32.5463867%" x2="93.0472238%" y2="32.5463867%" id="linearGradient-1">
+            <stop stop-color="#FCD4D9" offset="0%"></stop>
+            <stop stop-color="#FDEBEE" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="协同-模型共享&amp;使用" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Requirement构造型拓展" transform="translate(-787.000000, -495.000000)">
+            <g id="编组-23" transform="translate(754.000000, 371.000000)">
+                <g id="编组-13" transform="translate(4.000000, 4.000000)">
+                    <g id="编组-8" transform="translate(0.000000, 116.000000)">
+                        <g id="InterfaceRequirement" transform="translate(29.000000, 4.000000)">
+                            <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                            <rect id="矩形" stroke="#4C4C4C" fill="#4C4C4C" x="0.5" y="1.5" width="14" height="12"></rect>
+                            <polygon id="矩形" fill="url(#linearGradient-1)" points="1 2 14 2 14 13 1 13"></polygon>
+                            <g id="I" transform="translate(9.625000, 4.273438)" fill="#000000" fill-rule="nonzero">
+                                <polygon id="路径" points="0.12109375 5.7265625 0.12109375 0 0.87890625 0 0.87890625 5.7265625"></polygon>
+                            </g>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

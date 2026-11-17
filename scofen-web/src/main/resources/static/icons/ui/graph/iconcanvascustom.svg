@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="12px" viewBox="0 0 16 12" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>编组 2</title>
+    <g id="图表组件面板" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="样式面板2" transform="translate(-99.000000, -179.000000)">
+            <g id="样式面板11（左侧）" transform="translate(80.000000, 101.000000)">
+                <g id="编组-2" transform="translate(19.000000, 78.000000)">
+                    <rect id="矩形" stroke="#8B8B8B" fill="#FFFFFF" x="0.5" y="0.5" width="15" height="11"></rect>
+                    <path d="M6.29882813,4.01055908 L0.966918945,4.00787354 L0.962097168,0.94519043 L7,1 C7,2.33333333 7,3 7,3 C7,3 6.76627604,3.33685303 6.29882813,4.01055908 Z M8.00671387,1.00726318 L0.98601423,0.988943917 L0.998814174,5.00516183 L6.95404053,5.01043701 L8.02172852,3.0255127 L8.00671387,1.00726318 Z" id="形状" fill="#8B8B8B" fill-rule="nonzero"></path>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

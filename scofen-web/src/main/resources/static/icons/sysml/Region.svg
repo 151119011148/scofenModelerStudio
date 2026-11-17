@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Region</title>
+    <defs>
+        <linearGradient x1="100%" y1="50.1906774%" x2="8.33129883%" y2="50.0186316%" id="linearGradient-1">
+            <stop stop-color="#FEF9DB" offset="0%"></stop>
+            <stop stop-color="#FEF4BD" offset="44.2039696%"></stop>
+            <stop stop-color="#FEEF9E" offset="60.7131546%"></stop>
+            <stop stop-color="#FCF0AC" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1905.000000, -401.000000)">
+            <g id="Region" transform="translate(1905.000000, 401.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <path d="M3.5,5.5 L13.5,5.5 C14.0522847,5.5 14.5,5.94771525 14.5,6.5 L14.5,9.5 C14.5,10.0522847 14.0522847,10.5 13.5,10.5 L3.5,10.5 C2.94771525,10.5 2.5,10.0522847 2.5,9.5 L2.5,6.5 C2.5,5.94771525 2.94771525,5.5 3.5,5.5 Z" id="矩形" stroke="#4B4B4B" stroke-linejoin="round" stroke-dasharray="3,1"></path>
+                <polygon id="矩形" fill="url(#linearGradient-1)" points="3 6 14 6 14 10 3 10"></polygon>
+                <rect id="矩形" stroke="#4C4C4C" fill="#D8D8D8" x="2.5" y="3.5" width="1" height="9"></rect>
+                <rect id="矩形" stroke="#4C4C4C" fill="#D8D8D8" x="14.5" y="3.5" width="1" height="9"></rect>
+            </g>
+        </g>
+    </g>
+</svg>

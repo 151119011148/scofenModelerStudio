@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>iconfile1</title>
+    <defs>
+        <linearGradient x1="0%" y1="50%" x2="100%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#DEDEDE" offset="0%"></stop>
+            <stop stop-color="#FFFFFF" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="图元超链接弹窗" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(-1121.000000, -974.000000)" id="iconfile1">
+            <g transform="translate(1121.000000, 974.000000)">
+                <g id="blank-空白文档">
+                    <polygon id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" points="2.615963e-13 0 16 0 16 16 2.27373675e-13 16"></polygon>
+                    <polygon id="形状" fill="#97958C" fill-rule="nonzero" points="10.2371622 1 1 1 1 16 14 16 14 4.97748204"></polygon>
+                    <polygon id="路径" fill="#FFFFFF" points="13 15 1 15 1 2 10.2261972 2 10.2706545 4.99329269 13 5.02481399"></polygon>
+                </g>
+                <polygon id="路径" fill="#8C8C8C" fill-rule="nonzero" points="1 0 1 16 15 16 15 4 10.9863063 0"></polygon>
+                <polygon id="路径" fill="#FFFFFF" points="2 1 2 15 14 15 14 4.5 10.488018 1"></polygon>
+                <g id="表-表格_jurassic" transform="translate(2.000000, 0.000000)">
+                    <polygon id="形状" fill="url(#linearGradient-1)" points="2.91292645e-18 1 2.91292645e-18 15 12 15 12 4.5 8.48801804 1"></polygon>
+                    <polygon id="路径" fill="#8C8C8C" fill-rule="nonzero" points="8.02758789 3.1739446e-14 9 0 13 4 13 5 8.02758789 5"></polygon>
+                    <polygon id="路径" fill="#FFFFFF" fill-rule="nonzero" points="9 1.58410645 11.4019775 3.99776611 9.00010173 3.99776611"></polygon>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

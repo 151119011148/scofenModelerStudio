@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>InterfaceBlock</title>
+    <defs>
+        <linearGradient x1="0%" y1="14.2011834%" x2="100%" y2="85.7988166%" id="linearGradient-1">
+            <stop stop-color="#DDCC8F" offset="0%"></stop>
+            <stop stop-color="#E1D4A6" offset="65.1868666%"></stop>
+            <stop stop-color="#FDF7E3" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-104.000000, -454.000000)">
+            <g id="InterfaceBlock" transform="translate(104.000000, 454.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" stroke="#4C4C4C" fill="#4C4C4C" x="0.5" y="1.5" width="14" height="12"></rect>
+                <rect id="矩形" fill="url(#linearGradient-1)" x="1" y="2" width="13" height="11"></rect>
+                <polygon id="矩形" fill="#4C4C4C" points="1 9 14 9 14 10 1 10"></polygon>
+                <path d="M9.51,8 C10.28,8 10.9,7.75229358 11.37,7.25688073 C11.8,6.79816514 12.02,6.21100917 12.02,5.50458716 C12.02,4.78899083 11.8,4.20183486 11.36,3.73394495 C10.9,3.23853211 10.28,3 9.51,3 C8.73,3 8.12,3.23853211 7.66,3.73394495 C7.22,4.20183486 7,4.78899083 7,5.50458716 C7,6.21100917 7.22,6.79816514 7.66,7.25688073 C8.12,7.75229358 8.73,8 9.51,8 Z M9.51,7.3853211 C8.96,7.3853211 8.53,7.19266055 8.23,6.80733945 C7.95,6.4587156 7.82,6.02752294 7.82,5.50458716 C7.82,4.97247706 7.95,4.5412844 8.23,4.19266055 C8.53,3.80733945 8.96,3.6146789 9.51,3.6146789 C10.05,3.6146789 10.48,3.80733945 10.8,4.19266055 C11.07,4.5412844 11.21,4.97247706 11.21,5.50458716 C11.21,6.01834862 11.07,6.4587156 10.8,6.80733945 C10.48,7.19266055 10.05,7.3853211 9.51,7.3853211 Z" id="o" fill="#000000" fill-rule="nonzero"></path>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -273,23 +273,24 @@ check('用例是椭圆', usecase?.ellipse === 1, JSON.stringify(usecase))
 // 用例按 UML 惯例用绿色识别色（不是中性灰），这是有意为之。
 check('用例描边是 UML 惯例绿', sameColor(usecase?.stroke, '#15803d'), String(usecase?.stroke))
 
-// 用例图打开时，工具箱白名单里含参与者与用例——正好验证图标与画布同源。
-console.log('[4] 工具箱图标与画布符号同源')
-// 图标侧用的是同一套几何生成器：参与者图标同样是 1 圆 + 4 线，用例图标是椭圆。
+// 用例图打开时，工具箱白名单里含参与者与用例。
+console.log('[4] 工具箱图标：成品 SVG 优先、内联 Glyph 兜底')
+// 换肤后工具箱图标改用华望成品 SVG（<img src="…/Actor.svg">）；
+// 未命中映射的类型仍回退内联 <svg>。两种形态都算图标，且都必须成功渲染。
 const icons = await page.evaluate(`(()=>{
-  const all=[...document.querySelectorAll('.toolbox svg')].map(s=>({
-    circles:s.querySelectorAll('circle').length,
-    lines:s.querySelectorAll('line').length,
-    ellipses:s.querySelectorAll('ellipse').length,
-    paths:s.querySelectorAll('path').length,
-    rects:s.querySelectorAll('rect').length,
-  }));
-  return {count:all.length, hasActor:all.some(s=>s.circles===1&&s.lines===4),
-    hasUsecase:all.some(s=>s.ellipses===1), all};
+  const tiles=[...document.querySelectorAll('.toolbox .icon-tile')];
+  const imgs=tiles.map(t=>t.querySelector('img')).filter(Boolean);
+  const svgs=tiles.map(t=>t.querySelector(':scope > svg')).filter(Boolean);
+  const srcs=imgs.map(i=>i.getAttribute('src')||'');
+  const decoded=imgs.filter(i=>i.complete&&i.naturalWidth>0).length;
+  return {count:tiles.length, asset:imgs.length, inline:svgs.length, decoded,
+    hasActor:srcs.some(s=>/Actor\\.svg/.test(s)), hasUsecase:srcs.some(s=>/UseCase\\.svg/.test(s)),
+    sample:srcs.slice(0,8)};
 })()`)
 check('工具箱有图标', !!icons && icons.count > 0, JSON.stringify(icons?.count))
-check('工具箱里有火柴人图标（圆 + 4 线）', !!icons?.hasActor, JSON.stringify(icons?.all?.slice(0, 12)))
-check('工具箱里有用例图标（椭圆）', !!icons?.hasUsecase, JSON.stringify(icons?.all?.slice(0, 12)))
+check('工具箱图标含成品 SVG 且全部成功解码', !!icons?.asset && icons.decoded === icons.asset, JSON.stringify(icons))
+check('工具箱有参与者成品图标 Actor.svg', !!icons?.hasActor, JSON.stringify(icons?.sample))
+check('工具箱有用例成品图标 UseCase.svg', !!icons?.hasUsecase, JSON.stringify(icons?.sample))
 
 const pkgOpen = await openDiagram('包图')
 check('包图已打开', pkgOpen)

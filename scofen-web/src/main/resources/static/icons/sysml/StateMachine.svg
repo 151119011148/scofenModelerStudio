@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>StateMachine</title>
+    <defs>
+        <linearGradient x1="100%" y1="50.2997324%" x2="8.33129883%" y2="50.0292877%" id="linearGradient-1">
+            <stop stop-color="#FEF9DB" offset="0%"></stop>
+            <stop stop-color="#FEF4BD" offset="44.2039696%"></stop>
+            <stop stop-color="#FEEF9E" offset="60.7131546%"></stop>
+            <stop stop-color="#FCF0AC" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-2308.000000, -1311.000000)">
+            <g id="StateMachine" transform="translate(2308.000000, 1311.000000)">
+                <g id="编组-51">
+                    <g id="blank-空白文档备份" fill="#000000" fill-rule="nonzero" opacity="0">
+                        <polygon id="矩形" points="3.42226247e-14 0 16 0 16 16 -5.04870979e-29 16"></polygon>
+                    </g>
+                    <polygon id="矩形" fill="#4B4B4B" points="2 1.26923077 13.8986816 1.26923077 13.8986816 7.73076923 2 7.73076923"></polygon>
+                    <rect id="矩形" fill="url(#linearGradient-1)" x="3" y="2.19230769" width="10" height="4.55915715"></rect>
+                    <line x1="5.5" y1="3.5" x2="5.5" y2="5.5" id="直线-2" stroke-opacity="0.65" stroke="#000000" stroke-linecap="square"></line>
+                    <line x1="4.5" y1="4.5" x2="7.5" y2="4.5" id="直线-3" stroke-opacity="0.65" stroke="#000000" stroke-linecap="square"></line>
+                </g>
+                <polygon id="矩形" fill="#4B4B4B" points="8 3 12 3 12 6 8 6"></polygon>
+                <polygon id="矩形" fill="#FFFFFF" points="9 4 11 4 11 5 9 5"></polygon>
+                <path d="M11.5,8 L11.5,11.5" id="直线" stroke="#4C4C4C" stroke-linecap="square"></path>
+                <path d="M8.15609626,9.82711082 L4.97199342,9.96814148 L4.81508741,13.1681109 L8.0032834,12.9994218 L8.15609626,9.82711082 Z" id="矩形" stroke-opacity="0.65" stroke="#000000" transform="translate(6.485238, 11.500000) rotate(45.000000) translate(-6.485238, -11.500000) "></path>
+                <rect id="矩形" fill="#4B4B4B" transform="translate(6.500000, 11.500000) rotate(90.000000) translate(-6.500000, -11.500000) " x="6" y="11" width="1" height="1"></rect>
+                <rect id="矩形" fill="#484848" x="9" y="11" width="3" height="1"></rect>
+            </g>
+        </g>
+    </g>
+</svg>

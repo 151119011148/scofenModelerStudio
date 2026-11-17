@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>TextBox</title>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-459.000000, -792.000000)">
+            <g id="TextBox" transform="translate(459.000000, 792.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" stroke="#4C4C4C" fill="#4C4C4C" x="0.813708499" y="1.5" width="14" height="12"></rect>
+                <polygon id="矩形" fill="#FFFFFF" points="1.3137085 2 14.3137085 2 14.3137085 13 1.3137085 13"></polygon>
+                <path d="M11.1537085,5.12 L3.8737085,5.12 C3.5617085,5.12 3.3137085,4.872 3.3137085,4.56 C3.3137085,4.248 3.5617085,4 3.8737085,4 L11.1537085,4 C11.4657085,4 11.7137085,4.248 11.7137085,4.56 C11.7137085,4.872 11.4657085,5.12 11.1537085,5.12 Z M7.5377085,11.64 C7.2337085,11.64 6.9777085,11.392 6.9777085,11.08 L6.9377085,4.6 C6.9377085,4.288 7.1857085,4.04 7.4977085,4.04 C7.8017085,4.04 8.0577085,4.288 8.0577085,4.6 L8.0977085,11.08 C8.0977085,11.384 7.8497085,11.64 7.5377085,11.64 L7.5377085,11.64 Z" id="形状" fill="#000000" fill-rule="nonzero"></path>
+            </g>
+        </g>
+    </g>
+</svg>

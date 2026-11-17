@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Interaction</title>
+    <defs>
+        <linearGradient x1="87.8173828%" y1="43.3929443%" x2="14.8284912%" y2="43.3929443%" id="linearGradient-1">
+            <stop stop-color="#EEEEEE" offset="0%"></stop>
+            <stop stop-color="#C4EAC7" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1905.000000, -501.000000)">
+            <g id="Interaction" transform="translate(1905.000000, 501.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" stroke="#4C4C4C" fill="#4C4C4C" x="0.5" y="1.5" width="14" height="12"></rect>
+                <rect id="矩形" fill="url(#linearGradient-1)" x="1" y="2" width="13" height="11"></rect>
+                <path d="M13,9.5 C12.3096441,9.5 11.6846441,9.77982203 11.232233,10.232233 C10.779822,10.6846441 10.5,11.3096441 10.5,12 C10.5,12.6903559 10.779822,13.3153559 11.232233,13.767767 C11.6846441,14.220178 12.3096441,14.5 13,14.5 C13.6903559,14.5 14.3153559,14.220178 14.767767,13.767767 C15.220178,13.3153559 15.5,12.6903559 15.5,12 C15.5,11.3096441 15.220178,10.6846441 14.767767,10.232233 C14.3153559,9.77982203 13.6903559,9.5 13,9.5 Z" id="路径" stroke="#4B4B4B" fill="#FFFFFF" fill-rule="nonzero"></path>
+                <path d="M12,12 C12,12.5522847 12.4477153,13 13,13 C13.5522847,13 14,12.5522847 14,12 C14,11.4477153 13.5522847,11 13,11 C12.4477153,11 12,11.4477153 12,12 Z" id="形状" fill="#4B4B4B" fill-rule="nonzero"></path>
+                <path d="M6.86638369,7.67391162 L9,5.5 L6.86638369,3.67391162 C6.86638369,3.67391162 7.36638369,3.17391162 7.36638369,3.17391162 L9.93359634,5.39330103 L7.36638369,8.17391162 C7.3045342,8.11206212 7.08376085,7.89128877 6.86638369,7.67391162 Z" id="路径" fill="#4B4B4B" fill-rule="nonzero"></path>
+                <line x1="10.5" y1="9.5" x2="4.25251455" y2="9.33858447" id="直线-8" stroke="#4B4B4B" stroke-width="1.2" stroke-linecap="square"></line>
+                <path d="M5.88613086,7.16467285 L3.75251455,9.33858447 L5.88613086,11.1646729 C5.88613086,11.1646729 5.38613086,11.6646729 5.38613086,11.6646729 L2.81891821,9.44528345 L5.38613086,6.66467285 C5.44798036,6.72652235 5.66875371,6.9472957 5.88613086,7.16467285 Z" id="路径" fill="#4B4B4B" fill-rule="nonzero"></path>
+                <line x1="2.5" y1="5.5" x2="8.5" y2="5.5" id="直线-8" stroke="#4B4B4B" stroke-width="1.2" stroke-linecap="square"></line>
+            </g>
+        </g>
+    </g>
+</svg>

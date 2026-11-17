@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="17px" height="16px" viewBox="0 0 17 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>编组 41</title>
+    <g id="6.3-仿真UI配置图元素" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="仿真-初始备份" transform="translate(-262, -438)">
+            <g id="编组-41" transform="translate(262.0309, 438)">
+                <rect id="矩形备份-28" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <g id="编组-36" transform="translate(1.9691, 1)">
+                    <polygon id="路径-4" fill="#4C4C4C" points="0 7.32175283e-18 0 14 12 14 12 3.99786183 7.9938537 -2.47579734e-14"></polygon>
+                    <polygon id="路径-4备份" fill="#FFFFFF" points="1 1 1 13 11.0021939 13 11.0021939 4.42673871 7.8518746 1"></polygon>
+                    <g id="编组-31" transform="translate(0, 9)">
+                        <rect id="矩形" fill="#FFFFFF" x="0" y="0" width="5" height="5"></rect>
+                        <polygon id="矩形" fill="#0283E2" points="2.46238215e-13 2.06504526 5 2.06504526 5 2.8983786 2.46238215e-13 2.8983786"></polygon>
+                        <polygon id="矩形备份-26" fill="#0283E2" transform="translate(2.5, 2.5) rotate(90) translate(-2.5, -2.5)" points="-2.72060152e-13 2.08333333 5 2.08333333 5 2.91666667 -2.72060152e-13 2.91666667"></polygon>
+                    </g>
+                    <g id="编组-32" transform="translate(7.3553, 1)" stroke="#4C4C4C">
+                        <polyline id="路径-3" points="9.23539127e-14 -2.27373675e-13 9.23539127e-14 3.93162578 3.64468393 3.93162578"></polyline>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

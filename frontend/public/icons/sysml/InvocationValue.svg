@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>iconcall</title>
+    <defs>
+        <linearGradient x1="23.4075917%" y1="50%" x2="82.5144972%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#BBBBBB" offset="0%"></stop>
+            <stop stop-color="#DBDBDB" offset="44.2039696%"></stop>
+            <stop stop-color="#F9F9F9" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="图元样式" transform="translate(-2346.000000, -879.000000)">
+            <g id="iconcall" transform="translate(2346.000000, 879.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" fill="url(#linearGradient-1)" x="2" y="2" width="12" height="11"></rect>
+                <path d="M1,1 L1,14 L15,14 L15,1 L1,1 Z M14,13 L2,13 L2,2 L14,2 L14,13 Z" id="形状" fill="#4C4C4C" fill-rule="nonzero"></path>
+                <rect id="矩形" stroke="#000000" x="9.5" y="4.5" width="2" height="2"></rect>
+                <path d="M6.4015625,11.1932373 C6.4703125,11.2479248 6.571875,11.2807373 6.571875,11.1932373 L6.571875,9.7171875 L10,9.7171875 C10.8737183,9.7171875 10.9874268,9.52288818 10.9874268,8.88183594 L10.9874268,7 L10,7 L10,8.16156006 C10,8.50518799 10.0574097,8.709375 9.75115967,8.709375 L6.571875,8.709375 L6.571875,7 C6.571875,6.9109375 6.4703125,6.865625 6.4015625,6.9203125 L4.696875,9.13125 C4.6421875,9.1703125 4.6421875,9.253125 4.696875,9.2953125 L6.4015625,11.1932373 Z" id="路径" fill="#000000" fill-rule="nonzero"></path>
+            </g>
+        </g>
+    </g>
+</svg>

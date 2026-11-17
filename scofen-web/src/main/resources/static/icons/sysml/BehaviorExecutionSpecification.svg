@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>BehaviorExecutionSpecification</title>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1903.000000, -998.000000)">
+            <g id="BehaviorExecutionSpecification" transform="translate(1903.000000, 998.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <line x1="7.5" y1="1" x2="7.5" y2="6.5" id="直线-7" stroke="#4C4C4C" stroke-dasharray="1,1"></line>
+                <line x1="7.5" y1="10" x2="7.5" y2="15.5" id="直线-7" stroke="#4C4C4C" stroke-dasharray="1,1"></line>
+                <rect id="矩形" stroke="#4C4C4C" fill="#4C4C4C" x="5.5" y="4.5" width="4" height="7" rx="1"></rect>
+                <path d="M7,5 L8,5 C8.55228475,5 9,5.44771525 9,6 L9,10 C9,10.5522847 8.55228475,11 8,11 L7,11 C6.44771525,11 6,10.5522847 6,10 L6,6 C6,5.44771525 6.44771525,5 7,5 Z" id="矩形" fill="#E3F3D5"></path>
+            </g>
+        </g>
+    </g>
+</svg>

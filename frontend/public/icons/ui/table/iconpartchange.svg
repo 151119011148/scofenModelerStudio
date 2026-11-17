@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>iconinterchange</title>
+    <defs>
+        <linearGradient x1="0%" y1="50%" x2="100%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#DEDEDE" offset="0%"></stop>
+            <stop stop-color="#FFFFFF" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="0%" y1="50%" x2="100%" y2="50%" id="linearGradient-2">
+            <stop stop-color="#FBE7B6" offset="0%"></stop>
+            <stop stop-color="#FFCF6C" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="M-Design-V3.0" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="白盒ICD表" transform="translate(-605.000000, -133.000000)">
+            <g id="iconinterchange" transform="translate(605.000000, 133.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="2.45177034e-09" y="0" width="16" height="16"></rect>
+                <path d="M15.7222222,2 C15.8756347,2 16,2.22385763 16,2.5 L16,5.5 C16,5.77614237 15.8756347,6 15.7222222,6 L11.2777778,6 C11.1243653,6 11,5.77614237 11,5.5 L11,2.5 C11,2.22385763 11.1243653,2 11.2777778,2 L15.7222222,2 Z M5,5 L0,5 L0,10 L5,10 L5,5 Z" id="形状" fill="#404E57" fill-rule="nonzero"></path>
+                <path d="M15.5,2.5 L15.5,5.5 L9.5,5.5 L9.5,2.5 L15.5,2.5 Z" id="路径" stroke="#414F58" fill="url(#linearGradient-1)"></path>
+                <path d="M15.5,9.5 L15.5,12.5 L9.5,12.5 L9.5,9.5 L15.5,9.5 Z" id="路径" stroke="#414F58" fill="url(#linearGradient-1)"></path>
+                <polygon id="路径" fill="url(#linearGradient-2)" points="4 6 1 6 1 9 4 9"></polygon>
+                <path d="M7,10.0645367 C8.33333333,8.48622858 9,7.65289525 9,7.56453669 C9,7.49579076 8.33333333,6.66245742 7,5.06453669 C6.8960642,4.89243885 6.61088843,4.89243885 6.50695264,5.06453669 C6.40301684,5.23663452 6.40301684,5.89243885 6.50695264,6.06453669 L7.60803223,7.06453669 L5,7.06453669 L5,8.05507624 L7.60803223,8.05507624 L6.50695264,9.06453669 C6.40301684,9.23663452 6.2417063,9.89243885 6.34564209,10.0645367 C6.39760999,10.1505856 6.9480321,10.1505856 7,10.0645367 Z" id="路径" fill="#414F58" fill-rule="nonzero" transform="translate(7.000000, 7.532268) scale(-1, 1) rotate(-540.000000) translate(-7.000000, -7.532268) "></path>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="8px" height="8px" viewBox="0 0 8 8" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>iconnoticetree</title>
+    <defs>
+        <linearGradient x1="0%" y1="0%" x2="100%" y2="82.280816%" id="linearGradient-1">
+            <stop stop-color="#F5BD01" offset="0%"></stop>
+            <stop stop-color="#E1AD00" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="多面板" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(-63.000000, -317.000000)" id="左侧2">
+            <g transform="translate(0.000000, 85.000000)">
+                <g id="iconnoticetree" transform="translate(63.000000, 232.000000)">
+                    <rect id="矩形" x="0" y="0" width="8" height="8"></rect>
+                    <g id="编组-3" fill-rule="nonzero">
+                        <polygon id="形状" fill="url(#linearGradient-1)" points="0 0 0 7 7 7 7 0"></polygon>
+                        <polygon id="路径" fill="#FFFFFF" points="4.16666667 3.8243812 3 3.8243812 3 1 4.16666667 1"></polygon>
+                        <polygon id="路径" fill="#FFFFFF" points="4.16666667 6.09756048 3 6.09756048 3 5.00080999 4.16666667 5.00080999"></polygon>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

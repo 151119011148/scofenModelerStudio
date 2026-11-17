@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>SysMLParametricDiagram</title>
+    <defs>
+        <linearGradient x1="100%" y1="51.4419976%" x2="8.33129883%" y2="50.1409016%" id="linearGradient-1">
+            <stop stop-color="#FEF9DB" offset="0%"></stop>
+            <stop stop-color="#FEF4BD" offset="44.2039696%"></stop>
+            <stop stop-color="#FEEF9E" offset="60.7131546%"></stop>
+            <stop stop-color="#FCF0AC" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="用例图图元SVG" transform="translate(-68.000000, -602.000000)">
+            <g id="SysMLParametricDiagram" transform="translate(68.000000, 602.000000)">
+                <g id="blank-空白文档" transform="translate(0.000000, 1.000000)">
+                    <polygon id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" points="2.45246531e-13 0 15 0 15 15 2.13162821e-13 15"></polygon>
+                    <polygon id="形状" fill="#97958C" fill-rule="nonzero" points="11.2371622 0 2.13162821e-13 0 2.13162821e-13 15 15 15 15 3.97748204"></polygon>
+                    <polygon id="路径" fill="#FFFFFF" points="14 14 1 14 1 1 11.2261972 1 11.2706545 3.99329269 14 4.02481399"></polygon>
+                </g>
+                <polygon id="路径" fill="#4C4C4C" points="0 0 0 16 16 16 16 4 11.9863063 0"></polygon>
+                <polygon id="路径" fill="#FFFFFF" points="1 1 1 15 15 15 15 4.5 11.488018 1"></polygon>
+                <g id="表-表格_jurassic" transform="translate(1.000000, 1.000000)" fill="#EAEDC5" fill-rule="nonzero">
+                    <polygon id="形状" points="0 0 0 14 14 14 14 3.5 10.488018 0"></polygon>
+                </g>
+                <rect id="矩形" fill="#4B4B4B" x="2" y="3" width="5" height="5" rx="1"></rect>
+                <rect id="矩形" fill="url(#linearGradient-1)" x="3" y="4" width="3" height="3"></rect>
+                <rect id="矩形" fill="#4B4B4B" x="9" y="9" width="5" height="5" rx="1"></rect>
+                <rect id="矩形" fill="url(#linearGradient-1)" x="10" y="10" width="3" height="3"></rect>
+                <rect id="矩形" fill="#4B4B4B" x="9" y="3" width="5" height="5" rx="1"></rect>
+                <rect id="矩形" fill="url(#linearGradient-1)" x="10" y="4" width="3" height="3"></rect>
+                <rect id="矩形" fill="#4B4B4B" x="2" y="9" width="5" height="5" rx="1"></rect>
+                <rect id="矩形" fill="url(#linearGradient-1)" x="3" y="10" width="3" height="3"></rect>
+                <rect id="矩形" fill="#4C4C4C" x="7" y="4" width="2" height="1"></rect>
+                <polygon id="矩形" fill="#4C4C4C" points="11 7 12 7 12 9 11 9"></polygon>
+                <rect id="矩形" fill="#4C4C4C" x="7" y="11" width="2" height="1"></rect>
+                <rect id="矩形" fill="#4C4C4C" x="4" y="4" width="1" height="2"></rect>
+                <rect id="矩形" fill="#4C4C4C" x="4" y="10" width="1" height="2"></rect>
+                <polygon id="路径" fill="#4C4C4C" fill-rule="nonzero" points="10.6666667 0 12 0 16 4 16 5.33333333 10.6666667 5.33333333"></polygon>
+                <polygon id="路径" fill="#FFFFFF" fill-rule="nonzero" points="11.6666667 1 15.0010173 4.33333333 11.6666667 4.33085124"></polygon>
+            </g>
+        </g>
+    </g>
+</svg>

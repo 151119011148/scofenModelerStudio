@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>UseCase</title>
+    <defs>
+        <linearGradient x1="100%" y1="50.7357131%" x2="8.33129883%" y2="50.0718886%" id="linearGradient-1">
+            <stop stop-color="#FEF9DB" offset="0%"></stop>
+            <stop stop-color="#FEF4BD" offset="44.2039696%"></stop>
+            <stop stop-color="#FEEF9E" offset="60.7131546%"></stop>
+            <stop stop-color="#FCF0AC" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-810.000000, -1266.000000)">
+            <g id="UseCase" transform="translate(810.000000, 1266.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <g id="Block"></g>
+                <ellipse id="椭圆形" fill="#4C4C4C" cx="8" cy="8" rx="8" ry="6"></ellipse>
+                <ellipse id="椭圆形" fill="url(#linearGradient-1)" cx="8" cy="8" rx="7" ry="5"></ellipse>
+                <g id="jx"></g>
+            </g>
+        </g>
+    </g>
+</svg>

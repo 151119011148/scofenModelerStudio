@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>ConnectionPointReference</title>
+    <defs>
+        <linearGradient x1="100%" y1="50.691135%" x2="8.33129883%" y2="50.0675327%" id="linearGradient-1">
+            <stop stop-color="#FEF9DB" offset="0%"></stop>
+            <stop stop-color="#FEF4BD" offset="44.2039696%"></stop>
+            <stop stop-color="#FEEF9E" offset="60.7131546%"></stop>
+            <stop stop-color="#FCF0AC" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1216.000000, -644.000000)">
+            <g id="ConnectionPointReference" transform="translate(1216.000000, 644.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <g id="Block"></g>
+                <rect id="矩形" stroke="#4C4C4C" fill="url(#linearGradient-1)" x="2.5" y="5.5" width="12" height="8" rx="2"></rect>
+                <g id="jx" transform="translate(5.000000, 3.000000)"></g>
+                <circle id="椭圆形" stroke="#515151" fill="#FFFFFF" cx="8.27056552" cy="6.5" r="3"></circle>
+            </g>
+        </g>
+    </g>
+</svg>

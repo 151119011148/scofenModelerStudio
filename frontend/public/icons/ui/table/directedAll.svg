@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Directedicon</title>
+    <g id="icon" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(-1404.000000, -100.000000)" id="Directedicon">
+            <g transform="translate(1404.000000, 100.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <line x1="2.5" y1="13.5" x2="13.5" y2="2.5" id="直线-8" stroke="#0283E2" stroke-width="1.2" stroke-linecap="square"></line>
+                <path d="M14,6 L13.9378091,2.00163308 L10,1.94135268 C10,1.94135268 10,1 10,1 L14.9477216,1 L15,5.93971959 C14.9125316,5.93971959 14.3074177,6 14,6 Z" id="路径" fill="#0283E2" fill-rule="nonzero"></path>
+                <path d="M5,15 L4.93780906,11.0016331 L1,10.9413527 C1,10.9413527 1,10 1,10 L5.94772161,10 L6,14.9397196 C5.9125316,14.9397196 5.30741772,15 5,15 Z" id="路径" fill="#0283E2" fill-rule="nonzero" transform="translate(3.500000, 12.500000) rotate(-180.000000) translate(-3.500000, -12.500000) "></path>
+            </g>
+        </g>
+    </g>
+</svg>

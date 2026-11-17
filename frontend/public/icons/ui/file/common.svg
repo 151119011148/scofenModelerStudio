@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>AttachedFile</title>
+    <defs>
+        <linearGradient x1="23.4075917%" y1="50%" x2="82.5144972%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#BBBBBB" offset="0%"></stop>
+            <stop stop-color="#DBDBDB" offset="44.2039696%"></stop>
+            <stop stop-color="#F9F9F9" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-2316.000000, -1899.000000)">
+            <g id="AttachedFile" transform="translate(2316.000000, 1899.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <path d="M3.2,1.00521994 C3.05454516,1.00521994 2.65454516,1.00521994 2,1.00521994 L2,14.3107255 C2,14.7437479 2,14.9947801 2.59251899,15 L13.4201167,14.9947801 C14,15 14,14.6492194 14,14.1676959 L14,3.18516072 L11.7921143,1 L3.2,1.00521994 Z" id="路径" fill="#4C4C4C"></path>
+                <path d="M4,2.00447591 C3.87878763,2.00447591 3.5454543,2.00447591 3,2.00447591 L3,13.4134488 C3,13.7847493 3,14 3.49376583,14.0044759 L12.516764,14 C13,14.0044759 13,13.7036947 13,13.2908063 L13,3.87369351 L11.1600952,2 L4,2.00447591 Z" id="路径" fill="url(#linearGradient-1)"></path>
+                <g id="编组-6" transform="translate(4.000000, 2.000000)" fill="#4C4C4C">
+                    <polygon id="路径" points="0 4 5 4 5 3 0 3"></polygon>
+                    <polygon id="路径" points="8 6 0 6 0 7 8 7"></polygon>
+                    <polygon id="路径" points="0 8 0 9 8 9 8 8"></polygon>
+                    <polygon id="路径" points="9 3 6 3.00740559 6 -3.33481389e-11 7 0 7 2 9 2"></polygon>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

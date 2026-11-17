@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>右对齐</title>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="活动图工具栏：" transform="translate(-628.000000, -428.000000)" fill-rule="nonzero">
+            <g id="编组-3" transform="translate(615.000000, 371.000000)">
+                <g id="行" transform="translate(5.000000, 53.000000)">
+                    <g id="右对齐" transform="translate(8.000000, 4.000000)">
+                        <rect id="矩形" fill="#E1E1E1" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                        <g id="编组-5" transform="translate(7.561393, 8.426130) scale(-1, 1) translate(-7.561393, -8.426130) translate(1.000000, 2.000000)" fill="#414F58">
+                            <polygon id="矩形" transform="translate(3.122786, 0.500000) rotate(90.000000) translate(-3.122786, -0.500000) " points="2.62278642 -2.5 3.62278642 -2.5 3.62278642 3.5 2.62278642 3.5"></polygon>
+                            <rect id="矩形备份-4" transform="translate(6.622786, 4.500000) rotate(90.000000) translate(-6.622786, -4.500000) " x="6.12278642" y="-2" width="1" height="13"></rect>
+                            <polygon id="矩形备份-5" transform="translate(3.122786, 8.500000) rotate(90.000000) translate(-3.122786, -8.500000) " points="2.62278642 5.5 3.62278642 5.5 3.62278642 11.5 2.62278642 11.5"></polygon>
+                            <rect id="矩形" transform="translate(6.500000, 12.352260) rotate(90.000000) translate(-6.500000, -12.352260) " x="6" y="5.85226009" width="1" height="13"></rect>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

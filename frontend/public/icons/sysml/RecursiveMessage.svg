@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>RecursiveMessage</title>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1588.000000, -934.000000)">
+            <g id="RecursiveMessage" transform="translate(1588.000000, 934.000000)">
+                <g id="编组-3">
+                    <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                    <line x1="4.5" y1="1" x2="4.5" y2="15" id="直线-7" stroke="#4C4C4C"></line>
+                    <rect id="矩形" stroke="#4C4C4C" fill="#4C4C4C" x="2.5" y="2.5" width="4" height="11"></rect>
+                    <polygon id="矩形" fill="#E3F3D5" points="3 3 6 3 6 13 3 13"></polygon>
+                    <path d="M8.5,6.5 L5.5,6.5 L5.5,11.5 L8.5,11.5 L8.5,6.5 Z" id="矩形" stroke="#4C4C4C" fill="#4C4C4C"></path>
+                    <rect id="矩形" fill="#E3F3D5" x="6" y="7" width="2" height="4"></rect>
+                    <path d="M8.02119849,4 L11,6.38639848 L8.02119849,9 C7.97350188,8.9573905 8.02119849,4 8.02119849,4 Z" id="路径" fill="#4C4C4C" fill-rule="nonzero" transform="translate(9.500000, 6.500000) rotate(180.000000) translate(-9.500000, -6.500000) "></path>
+                    <polyline id="直线-8" stroke="#4C4C4C" stroke-linecap="square" points="5.5 2.5 14.5 2.5 14.5 6.5 10.45 6.5"></polyline>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

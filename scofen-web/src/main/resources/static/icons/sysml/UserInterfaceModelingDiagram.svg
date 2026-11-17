@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>UiDiagram</title>
+    <defs>
+        <linearGradient x1="34.2322716%" y1="49.7777778%" x2="60.587651%" y2="50.2205096%" id="linearGradient-1">
+            <stop stop-color="#83C8FD" offset="0%"></stop>
+            <stop stop-color="#30AEE9" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="100%" y1="50.1839283%" x2="8.33129883%" y2="50.0179721%" id="linearGradient-2">
+            <stop stop-color="#FEF9DB" offset="0%"></stop>
+            <stop stop-color="#FEF4BD" offset="44.2039696%"></stop>
+            <stop stop-color="#FEEF9E" offset="60.7131546%"></stop>
+            <stop stop-color="#FCF0AC" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="模型全景图" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-3089.000000, -1820.000000)">
+            <g id="UiDiagram" transform="translate(3089.000000, 1820.000000)">
+                <g id="blank-空白文档" transform="translate(0.000000, 1.000000)">
+                    <polygon id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" points="2.45246531e-13 0 15 0 15 15 2.13162821e-13 15"></polygon>
+                    <polygon id="形状" fill="#97958C" fill-rule="nonzero" points="11.2371622 0 2.13162821e-13 0 2.13162821e-13 15 15 15 15 3.97748204"></polygon>
+                    <polygon id="路径" fill="#FFFFFF" points="14 14 1 14 1 1 11.2261972 1 11.2706545 3.99329269 14 4.02481399"></polygon>
+                </g>
+                <polygon id="路径" fill="#4C4C4C" points="0 9.09494702e-12 0 16 16 16 16 4 11.9863063 9.09494702e-12"></polygon>
+                <polygon id="路径" fill="#FFFFFF" points="1 1 1 15 15 15 15 4.5 11.488018 1"></polygon>
+                <g id="表-表格_jurassic" transform="translate(1.000000, 1.000000)" fill="#EAEDC5" fill-rule="nonzero">
+                    <polygon id="形状" points="0 0 0 14 14 14 14 3.5 10.488018 0"></polygon>
+                </g>
+                <g id="EndPathMultiplicity" fill="#000000" fill-rule="nonzero" opacity="0">
+                    <g id="jiantou" transform="translate(8.000000, 8.000000) rotate(90.000000) translate(-8.000000, -8.000000) ">
+                        <rect id="矩形" x="0" y="-1.25934513e-14" width="16" height="16"></rect>
+                    </g>
+                </g>
+                <polygon id="路径" fill="#4B4B4B" points="14 3 14 13.6666667 2 13.6666667 2 3"></polygon>
+                <rect id="矩形" fill="url(#linearGradient-1)" x="3" y="4" width="10" height="1"></rect>
+                <polygon id="路径" fill="#FFFFFF" points="13 5.33333333 13 12.6666667 3 12.6666667 3 5.33333333"></polygon>
+                <polygon id="路径" fill="#4B4B4B" points="11.3333333 8 11.3333333 11.6666667 4.66666667 11.6666667 4.66666667 8"></polygon>
+                <polygon id="路径" fill="url(#linearGradient-2)" points="10.3333333 9 10.3333333 10.6666667 5.66666667 10.6666667 5.66666667 9"></polygon>
+                <rect id="矩形" fill="#535353" x="4" y="6.33333333" width="8" height="1"></rect>
+                <rect id="矩形" fill="#535353" x="3" y="4.66666667" width="10" height="1"></rect>
+                <polygon id="路径" fill="#4C4C4C" fill-rule="nonzero" points="10.6666667 0.333333333 12 0.333333333 16 4.33333333 16 5.66666667 10.6666667 5.66666667"></polygon>
+                <polygon id="路径" fill="#FFFFFF" fill-rule="nonzero" points="11.6666667 1.33333333 15.0010173 4.66666667 11.6666667 4.66418457"></polygon>
+            </g>
+        </g>
+    </g>
+</svg>

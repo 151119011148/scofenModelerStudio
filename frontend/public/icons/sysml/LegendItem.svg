@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>LegendItem</title>
+    <g id="结构分解追溯图" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="🏳️‍🌈图例Legend" transform="translate(-745.000000, -1581.000000)">
+            <g id="LegendItem" transform="translate(745.000000, 1581.000000)">
+                <rect id="矩形" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" fill="#C40B0F" x="2" y="6" width="4" height="4"></rect>
+                <rect id="矩形" fill="#4B4B4B" x="7" y="6" width="6" height="1"></rect>
+                <rect id="矩形" fill="#000000" x="7" y="8" width="6" height="1"></rect>
+                <rect id="矩形" fill="#000000" x="7" y="10" width="4" height="1"></rect>
+                <rect id="矩形" fill="#000000" x="7" y="6" width="6" height="1"></rect>
+            </g>
+        </g>
+    </g>
+</svg>

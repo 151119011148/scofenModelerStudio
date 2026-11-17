@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>编组 86</title>
+    <g id="项目管理需求文档" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="编组-86" transform="translate(1, 1)" stroke="#333333">
+            <polygon id="矩形" fill="#333333" fill-rule="nonzero" opacity="0" points="0 0 14 0 14 14 0 14"></polygon>
+            <g id="编组-84" transform="translate(0.5001, 0.6509)">
+                <circle id="椭圆形" cx="1.5" cy="11.3032374" r="1.5"></circle>
+                <circle id="椭圆形备份-9" cx="6.5" cy="11.3032374" r="1.5"></circle>
+                <circle id="椭圆形备份-10" cx="11.5" cy="11.3032374" r="1.5"></circle>
+                <line x1="2.99697208" y1="11.3032374" x2="5.09284322" y2="11.3032374" id="路径-27"></line>
+                <line x1="7.99697208" y1="11.3032374" x2="10.0928432" y2="11.3032374" id="路径-27备份"></line>
+                <line x1="11.5" y1="9.53869557" x2="11.5" y2="1.3140439e-17" id="路径-29" stroke-width="1.1" stroke-linecap="round"></line>
+                <polyline id="路径-30" stroke-width="1.1" points="11.5 0.444960844 6.92595262 3.14587883 11.5 5.84679682"></polyline>
+            </g>
+        </g>
+    </g>
+</svg>

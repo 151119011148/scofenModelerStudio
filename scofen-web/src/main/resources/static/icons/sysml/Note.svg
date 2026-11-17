@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Note</title>
+    <defs>
+        <linearGradient x1="100%" y1="50%" x2="0%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#FFF7F0" offset="0%"></stop>
+            <stop stop-color="#FED6B9" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="九大图图标" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-458.000000, -434.000000)">
+            <g id="Note" transform="translate(458.000000, 434.000000)">
+                <rect id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <path d="M14,6 L9.5,6 L9.5,1 L1,1 C1,6.24444444 1,9.91111111 1,12 L14,12 L14,6 Z M10.5,1 L10.5,5 L14,5 L10.5,1 Z M11.092041,1.13686838e-11 L15,4.3692627 L15,13 L0,13 C0,10.6888889 0,6.35555556 0,1.13686838e-11 L11.092041,1.13686838e-11 Z" id="形状" fill="#4C4C4C" fill-rule="nonzero"></path>
+                <path d="M14,6 C11.7777778,6 10.2777778,6 9.5,6 L9.5,1 L1,1 C1,6.24444444 1,9.91111111 1,12 L14,12 L14,6 Z" id="路径" fill="url(#linearGradient-1)" fill-rule="nonzero"></path>
+                <rect id="矩形" fill="#4C4C4C" x="2.6862915" y="9" width="8" height="1"></rect>
+                <rect id="矩形" fill="#4C4C4C" x="2.6862915" y="7" width="8" height="1"></rect>
+            </g>
+        </g>
+    </g>
+</svg>

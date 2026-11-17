@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>获取表格</title>
+    <defs>
+        <linearGradient x1="0%" y1="50%" x2="100%" y2="50%" id="linearGradient-1">
+            <stop stop-color="#DEDEDE" offset="0%"></stop>
+            <stop stop-color="#FFFFFF" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="0%" y1="50%" x2="100%" y2="50%" id="linearGradient-2">
+            <stop stop-color="#DEDEDE" offset="0%"></stop>
+            <stop stop-color="#FFFFFF" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="0%" y1="50%" x2="97.7873689%" y2="50%" id="linearGradient-3">
+            <stop stop-color="#E3E2E2" offset="0%"></stop>
+            <stop stop-color="#FBFBFB" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="客户端支持自定义文档模板" transform="translate(-2080.000000, -316.000000)">
+            <g id="编组-4" transform="translate(2067.000000, 168.000000)">
+                <g id="编组-17" transform="translate(0.000000, 87.000000)">
+                    <g id="编组-13" transform="translate(4.000000, 57.000000)">
+                        <g id="获取表格" transform="translate(9.000000, 4.000000)">
+                            <rect id="矩形" fill="#CFCFCF" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                            <rect id="矩形" stroke="#25B168" fill="#FFFFFF" x="1.5" y="1.5" width="13" height="13"></rect>
+                            <rect id="矩形备份-3" stroke="#25B168" fill="url(#linearGradient-1)" x="1.5" y="4.5" width="13" height="10"></rect>
+                            <path d="M14.5,7.96052078 L14.5,14.5 L1.5,14.5 L1.5,7.96052078 L14.5,7.96052078 Z" id="矩形备份-7" stroke="#25B168" fill="url(#linearGradient-2)"></path>
+                            <path d="M14.5,11.259933 L14.5,14.5 L1.5,14.5 L1.5,11.259933 L14.5,11.259933 Z" id="矩形备份-6" stroke="#25B168" fill="url(#linearGradient-3)"></path>
+                            <line x1="6.10894837" y1="4.87582833" x2="6.10894837" y2="14.8758283" id="路径-4" stroke="#25B168"></line>
+                            <line x1="10.1089484" y1="4.87582833" x2="10.1089484" y2="14.8758283" id="路径-4备份" stroke="#25B168"></line>
+                            <path d="M11.3480662,9.3592175 C11.9003509,9.3592175 12.4003509,9.58307512 12.7622798,9.94500393 C13.1242086,10.3069327 13.3480662,10.8069327 13.3480662,11.3592175 C13.3480662,11.9115022 13.1242086,12.4115022 12.7622798,12.7734311 C12.4003509,13.1353599 11.9003509,13.3592175 11.3480662,13.3592175 C10.7957814,13.3592175 10.2957814,13.1353599 9.93385264,12.7734311 C9.57192382,12.4115022 9.3480662,11.9115022 9.3480662,11.3592175 C9.3480662,10.8069327 9.57192382,10.3069327 9.93385264,9.94500393 C10.2957814,9.58307512 10.7957814,9.3592175 11.3480662,9.3592175 Z" id="椭圆形" stroke="#4C4C4C" fill="#FFFFFF"></path>
+                            <line x1="13.0531921" y1="12.7233952" x2="14.3822296" y2="13.8592175" id="路径-2" stroke="#4C4C4C"></line>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

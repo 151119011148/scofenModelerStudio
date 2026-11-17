@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="48px" height="48px" viewBox="0 0 48 48" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>SysMLSequenceDiagram</title>
+    <defs>
+        <linearGradient x1="55.5555556%" y1="51.4419976%" x2="45.3701443%" y2="50.1409016%" id="linearGradient-1">
+            <stop stop-color="#FEF9DB" offset="0%"></stop>
+            <stop stop-color="#FEF4BD" offset="44.2039696%"></stop>
+            <stop stop-color="#FEEF9E" offset="60.7131546%"></stop>
+            <stop stop-color="#FCF0AC" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="51.0204082%" y1="51.4419976%" x2="49.1496183%" y2="50.1409016%" id="linearGradient-2">
+            <stop stop-color="#FEF9DB" offset="0%"></stop>
+            <stop stop-color="#FEF4BD" offset="44.2039696%"></stop>
+            <stop stop-color="#FEEF9E" offset="60.7131546%"></stop>
+            <stop stop-color="#FCF0AC" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="模型全景图" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="模型全景图(表，元素)" transform="translate(-1548.000000, -266.000000)">
+            <g id="SysMLSequenceDiagram" transform="translate(1548.000000, 266.000000)">
+                <g id="blank-空白文档" transform="translate(0.000000, 3.000000)">
+                    <polygon id="矩形" fill="#000000" fill-rule="nonzero" opacity="0" points="7.35739594e-13 0 45 0 45 45 6.39488462e-13 45"></polygon>
+                    <polygon id="形状" fill="#97958C" fill-rule="nonzero" points="33.7114865 0 6.39488462e-13 0 6.39488462e-13 45 45 45 45 11.9324461"></polygon>
+                    <polygon id="路径" fill="#FFFFFF" points="42 42 3 42 3 3 33.6785915 3 33.8119634 11.9798781 42 12.074442"></polygon>
+                </g>
+                <polygon id="路径" fill="#4C4C4C" points="0 0 0 48 48 48 48 12 35.958919 0"></polygon>
+                <polygon id="路径" fill="#FFFFFF" points="3 3 3 45 45 45 45 13.5 34.4640541 3"></polygon>
+                <g id="表-表格_jurassic" transform="translate(3.000000, 3.000000)" fill="#EAEDC5" fill-rule="nonzero">
+                    <polygon id="形状" points="0 0 0 42 42 42 42 10.5 31.4640541 0"></polygon>
+                </g>
+                <g id="编组-52" transform="translate(6.000000, 4.000000)">
+                    <g id="编组-51" transform="translate(30.000000, 12.000000)" fill="#57533A" stroke="#57533A">
+                        <path d="M4,2 L4,4 L-1,4 L-1,2 L4,2 Z" id="矩形" transform="translate(1.500000, 3.000000) rotate(90.000000) translate(-1.500000, -3.000000) "></path>
+                    </g>
+                    <polygon id="矩形" fill="#57533A" points="0 8 9 8 9 23 0 23"></polygon>
+                    <polygon id="矩形" fill="url(#linearGradient-1)" points="3 11 6 11 6 20 3 20"></polygon>
+                    <polygon id="矩形" fill="#57533A" points="21 17 30 17 30 32 21 32"></polygon>
+                    <polygon id="矩形" fill="#FFFDE1" points="24 20 27 20 27 29 24 29"></polygon>
+                    <polygon id="矩形" fill="#57533A" points="15 8 24 8 24 35 15 35"></polygon>
+                    <polygon id="矩形" fill="url(#linearGradient-2)" points="18 11 21 11 21 32 18 32"></polygon>
+                    <polygon id="矩形" fill="#4B4B4B" transform="translate(19.500000, 5.000000) rotate(90.000000) translate(-19.500000, -5.000000) " points="16.5 3.5 22.5 3.5 22.5 6.5 16.5 6.5"></polygon>
+                    <rect id="矩形" fill="#4B4B4B" x="30" y="35" width="3" height="3"></rect>
+                    <polygon id="矩形" fill="#4B4B4B" transform="translate(13.500000, 12.500000) rotate(90.000000) translate(-13.500000, -12.500000) " points="9 11 18 11 18 14 9 14"></polygon>
+                    <polygon id="矩形" fill="#4A4A4A" transform="translate(10.500000, 13.500000) rotate(90.000000) translate(-10.500000, -13.500000) " points="9 12 12 12 12 15 9 15"></polygon>
+                    <polygon id="矩形" fill="#4A4A4A" transform="translate(4.500000, 6.500000) rotate(90.000000) translate(-4.500000, -6.500000) " points="3 5 6 5 6 8 3 8"></polygon>
+                    <polygon id="矩形" fill="#4A4A4A" transform="translate(4.500000, 26.000000) rotate(90.000000) translate(-4.500000, -26.000000) " points="1.5 24.5 7.5 24.5 7.5 27.5 1.5 27.5"></polygon>
+                    <polygon id="矩形" fill="#4A4A4A" transform="translate(4.500000, 35.000000) rotate(90.000000) translate(-4.500000, -35.000000) " points="1.5 33.5 7.5 33.5 7.5 36.5 1.5 36.5"></polygon>
+                    <polygon id="矩形" fill="#57533A" points="27 17 36 17 36 32 27 32"></polygon>
+                    <polygon id="矩形" fill="#FFFDE1" points="30 20 33 20 33 29 30 29"></polygon>
+                </g>
+                <polygon id="路径" fill="#4C4C4C" fill-rule="nonzero" points="32 0 36 0 48 12 48 16 32 16"></polygon>
+                <polygon id="路径" fill="#FFFFFF" fill-rule="nonzero" points="35 3 45.0030518 13 35 12.9925537"></polygon>
+            </g>
+        </g>
+    </g>
+</svg>

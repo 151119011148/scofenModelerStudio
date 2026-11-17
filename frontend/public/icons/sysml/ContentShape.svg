@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="17px" height="16px" viewBox="0 0 17 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Content Shape</title>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="导航图" transform="translate(-1921.000000, -1167.000000)">
+            <g id="Allocate" transform="translate(1921.146447, 1167.000000)">
+                <rect id="矩形" fill="#CACACA" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                <rect id="矩形" stroke="#4C4C4C" fill="#FFFFFF" x="1.35355339" y="0.5" width="13" height="15"></rect>
+                <polygon id="矩形" fill="#F77271" points="3.87414869 3.80485798 11.8741487 3.80485798 11.8741487 6.80485798 3.87414869 6.80485798"></polygon>
+                <polygon id="矩形备份-11" fill="#4C4C4C" points="3.87414869 8.80485798 11.8741487 8.80485798 11.8741487 9.80485798 3.87414869 9.80485798"></polygon>
+                <polygon id="矩形备份-12" fill="#4C4C4C" points="3.87414869 10.804858 11.8741487 10.804858 11.8741487 11.804858 3.87414869 11.804858"></polygon>
+            </g>
+        </g>
+    </g>
+</svg>

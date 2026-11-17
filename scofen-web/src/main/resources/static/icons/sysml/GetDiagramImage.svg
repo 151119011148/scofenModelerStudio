@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="16px" height="16px" viewBox="0 0 16 16" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>获取视图图片</title>
+    <defs>
+        <linearGradient x1="107.140933%" y1="31.9510561%" x2="-61.3826899%" y2="129.836597%" id="linearGradient-1">
+            <stop stop-color="#FFFFFF" offset="0%"></stop>
+            <stop stop-color="#D4D4D4" offset="100%"></stop>
+        </linearGradient>
+        <linearGradient x1="93.70809%" y1="31.9452988%" x2="22.620863%" y2="65.9949983%" id="linearGradient-2">
+            <stop stop-color="#FFFFFF" offset="0%"></stop>
+            <stop stop-color="#D4D4D4" offset="100%"></stop>
+        </linearGradient>
+    </defs>
+    <g id="页面-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="客户端支持自定义文档模板" transform="translate(-2080.000000, -364.000000)">
+            <g id="编组-4" transform="translate(2067.000000, 168.000000)">
+                <g id="编组-17" transform="translate(0.000000, 87.000000)">
+                    <g id="编组-16" transform="translate(4.000000, 105.000000)">
+                        <g id="获取视图图片" transform="translate(9.000000, 4.000000)">
+                            <rect id="矩形" fill="#CFCFCF" fill-rule="nonzero" opacity="0" x="0" y="0" width="16" height="16"></rect>
+                            <rect id="矩形" stroke="#4C4C4C" fill="url(#linearGradient-1)" x="4.5" y="0.5" width="11" height="11"></rect>
+                            <g id="编组-23" transform="translate(1.000000, 3.000000)" stroke="#4C4C4C">
+                                <rect id="矩形备份-3" fill="url(#linearGradient-2)" x="0.5" y="0.5" width="11" height="11"></rect>
+                                <polyline id="路径-5" points="1.88243302 8.9299708 3.5252911 7 5.10894837 8.3778466 7.8480662 5 10.5928623 8.9299708"></polyline>
+                                <line x1="2.25999475" y1="4" x2="4.13541509" y2="4" id="路径-6"></line>
+                            </g>
+                        </g>
+                    </g>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>
