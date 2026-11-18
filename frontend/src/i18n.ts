@@ -236,6 +236,13 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
   '新建关系': { zh: '新建关系', en: 'New relationship' },
   '新建关系…': { zh: '新建关系…', en: 'New relationship…' },
   '在此新建图…': { zh: '在此新建图…', en: 'New diagram here…' },
+  '用此类型新建图': { zh: '用此类型新建图', en: 'New diagram of this type' },
+  '{label} · 双击新建一张该类型的图': {
+    zh: '{label} · 双击新建一张该类型的图',
+    en: '{label} · double-click to create a diagram of this type',
+  },
+  '已用「{name}」新建一张图': { zh: '已用「{name}」新建一张图', en: 'Created a diagram from “{name}”' },
+  '当前账号只读，无法新建图': { zh: '当前账号只读，无法新建图', en: 'Read-only account: cannot create diagrams' },
   '在项目根下新建元素…': { zh: '在项目根下新建元素…', en: 'New element under the project root…' },
   '在项目根下新建图…': { zh: '在项目根下新建图…', en: 'New diagram under the project root…' },
   '删除元素': { zh: '删除元素', en: 'Delete element' },

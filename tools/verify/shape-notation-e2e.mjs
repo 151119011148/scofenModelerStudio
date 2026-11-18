@@ -135,7 +135,8 @@ for (let i = 0; i < 20 && !loginInjected; i++) {
   } catch { /* 表单重挂中，重试 */ }
   if (!loginInjected) await sleep(250)
 }
-check('登录注入成功', loginInjected)
+// 注入回执不可靠（点击成功但表单重挂可能吞掉返回值）：只要进了工作台就算成功。
+check('登录注入成功', loginInjected || await page.evaluate(`!!document.querySelector('.props-dock')`))
 check('登录成功进入工作台', await waitFor(page, `!!document.querySelector('.props-dock')`, 120, 250))
 await sleep(1800)
 

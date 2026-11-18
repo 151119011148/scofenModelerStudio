@@ -91,7 +91,14 @@ const EMPTY_MODEL: ModelSnapshot = {
   notations: [],
 }
 
-const FALLBACK_CANVAS = { maxX: 4000, maxY: 2600, width: 640, height: 420 }
+const FALLBACK_CANVAS = { maxX: 10000, maxY: 10000, width: 640, height: 420 }
+/**
+ * 华望式动态纸面：白色图纸从原点铺开，随内容向右下扩展、外扩 300 留白，
+ * 最小 1000×1000（华望 ViewModel.ts 的 minWidth/paddingRight 口径）。
+ * 纸面只是视觉层（pointer-events 关闭），平移夹紧与适应窗口仍按内容包围盒算。
+ */
+const PAPER_MARGIN = 300
+const PAPER_MIN = 1000
 const FALLBACK_NODE = { width: 168, height: 84 }
 const ROOT_KEY = '__root__'
 
@@ -327,6 +334,8 @@ interface TreeActions {
   selectExtensionElement: (id: string) => void
   selectRelation: (id: string) => void
   activateDiagram: (id: string, withTab: boolean) => void
+  /** 双击「图类型」节点：用该类型建一张图并打开（已有同类型的图则直接打开）。 */
+  openDiagramOfType: (id: string) => void
   addElementToDiagram: (diagramId: string, elementId: string) => void
   setDropTarget: (id: string | null) => void
   openMenu: (event: ReactMouseEvent, target: MenuTarget) => void
@@ -555,7 +564,8 @@ const TreeRow = memo(function TreeRow(props: TreeRowProps) {
           label={isOpen ? t('折叠') : t('展开')}
           onToggle={() => actions.toggleExpanded(diagram.id)}
         />
-        <DiagramIcon code={diagram.kind} size={16} title={data.diagramLabel(diagram.kind)} />
+        <DiagramIcon code={diagram.kind} size={16}
+          title={data.diagramLabel(diagram.customTypeId ?? diagram.kind)} />
         <span className="tree-label">{diagram.name}</span>
         <span className="child-count">{diagram.elementIds.length}</span>
       </div>
@@ -569,6 +579,11 @@ const TreeRow = memo(function TreeRow(props: TreeRowProps) {
   const isRoot = id === data.rootId
   const draggable = data.canEdit && !isRoot
   const info = data.typeLabel(element.type)
+  /**
+   * 图类型（扩展图库的 16 个模板、用户自建的图种类）是**定义**不是图，光选中它看不到任何东西。
+   * 双击直接落成一张该类型的图并打开——这是「扩展图库里的图点不开」的根因补丁。
+   */
+  const diagramTypeDefinition = isDiagramType(element)
   return (
     <div
       className={`tree-row element${isSelected ? ' selected' : ''}${isRoot ? ' root-node' : ''}`}
@@ -583,8 +598,15 @@ const TreeRow = memo(function TreeRow(props: TreeRowProps) {
         event.dataTransfer.setData('text/scofen-element', element.id)
         event.dataTransfer.effectAllowed = 'link'
       }}
-      title={t('{label} · 可拖入画布或图节点', { label: info })}
+      title={diagramTypeDefinition
+        ? t('{label} · 双击新建一张该类型的图', { label: info })
+        : t('{label} · 可拖入画布或图节点', { label: info })}
       onClick={() => actions.selectElement(element.id)}
+      onDoubleClick={() => {
+        if (diagramTypeDefinition) {
+          actions.openDiagramOfType(element.id)
+        }
+      }}
       onContextMenu={(event) => actions.openMenu(event, { kind: 'element', id: element.id })}
       role="button"
       tabIndex={0}
@@ -1786,9 +1808,14 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const diagramLabel = useCallback(
     (kind: string) => {
       const spec = specs.find((item) => item.code === kind)
-      return spec ? pick(spec.label, spec.labelEn) : kind
+      if (spec) {
+        return pick(spec.label, spec.labelEn)
+      }
+      // 自定义图类型的 code 是定义元素 id：名字取定制目录，取不到再退回 id。
+      const custom = customization?.diagramTypes.find((item) => item.id === kind)
+      return custom ? pick(custom.label, custom.labelEn) : kind
     },
-    [specs],
+    [specs, customization],
   )
 
   /**
@@ -2157,11 +2184,14 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const diagramsByKind = useMemo(() => {
     const map = new Map<string, Diagram[]>()
     for (const diagram of model.diagrams) {
-      const list = map.get(diagram.kind)
+      // 自定义图（扩展图库的 16 张模板、用户自建图种类）按自己的类型分组：
+      // 挂到基底 kind 下会被埋进「模块定义图 / 包图」里，等于在图表视图里消失。
+      const key = diagram.customTypeId ?? diagram.kind
+      const list = map.get(key)
       if (list) {
         list.push(diagram)
       } else {
-        map.set(diagram.kind, [diagram])
+        map.set(key, [diagram])
       }
     }
     return [...map.entries()]
@@ -5204,6 +5234,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     [contentBox, canvas.maxX, canvas.maxY, frameEnabled, activeDiagramObj],
   )
 
+  /** 动态纸面尺寸：内容右下角外扩 300，最小 1000×1000；空图就是最小纸面。 */
+  const paper = useMemo(() => ({
+    width: Math.max((contentBox?.right ?? 0) + PAPER_MARGIN, PAPER_MIN),
+    height: Math.max((contentBox?.bottom ?? 0) + PAPER_MARGIN, PAPER_MIN),
+  }), [contentBox])
+
   const viewWidth = canvas.width / zoom
   const viewHeight = canvas.height / zoom
 
@@ -6279,6 +6315,60 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
    * <p>这些实现要读当前模型、布局与草稿状态，直接放进 context 会让 context 每次渲染
    * 换身份，从而把整棵树的行全部重渲染——正是这次要修的开销。</p>
    */
+  /**
+   * 用「图类型」元素建一张图并打开。
+   *
+   * <p>图类型只是定义（`DiagramType` 元素），点开它本身没有任何画面——这正是
+   * 「扩展图库里的图打不开」的原因。这里补上缺的那一步：按定义的基底建一张空图、
+   * 带上 `customTypeId`（图框标题 / 工具箱白名单靠它解析），然后激活它。
+   * 同类型已经有图时直接打开第一张，不重复建。</p>
+   */
+  const openOrCreateDiagramOfType = async (definitionId: string) => {
+    const definition = model.elements.find((element) => element.id === definitionId)
+    if (!definition) {
+      return
+    }
+    const existing = model.diagrams.find((diagram) => diagram.customTypeId === definitionId)
+    if (existing) {
+      setActiveDiagramId(existing.id)
+      setSelectedDiagramId(existing.id)
+      setSelectedId(null)
+      openTab({ kind: 'diagram', id: existing.id })
+      return
+    }
+    if (!canEdit) {
+      say(t('当前账号只读，无法新建图'))
+      return
+    }
+    // 基底取自服务端解析后的定制目录（与新建图对话框同一份数据），目录未到就落回模块定义图。
+    const baseKind = customization?.diagramTypes.find((item) => item.id === definitionId)?.baseKind ?? 'bdd'
+    const hostOwnerId = await ensureDiagramHost(baseKind, projectRootId ?? '')
+    if (hostOwnerId === null) {
+      return
+    }
+    const taken = new Set(model.diagrams.map((diagram) => diagram.name))
+    let name = definition.name
+    for (let index = 2; taken.has(name); index += 1) {
+      name = `${definition.name} ${index}`
+    }
+    const id = `dg-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+    const ok = await runCommand('CREATE_DIAGRAM', {
+      id,
+      kind: baseKind,
+      name,
+      ownerId: hostOwnerId,
+      elementIds: [],
+      customTypeId: definitionId,
+    })
+    if (ok) {
+      setActiveDiagramId(id)
+      setSelectedDiagramId(id)
+      setSelectedId(null)
+      openTab({ kind: 'diagram', id })
+      say(t('已用「{name}」新建一张图', { name: definition.name }))
+    }
+  }
+
   const treeActionsImpl = useRef<TreeActions>({
     toggleExpanded: () => undefined,
     toggleRelationGroup: () => undefined,
@@ -6286,6 +6376,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     selectExtensionElement: () => undefined,
     selectRelation: () => undefined,
     activateDiagram: () => undefined,
+    openDiagramOfType: () => undefined,
     addElementToDiagram: () => undefined,
     setDropTarget: () => undefined,
     openMenu: () => undefined,
@@ -6297,6 +6388,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     selectExtensionElement: selectTreeExtensionElement,
     selectRelation: selectTreeRelation,
     activateDiagram: activateTreeDiagram,
+    openDiagramOfType: (id) => {
+      void openOrCreateDiagramOfType(id)
+    },
     addElementToDiagram: (diagramId, elementId) => {
       void addElementToDiagram(diagramId, elementId)
     },
@@ -6310,6 +6404,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     selectExtensionElement: (id) => treeActionsImpl.current.selectExtensionElement(id),
     selectRelation: (id) => treeActionsImpl.current.selectRelation(id),
     activateDiagram: (id, withTab) => treeActionsImpl.current.activateDiagram(id, withTab),
+    openDiagramOfType: (id) => treeActionsImpl.current.openDiagramOfType(id),
     addElementToDiagram: (diagramId, elementId) =>
       treeActionsImpl.current.addElementToDiagram(diagramId, elementId),
     setDropTarget: (id) => treeActionsImpl.current.setDropTarget(id),
@@ -7687,7 +7782,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           >
             {leftTab === 'charts' ? (
               <>
-                {diagramsByKind.map(([kind, list]) => (
+                {diagramsByKind.map(([kind, list]) => {
+                  // 自定义图类型的 key 是定义元素 id，图符仍用它的基底 kind（目录里带着）。
+                  const customType = customization?.diagramTypes.find((item) => item.id === kind)
+                  return (
                   <section className="chart-group" key={kind}>
                     <button
                       type="button"
@@ -7705,7 +7803,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       })}
                     >
                       <span className={`chart-group-chevron ${collapsedChartKinds.has(kind) ? 'collapsed' : ''}`} aria-hidden="true">▾</span>
-                      <DiagramIcon code={kind} size={14} />
+                      <DiagramIcon code={customType?.baseKind ?? kind} size={14} />
                       <span className="chart-group-label">{diagramLabel(kind)}</span>
                       <span className="chart-group-count">{list.length}</span>
                     </button>
@@ -7713,7 +7811,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       <button
                         type="button"
                         key={diagram.id}
-                        className={`chart-row ${diagram.id === activeDiagramId ? 'active' : ''}`}
+                        className={`chart-row chart-item ${diagram.id === activeDiagramId ? 'active' : ''}`}
                         data-diagram-id={diagram.id}
                         title={t('{name} · {count} 个元素', { name: diagram.name, count: diagram.elementIds.length })}
                         onClick={() => {
@@ -7728,7 +7826,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       </button>
                     ))}
                   </section>
-                ))}
+                  )
+                })}
                 {diagramsByKind.length === 0 && <p className="hint">{t('暂无图，右键空白处新建图')}</p>}
               </>
             ) : leftTab === 'library' ? (
@@ -8719,6 +8818,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 </linearGradient>
               ))}
             </defs>
+            {/* 华望式动态纸面：白纸从原点铺开、随内容扩展（见 paper）。纯视觉层不接指针。 */}
+            <rect className="canvas-paper" x={0} y={0} width={paper.width} height={paper.height}
+              pointerEvents="none" data-paper="true" />
             {diagramFrame ? (
               <g
                 className={`diagram-frame${toolboxTab === 'styles' && !selectedId && !selectedRelationId ? ' frame-focused' : ''}`}
@@ -9371,6 +9473,15 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             <>
               <button type="button" onClick={() => openCreate(menuElement!.id)}>{t('新建子元素…')}</button>
               <button type="button" onClick={() => openDiagramDialog(menuElement!.id)}>{t('在此新建图…')}</button>
+              {isDiagramType(menuElement!) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenu(null)
+                    void openOrCreateDiagramOfType(menuElement!.id)
+                  }}
+                >{t('用此类型新建图')}</button>
+              )}
               <button
                 type="button"
                 onClick={() => {

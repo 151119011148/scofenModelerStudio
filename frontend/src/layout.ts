@@ -69,10 +69,16 @@ const LAYOUT_SIZES: { cross: number, major: number }[] = [
   { cross: 1680, major: 2200 },
   { cross: 1680, major: 3200 },
   { cross: 1080, major: Number.POSITIVE_INFINITY },
+  // 华望口径：elk.layered 按内容铺开、从不折行（画布随内容扩展）。画布扩到
+  // 10000×10000 之后这条候选终于放得下，交给打分与折行候选公平竞争。
+  { cross: Number.POSITIVE_INFINITY, major: Number.POSITIVE_INFINITY },
 ]
-/** 层与层之间留给关系通道的距离；同层节点之间贴得紧一些。 */
-const GAP_MAJOR = 96
-const GAP_MINOR = 36
+/**
+ * 层与层之间留给关系通道的距离；同层节点之间贴得紧一些。
+ * 数值对齐华望 elk.layered：同层 nodeNode=24、层间 nodeNodeBetweenLayers=50。
+ */
+const GAP_MAJOR = 50
+const GAP_MINOR = 24
 const GROUP_GAP = 56
 /** 图面指标（交叉、重叠）是 O(n²)；超过这个规模只按几何量取舍，避免全项目排布卡住界面。 */
 const METRIC_MAX = 900

@@ -41,10 +41,11 @@ public final class ValidationEngine {
      * 记号坐标的文档范围与节点尺寸：服务端下发，前端拖拽用同一组常量做边界约束。
      *
      * <p>这是「文档」而非「视口」：视口是 canvas.width/height，文档范围要能容纳
-     * 自动排布展开后的多列分层布局，否则四十个节点的图会被钳回左上角叠成一团。</p>
+     * 自动排布展开后的多列分层布局，否则四十个节点的图会被钳回左上角叠成一团。
+     * 10000×10000 对齐华望画布口径：内容外扩留白后基本不再触界，排布无需折行。</p>
      */
-    public static final double CANVAS_MAX_X = 4000.0;
-    public static final double CANVAS_MAX_Y = 2600.0;
+    public static final double CANVAS_MAX_X = 10000.0;
+    public static final double CANVAS_MAX_Y = 10000.0;
     /** 单条批量命令的记法上限：一次排布全部图表也远不到这里，主要用于挡住异常载荷。 */
     public static final int NOTATION_BATCH_MAX = 5000;
     public static final double NODE_WIDTH = InMemoryModelRepository.NODE_WIDTH;

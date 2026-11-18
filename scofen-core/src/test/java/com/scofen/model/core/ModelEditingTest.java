@@ -90,7 +90,7 @@ class ModelEditingTest {
         assertThat(notation("d-pkg", "pkg").x()).isEqualTo(2200.0);
 
         assertThatThrownBy(() -> cmd("ADD_TO_DIAGRAM", Map.of(
-                "diagramId", "d-pkg", "elementId", "pkg", "x", 9999.0, "y", 34.0)))
+                "diagramId", "d-pkg", "elementId", "pkg", "x", 12000.0, "y", 34.0)))
                 .isInstanceOf(ValidationException.class)
                 .hasMessageContaining("out of canvas");
         assertThatThrownBy(() -> cmd("CREATE_ELEMENT", Map.of(
@@ -242,7 +242,7 @@ class ModelEditingTest {
         assertThat(patch.validationDelta()).isEqualTo("ok");
 
         assertThatThrownBy(() -> cmd("MOVE_NOTATION", Map.of(
-                "diagramId", "d-ibd", "elementId", "part", "x", 9999.0, "y", 10.0)))
+                "diagramId", "d-ibd", "elementId", "part", "x", 12000.0, "y", 10.0)))
                 .isInstanceOf(ValidationException.class).hasMessageContaining("out of canvas");
         assertThatThrownBy(() -> cmd("MOVE_NOTATION", Map.of(
                 "diagramId", "d-ibd", "elementId", "blk", "x", 10.0, "y", 10.0)))
