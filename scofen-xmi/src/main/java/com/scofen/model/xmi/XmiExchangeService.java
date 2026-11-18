@@ -43,14 +43,20 @@ public final class XmiExchangeService {
         }
         if (!bundle.format().carriesNotation() && isBlank(bundle.notationSidecar())) {
             throw new ExchangeException("Standard XMI carries semantics only: a .di.json sidecar "
-                    + "or server-side relayout is required for the nine diagrams");
+                    + "or server-side relayout is required for the standard diagrams");
         }
     }
 
-    /** 自有 .scofen.json 与侧车方案必须完整保留九图布局。 */
+    /**
+     * 自有 .scofen.json 与侧车方案必须完整保留全部规范图布局。
+     *
+     * <p>方法名沿用历史（原为九图），校验口径随 {@link DiagramKind} 自动扩展——
+     * 新增第十种扩展图后，侧车也必须带上它的布局，否则图会缺。</p>
+     */
     public void assertNineDiagramLayout(ExchangeBundle bundle) {
         if (bundle.diagramKinds().size() != DiagramKind.values().length) {
-            throw new ExchangeException("Expected 9 diagram layouts, got " + bundle.diagramKinds().size());
+            throw new ExchangeException("Expected " + DiagramKind.values().length
+                    + " diagram layouts, got " + bundle.diagramKinds().size());
         }
         for (DiagramKind kind : DiagramKind.values()) {
             if (!bundle.diagramKinds().contains(kind)) {

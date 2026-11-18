@@ -29,7 +29,7 @@ export interface GlyphStyle {
   dash?: string
 }
 
-const DEFAULT_STYLE: GlyphStyle = { fill: '#ffffff', stroke: INK, strokeWidth: 1.2 }
+const DEFAULT_STYLE: GlyphStyle = { fill: '#ffffff', stroke: INK, strokeWidth: 1 }
 
 /** 合并默认样式。 */
 function st(style?: Partial<GlyphStyle>): GlyphStyle {
@@ -38,11 +38,11 @@ function st(style?: Partial<GlyphStyle>): GlyphStyle {
 
 /* ───────────────────────── 基础矩形族 ───────────────────────── */
 
-/** SysML 块：矩形（微圆角）。 */
+/** SysML 块：矩形（华望风方角，圆角 0）。 */
 export function blockGlyph(box: GlyphBox, style?: Partial<GlyphStyle>): ReactNode {
   const s = st(style)
   return (
-    <rect x={box.x} y={box.y} width={box.w} height={box.h} rx={2}
+    <rect x={box.x} y={box.y} width={box.w} height={box.h}
       fill={s.fill} stroke={s.stroke} strokeWidth={s.strokeWidth} />
   )
 }
@@ -81,7 +81,7 @@ export function classifierGlyph(
     stroke={s.divider ?? s.stroke} strokeWidth={s.strokeWidth * 0.75} />)
   return (
     <g>
-      <rect x={x} y={y} width={w} height={h} rx={2}
+      <rect x={x} y={y} width={w} height={h}
         fill={s.fill} stroke={s.stroke} strokeWidth={s.strokeWidth} />
       {lines}
     </g>
@@ -101,7 +101,7 @@ export function componentGlyph(box: GlyphBox, style?: Partial<GlyphStyle>): Reac
   const left = x - notch * 0.72
   return (
     <g>
-      <rect x={x} y={y} width={w} height={h} rx={2}
+      <rect x={x} y={y} width={w} height={h}
         fill={s.fill} stroke={s.stroke} strokeWidth={s.strokeWidth} />
       <rect x={left} y={top} width={notch} height={notch}
         fill={s.fill} stroke={s.stroke} strokeWidth={s.strokeWidth} />
@@ -392,7 +392,7 @@ export function swimlaneGlyph(
       <rect x={x} y={y} width={w} height={h}
         fill={parts?.bodyFill ?? s.fill} stroke={s.stroke} strokeWidth={s.strokeWidth} />
       <rect x={x} y={y} width={w} height={headerH}
-        fill={parts?.headerFill ?? '#eef2f7'} stroke={s.stroke} strokeWidth={s.strokeWidth} />
+        fill={parts?.headerFill ?? '#e8eef9'} stroke={s.stroke} strokeWidth={s.strokeWidth} />
     </g>
   )
 }
@@ -405,8 +405,8 @@ export function lifelineHeaderGlyph(
 ): ReactNode {
   return (
     <rect x={box.x} y={box.y} width={box.w} height={box.h}
-      fill={parts?.headerFill ?? '#f7f9fc'}
-      stroke={parts?.stroke ?? INK} strokeWidth={parts?.strokeWidth ?? 1.2} />
+      fill={parts?.headerFill ?? '#e6f0ff'}
+      stroke={parts?.stroke ?? INK} strokeWidth={parts?.strokeWidth ?? 1} />
   )
 }
 

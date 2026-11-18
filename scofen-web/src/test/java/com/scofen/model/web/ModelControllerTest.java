@@ -1,5 +1,6 @@
 package com.scofen.model.web;
 
+import com.scofen.model.metamodel.DiagramKind;
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.core.InMemoryModelRepository;
 import com.scofen.model.core.NoopPersistenceService;
@@ -48,8 +49,8 @@ class ModelControllerTest {
         Map<String, Object> health = controller.health("default");
         assertThat(health).containsEntry("status", "UP")
                 .containsEntry("product", "Scofen Modeler Studio")
-                .containsEntry("tagline", "One model. Nine views.")
-                .containsEntry("diagramKinds", 9)
+                .containsEntry("tagline", "One model. Ten views.")
+                .containsEntry("diagramKinds", DiagramKind.values().length)
                 .containsEntry("revision", 0L);
     }
 
@@ -85,11 +86,11 @@ class ModelControllerTest {
     @Test
     void diagramsEndpointListsNineSpecsWithDedicatedSequenceLayout() {
         List<Map<String, Object>> diagrams = controller.diagrams();
-        assertThat(diagrams).hasSize(9);
+        assertThat(diagrams).hasSize(DiagramKind.values().length);
         assertThat(diagrams).extracting(item -> item.get("layout"))
                 .contains(MetamodelRegistry.LAYOUT_SEQUENCE);
         assertThat(diagrams).extracting(item -> item.get("code"))
-                .containsExactlyInAnyOrder("pkg", "req", "bdd", "ibd", "par", "act", "seq", "stm", "uc");
+                .containsExactlyInAnyOrder("pkg", "req", "bdd", "ibd", "par", "act", "seq", "stm", "uc", "profile");
 
         Map<String, Object> req = diagrams.stream()
                 .filter(item -> "req".equals(item.get("code"))).findFirst().orElseThrow();

@@ -111,7 +111,7 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
   '导入会整包替换当前项目的内容（通用扩展包保留）': { zh: '导入会整包替换当前项目的内容（通用扩展包保留）', en: 'Import replaces the whole project content (the shared extension library is kept)' },
   'XMI 语义文件（.xmi，必选）': { zh: 'XMI 语义文件（.xmi，必选）', en: 'XMI semantic file (.xmi, required)' },
   '布局侧车（.di.json，可选）': { zh: '布局侧车（.di.json，可选）', en: 'Layout sidecar (.di.json, optional)' },
-  '标准 XMI 不承载图类型、图名与坐标；没有侧车时语义完整，但九图布局由服务端重新排布。导入后可通过「撤销」一步回到导入前。': { zh: '标准 XMI 不承载图类型、图名与坐标；没有侧车时语义完整，但九图布局由服务端重新排布。导入后可通过「撤销」一步回到导入前。', en: 'Standard XMI carries no diagram kind, name or coordinates; without a sidecar the semantics survive but the server re-lays out the nine diagrams. One Undo brings the project back.' },
+  '标准 XMI 不承载图类型、图名与坐标；没有侧车时语义完整，但规范图布局由服务端重新排布。导入后可通过「撤销」一步回到导入前。': { zh: '标准 XMI 不承载图类型、图名与坐标；没有侧车时语义完整，但规范图布局由服务端重新排布。导入后可通过「撤销」一步回到导入前。', en: 'Standard XMI carries no diagram kind, name or coordinates; without a sidecar the semantics survive but the server re-lays out the nine diagrams. One Undo brings the project back.' },
   '导入': { zh: '导入', en: 'Import' },
   '已导出 XMI 语义文件 model.xmi': { zh: '已导出 XMI 语义文件 model.xmi', en: 'Exported XMI semantic file model.xmi' },
   '已导出布局侧车 model.di.json': { zh: '已导出布局侧车 model.di.json', en: 'Exported layout sidecar model.di.json' },
@@ -121,7 +121,7 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
   '导入失败：{error}': { zh: '导入失败：{error}', en: 'Import failed: {error}' },
   '请先选择 XMI 语义文件': { zh: '请先选择 XMI 语义文件', en: 'Pick an XMI semantic file first' },
   '已导入模型（rev {revision}）· {count} 个对象受影响 · 可撤销': { zh: '已导入模型（rev {revision}）· {count} 个对象受影响 · 可撤销', en: 'Model imported (rev {revision}) · {count} objects affected · undoable' },
-  '已导入模型（rev {revision}）· {count} 个对象受影响 · 未提供布局侧车，九图由服务端重排': { zh: '已导入模型（rev {revision}）· {count} 个对象受影响 · 未提供布局侧车，九图由服务端重排', en: 'Model imported (rev {revision}) · {count} objects affected · no sidecar, the server re-laid out the nine diagrams' },
+  '已导入模型（rev {revision}）· {count} 个对象受影响 · 未提供布局侧车，规范图由服务端重排': { zh: '已导入模型（rev {revision}）· {count} 个对象受影响 · 未提供布局侧车，规范图由服务端重排', en: 'Model imported (rev {revision}) · {count} objects affected · no sidecar, the server re-laid out the nine diagrams' },
   /* ── 通用动作 ── */
   '撤销': { zh: '撤销', en: 'Undo' },
   '重做': { zh: '重做', en: 'Redo' },
@@ -531,7 +531,7 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
   },
   '点击终点元素': { zh: '点击终点元素', en: 'Click the target element' },
   '点击起点元素': { zh: '点击起点元素', en: 'Click the source element' },
-  'SysML 1.6 · 九图': { zh: 'SysML 1.6 · 九图', en: 'SysML 1.6 · Nine views' },
+  'SysML 1.6 · 十图': { zh: 'SysML 1.6 · 十图', en: 'SysML 1.6 · Ten views' },
 
   /* ── 语义族与关系族 ── */
   '命名空间 / 剖面': { zh: '命名空间 / 剖面', en: 'Namespace / Profile' },
@@ -1282,7 +1282,8 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
 
   /* ── 元模型定制（扩展图 / 构造型 / 标签定义） ── */
   '定制': { zh: '定制', en: 'Customize' },
-  '扩展图': { zh: '扩展图', en: 'Custom diagrams' },
+  '扩展图': { zh: '扩展图', en: 'Profile Diagram' },
+  '定制图': { zh: '定制图', en: 'Custom diagrams' },
   '元模型': { zh: '元模型', en: 'Metamodel' },
   '新建图类型': { zh: '新建图类型', en: 'New diagram type' },
   '尚无自定义图类型': { zh: '尚无自定义图类型', en: 'No custom diagram type yet' },

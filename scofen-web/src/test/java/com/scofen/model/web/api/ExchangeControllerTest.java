@@ -184,7 +184,7 @@ class ExchangeControllerTest {
         ModelSnapshot after = executor.snapshot();
         assertThat(after.diagrams()).hasSize(DiagramKind.values().length);
         assertThat(after.diagrams()).extracting(diagram -> diagram.kind().code())
-                .containsExactlyInAnyOrder("pkg", "req", "bdd", "ibd", "par", "act", "seq", "stm", "uc");
+                .containsExactlyInAnyOrder("pkg", "req", "bdd", "ibd", "par", "act", "seq", "stm", "uc", "profile");
         // 块按主图归属落到块定义图上。
         assertThat(after.diagrams().stream()
                 .filter(diagram -> diagram.kind() == DiagramKind.BDD)

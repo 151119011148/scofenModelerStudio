@@ -1,15 +1,27 @@
 // 图形符号外观字典：形状的默认配色、线宽、字号与几何常量。
 //
-// 参照 MagicDraw / Cameo 的记法风格重做：白底 + 中性深灰描边 + 深色文字，
-// 语义色只保留 UML 规范上确有识别意义的少数几种（需求 / 用例 / 端口）。
-// 此前 renderNode 里散落着二十多处硬编码色值与尺寸（描边 #cbd3dd 浅到几乎看不见、
-// 隔间线 #d4dae3、泳道 #e8edf4 …），改配色要同时改十几个地方——这里收成一处。
-//
-// 颜色语义：所有形状共用 INK（描边）与 INK_TEXT（文字），
-// 变体只在「识别色」上区分，避免九张图各说各话。
+// 配色基准对齐华望 M-Design 画布节点（m-design-graph/examples/testData.ts）：
+// 结构块米黄渐变 #DDCD9E→#FDF7DF + 赭石描边 #ad9d85，
+// 需求淡粉渐变 #FCD4D9→#FDEBEE，用例淡黄渐变 #FEF9DB→#FEEF9E，
+// 包浅蓝渐变 #D7DFFF→#FAFDFF；描边 1px、圆角 0、12px 黑字、隔间线取父描边色。
+// 原文「MagicDraw 白底 + 深灰描边 + UML 语义色」的一套已整体让位给华望色板；
+// 仅交互态（选中 / 连线源）继续沿用交互蓝，与华望的蓝色高亮一致。
+
+/** 画布渐变定义，注入到画布 <svg> 的 <defs> 中。默认 objectBoundingBox 单位，一份定义全图复用。 */
+export const CANVAS_GRADIENTS = [
+  { id: 'hw-block', from: '#DDCD9E', to: '#FDF7DF', vertical: false },
+  { id: 'hw-requirement', from: '#FCD4D9', to: '#FDEBEE', vertical: false },
+  { id: 'hw-usecase', from: '#FEF9DB', to: '#FEEF9E', vertical: true },
+  { id: 'hw-package', from: '#D7DFFF', to: '#FAFDFF', vertical: false },
+] as const
+
+export type CanvasGradientId = (typeof CANVAS_GRADIENTS)[number]['id']
+
+/** 渐变引用（SVG fill 接受 url(#id)）。 */
+const grad = (id: CanvasGradientId): string => `url(#${id})`
 
 export interface ShapeAppearance {
-  /** 填充色。 */
+  /** 填充色（可为 url(#gradient)）。 */
   fill: string
   /** 描边色。 */
   stroke: string
@@ -25,27 +37,29 @@ export interface ShapeAppearance {
   radius: number
 }
 
-/** 中性主色：白底深灰描边，接近 MagicDraw 默认的「黑框」观感但更柔和。 */
-export const INK = '#3f4a5a'
-export const INK_TEXT = '#16202e'
-export const INK_TYPE = '#5d6b7e'
-export const INK_DIVIDER = '#c5cfdc'
+/** 华望描边：结构块赭石、需求/用例/参与者深灰、包蓝灰。 */
+export const INK = '#4c4c4c'
+export const INK_OCHRE = '#ad9d85'
+export const INK_BLUEGRAY = '#6b7495'
+export const INK_TEXT = '#000000'
+export const INK_TYPE = '#4c4c4c'
+export const INK_DIVIDER = '#ad9d85'
 
-/** 语义色：仅用于 UML 规范上确有识别意义的几类形状。 */
+/** 语义色：仅用于少数需与结构块区分的记法（保留键名，色值取华望/SVG 图标同款）。 */
 export const ACCENT = {
-  /** 需求：SysML 惯例用青绿。 */
-  requirement: '#0f766e',
-  /** 用例：UML 惯例用绿。 */
-  usecase: '#15803d',
-  /** 端口 / 插口：实心小方块用琥珀色区分。 */
-  port: '#b7791f',
-  /** 接口：圆形记法用紫。 */
-  interface: '#6b46c1',
-  /** 注释：中性灰。 */
-  comment: '#64748b',
+  /** 需求：淡粉系（与需求渐变同族）。 */
+  requirement: '#4c4c4c',
+  /** 用例：深灰（渐变已用淡黄区分）。 */
+  usecase: '#4c4c4c',
+  /** 端口 / 插口：深灰细描边。 */
+  port: '#4c4c4c',
+  /** 接口：赭石（与结构块同族）。 */
+  interface: '#ad9d85',
+  /** 注释：深灰虚线。 */
+  comment: '#4c4c4c',
 } as const
 
-/** 交互态颜色（选中 / 连线源）优先级高于用户样式。 */
+/** 交互态颜色（选中 / 连线源）优先级高于用户样式。华望选中即蓝色高亮。 */
 export const INTERACTIVE = {
   selectedFill: '#dcebfd',
   selectedStroke: '#1890ff',
@@ -54,15 +68,15 @@ export const INTERACTIVE = {
   multiSelectStroke: '#1890ff',
 } as const
 
-/** 基础外观：绝大多数形状共用。 */
+/** 基础外观：绝大多数结构形状共用华望米黄渐变。 */
 export const BASE_APPEARANCE: ShapeAppearance = {
-  fill: '#ffffff',
-  stroke: INK,
-  strokeWidth: 1.2,
+  fill: grad('hw-block'),
+  stroke: INK_OCHRE,
+  strokeWidth: 1,
   textColor: INK_TEXT,
   typeColor: INK_TYPE,
   dividerColor: INK_DIVIDER,
-  radius: 2,
+  radius: 0,
 }
 
 /** 各类形状的外观变体。 */
@@ -75,17 +89,18 @@ export const APPEARANCE = {
   enumeration: BASE_APPEARANCE,
   datatype: BASE_APPEARANCE,
   artifact: BASE_APPEARANCE,
-  requirement: { ...BASE_APPEARANCE, stroke: ACCENT.requirement },
-  usecase: { ...BASE_APPEARANCE, stroke: ACCENT.usecase },
+  requirement: { ...BASE_APPEARANCE, fill: grad('hw-requirement'), stroke: ACCENT.requirement, dividerColor: '#A18565' },
+  usecase: { ...BASE_APPEARANCE, fill: grad('hw-usecase'), stroke: ACCENT.usecase },
   state: BASE_APPEARANCE,
   pseudostate: BASE_APPEARANCE,
   action: BASE_APPEARANCE,
   control: BASE_APPEARANCE,
-  object: { ...BASE_APPEARANCE, fill: '#f7f9fc' },
-  actor: BASE_APPEARANCE,
-  package: BASE_APPEARANCE,
+  object: BASE_APPEARANCE,
+  actor: { ...BASE_APPEARANCE, fill: '#FFFFCC', stroke: INK },
+  package: { ...BASE_APPEARANCE, fill: grad('hw-package'), stroke: INK_BLUEGRAY, dividerColor: INK_BLUEGRAY },
   port: { ...BASE_APPEARANCE, fill: '#ffffff', stroke: ACCENT.port },
-  comment: { ...BASE_APPEARANCE, stroke: ACCENT.comment },
+  flowport: { ...BASE_APPEARANCE, fill: '#ffffff', stroke: ACCENT.port },
+  comment: { ...BASE_APPEARANCE, fill: '#ffffff', stroke: ACCENT.comment },
   frame: BASE_APPEARANCE,
   swimlane: BASE_APPEARANCE,
   lifeline: BASE_APPEARANCE,

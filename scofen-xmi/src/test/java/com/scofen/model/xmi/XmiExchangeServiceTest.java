@@ -48,12 +48,12 @@ class XmiExchangeServiceTest {
                 Arrays.asList(DiagramKind.values()));
         assertThatCode(() -> service.assertNineDiagramLayout(full)).doesNotThrowAnyException();
 
-        List<DiagramKind> eight = Arrays.stream(DiagramKind.values())
+        List<DiagramKind> minusOne = Arrays.stream(DiagramKind.values())
                 .filter(k -> k != DiagramKind.PAR).toList();
-        ExchangeBundle incomplete = new ExchangeBundle(ExchangeFormat.XMI_251, "<xmi/>", "{}", eight);
+        ExchangeBundle incomplete = new ExchangeBundle(ExchangeFormat.XMI_251, "<xmi/>", "{}", minusOne);
         assertThatThrownBy(() -> service.assertNineDiagramLayout(incomplete))
                 .isInstanceOf(ExchangeException.class)
-                .hasMessageContaining("Expected 9");
+                .hasMessageContaining("Expected " + DiagramKind.values().length);
     }
 
     @Test

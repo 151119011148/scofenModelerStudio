@@ -1,5 +1,6 @@
 package com.scofen.model.web;
 
+import com.scofen.model.metamodel.DiagramKind;
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.metamodel.DiagramTypeLibrary;
 import com.scofen.model.metamodel.ExtensionLibrary;
@@ -25,10 +26,10 @@ class ScofenApplicationTests {
     @Test
     void contextLoadsAndSeedsHierarchicalModelAndAllNineDiagrams() {
         ModelSnapshot snapshot = executor.snapshot();
-        assertThat(snapshot.diagrams()).hasSize(9);
-        // 25 个示例元素（含序列图里被创建/销毁的生命线与组合片段示例）+ 通用扩展包（SysML / UML 的元类与构造型）
+        assertThat(snapshot.diagrams()).hasSize(DiagramKind.values().length);
+        // 29 个示例元素（含扩展图的剖面 / 元类 / 构造型 / 标签定义）（含序列图里被创建/销毁的生命线与组合片段示例）+ 通用扩展包（SysML / UML 的元类与构造型）
         // + 预置扩展图库（对标 MagicDraw 的图种类库）
-        assertThat(snapshot.elements()).hasSize(25 + ExtensionLibrary.size() + DiagramTypeLibrary.size());
+        assertThat(snapshot.elements()).hasSize(29 + ExtensionLibrary.size() + DiagramTypeLibrary.size());
         assertThat(snapshot.elements()).extracting(ModelElement::id)
                 .contains("model-root", "pkg-1", "pkg-ctrl", "e-vcu", "part-vcu", "r-range", "life-user",
                         ExtensionLibrary.SYSML_PROFILE_ID, ExtensionLibrary.UML_PROFILE_ID);

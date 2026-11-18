@@ -1,5 +1,6 @@
 package com.scofen.model.web.project;
 
+import com.scofen.model.metamodel.DiagramKind;
 import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.core.InMemoryModelRepository;
@@ -58,7 +59,7 @@ class ProjectRegistryTest {
         assertThat(opened.snapshot().elements().get(0).ownerId()).isNull();
         assertThat(opened.snapshot().elements()).extracting(ModelElement::id)
                 .contains(ExtensionLibrary.SYSML_PROFILE_ID, ExtensionLibrary.UML_PROFILE_ID);
-        assertThat(opened.snapshot().diagrams()).hasSize(9);
+        assertThat(opened.snapshot().diagrams()).hasSize(DiagramKind.values().length);
         // 预置扩展图库是模型里的真实元素：库包 + 16 条定义，挂在项目根下。
         assertThat(opened.snapshot().elements()).extracting(ModelElement::id)
                 .contains(DiagramTypeLibrary.LIBRARY_PACKAGE_ID)

@@ -41,7 +41,7 @@ import java.util.UUID;
 public class ModelController {
 
     public static final String PRODUCT_NAME = "Scofen Modeler Studio";
-    public static final String TAGLINE = "One model. Nine views.";
+    public static final String TAGLINE = "One model. Ten views.";
 
     private final CommandExecutor executor;
     private final PatchBroker broker;

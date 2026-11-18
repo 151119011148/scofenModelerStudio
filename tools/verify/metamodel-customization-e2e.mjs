@@ -194,8 +194,12 @@ const cleanup = await api(`const d=await (await fetch('api/model',{headers:h})).
   const d2=await (await fetch('api/model',{headers:h})).json();
   const LIB='e-pkg-diagram-type-library';
   const owned=(e)=>e.ownerId!==LIB;
-  const defs=(d2.elements??[]).filter(e=>['DiagramType','TagDefinition'].includes(e.type)&&owned(e)).map(e=>e.id);
-  const sts=(d2.elements??[]).filter(e=>e.type==='Stereotype'&&String(e.id).startsWith('e-')&&owned(e)).map(e=>e.id);
+  // 扩展图示例的种子元素（owner = e-prof-veh）是产品自带示例，不是上一轮的残留，
+  // 不能删——profile-diagram-e2e 依赖它们；只清用户手建在包/剖面下的定义。
+  const seedOwners=['e-prof-veh','e-st-veh-controller','e-mc-veh-block'];
+  const notSeed=(e)=>!seedOwners.includes(e.ownerId) && !seedOwners.includes(e.id);
+  const defs=(d2.elements??[]).filter(e=>['DiagramType','TagDefinition'].includes(e.type)&&owned(e)&&notSeed(e)).map(e=>e.id);
+  const sts=(d2.elements??[]).filter(e=>e.type==='Stereotype'&&String(e.id).startsWith('e-')&&owned(e)&&notSeed(e)).map(e=>e.id);
   const all=[...defs,...sts];
   if(all.length){
     await post({type:'DELETE_ELEMENTS',baseRevision:d2.revision,clientCmdId:'cust-e2e-clean-'+Date.now(),
@@ -203,7 +207,9 @@ const cleanup = await api(`const d=await (await fetch('api/model',{headers:h})).
   }
   const d3=await (await fetch('api/model',{headers:h})).json();
   return {customDiagrams:customDiagrams.length,defs:all.length,errors,
-    remainCustom:(d3.elements??[]).filter(e=>['DiagramType','TagDefinition'].includes(e.type)&&owned(e)).length,
+    remainCustom:(d3.elements??[]).filter(e=>['DiagramType','TagDefinition'].includes(e.type)&&owned(e)
+      && !['e-prof-veh','e-st-veh-controller','e-mc-veh-block'].includes(e.ownerId)
+      && !['e-prof-veh','e-st-veh-controller','e-mc-veh-block'].includes(e.id)).length,
     remainPreset:(d3.elements??[]).filter(e=>e.ownerId===LIB).length}`)
 check('清理上一轮残留的自定义图与定义元素',
   cleanup.errors.length === 0 && cleanup.remainCustom === 0 && cleanup.remainPreset > 0,
@@ -219,7 +225,7 @@ check('定制面板出现', await waitFor(page, `!!document.querySelector('.cust
 const tabLabels = await page.evaluate(
   `[...document.querySelectorAll('.cust-tabs button')].map(b=>b.textContent.trim()).join('|')`)
 check('定制面板分「扩展图 / 元模型」两段',
-  tabLabels.includes('扩展图') && tabLabels.includes('元模型'), tabLabels)
+  tabLabels.includes('定制图') && tabLabels.includes('元模型'), tabLabels)
 // 预置扩展图库（产品随附的模板）常驻在「扩展图」段，用户自建的图类型才是空态。
 // 两者必须分开：预置模板混进用户自建列表会让「新建图类型」从 17 开始编号。
 const presets = await page.evaluate(`(()=>{
@@ -357,7 +363,8 @@ await page.evaluate(`(()=>{const b=document.querySelector('[data-cust-action="ad
   if(b) b.click(); return !!b})()`)
 await sleep(1400)
 const stereotype = await api(`const d=await (await fetch('api/model',{headers:h})).json();
-  const sts=(d.elements??[]).filter(e=>e.type==='Stereotype'&&String(e.id).startsWith('e-'));
+  // 扩展图示例自带一个种子构造型（owner=e-prof-veh），别把它当成刚建的那个。
+  const sts=(d.elements??[]).filter(e=>e.type==='Stereotype'&&String(e.id).startsWith('e-')&&e.ownerId!=='e-prof-veh');
   return sts[0]?{id:sts[0].id,name:sts[0].name}:null`)
 check('构造型落库为真实模型元素', !!stereotype, JSON.stringify(stereotype))
 // 卡片新建后已自动展开；只有没展开时才点标题（再点会把已展开的卡片收起来）。
@@ -373,7 +380,8 @@ await page.evaluate(`(()=>{const b=document.querySelector('[data-cust-action="ad
   if(b) b.click(); return !!b})()`)
 await sleep(1600)
 const tag = await api(`const d=await (await fetch('api/model',{headers:h})).json();
-  const tags=(d.elements??[]).filter(e=>e.type==='TagDefinition');
+  // 只认挂在「本轮刚建构造型」之下的标签；种子标签和历史残留都不算。
+  const tags=(d.elements??[]).filter(e=>e.type==='TagDefinition'&&e.ownerId===${JSON.stringify(stereotype?.id ?? '')});
   return tags[0]?{id:tags[0].id,name:tags[0].name,ownerId:tags[0].ownerId,props:tags[0].properties}:null`)
 check('标签定义落库为真实模型元素', !!tag, JSON.stringify(tag))
 check('标签定义挂在构造型之下', tag?.ownerId === stereotype?.id, `${tag?.ownerId} vs ${stereotype?.id}`)
@@ -381,7 +389,7 @@ check('标签定义挂在构造型之下', tag?.ownerId === stereotype?.id, `${t
 await page.evaluate(setSelect('[data-cust-field="tagType"]', 'ENUM'))
 await sleep(1000)
 const tagType = await api(`const d=await (await fetch('api/model',{headers:h})).json();
-  const tags=(d.elements??[]).filter(e=>e.type==='TagDefinition');
+  const tags=(d.elements??[]).filter(e=>e.id===${JSON.stringify(tag?.id ?? '')});
   return tags[0]?.properties?.['custom:tagType'] ?? ''`)
 check('标签类型已落库（ENUM）', tagType === 'ENUM', tagType)
 

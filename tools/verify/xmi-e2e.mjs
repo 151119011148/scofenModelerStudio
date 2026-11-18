@@ -161,7 +161,7 @@ const nativeRes = await apiGet('api/exchange/scofen.json')
 check('GET /api/exchange/scofen.json 200', nativeRes.status === 200, String(nativeRes.status))
 
 const previewRes = await apiGet('api/exchange/sidecar/preview')
-check('侧车预览返回九图规格', previewRes.text.includes('"expectedKinds":9'), previewRes.text.slice(0, 200))
+check('侧车预览返回十图规格', previewRes.text.includes('"expectedKinds":10'), previewRes.text.slice(0, 200))
 
 // ── 落盘导出文件，供导入用 ──
 console.log('[4] 准备导入文件')
@@ -237,7 +237,7 @@ check('撤销后元素数回到导入前', undone.elements === before.elements, 
 check('撤销后图数回到导入前', undone.diagrams === before.diagrams, `${before.diagrams} → ${undone.diagrams}`)
 await page.screenshot('05-after-undo')
 
-// ── 无侧车导入 → 服务端重排九图 ──
+// ── 无侧车导入 → 服务端重排十图 ──
 console.log('[7] 无侧车导入（服务端重排）')
 const importNoSidecar = await page.evaluate(`(async()=>{
   const res = await fetch('api/exchange/xmi', {
@@ -256,8 +256,8 @@ const relaid = await page.evaluate(`(async()=>{
   return {diagrams:m.diagrams.length, kinds:m.diagrams.map(d=>d.kind), notations:m.notations.length};
 })()`, true)
 console.log('    重排后：', JSON.stringify(relaid))
-check('无侧车导入后服务端补齐九图', relaid.diagrams === 9, String(relaid.diagrams))
-check('九图种类齐全', ['pkg','req','bdd','ibd','par','act','seq','stm','uc'].every((k) => relaid.kinds.includes(k)), relaid.kinds.join(','))
+check('无侧车导入后服务端补齐十图', relaid.diagrams === 10, String(relaid.diagrams))
+check('十图种类齐全', ['pkg','req','bdd','ibd','par','act','seq','stm','uc','profile'].every((k) => relaid.kinds.includes(k)), relaid.kinds.join(','))
 check('重排后生成了记号', relaid.notations > 0, String(relaid.notations))
 
 // ── 撤销回干净基线 ──

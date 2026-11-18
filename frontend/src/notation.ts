@@ -1,4 +1,4 @@
-// 九图记法层：关系连线样式、元素形状分类、边框相交几何。
+// 十图记法层（SysML 九图 + UML 扩展图）：关系连线样式、元素形状分类、边框相交几何。
 // 渲染器禁止按图类型硬编码，形状/样式集中在此，新增图类型只改这里。
 
 export type ShapeKind =
@@ -87,9 +87,9 @@ export function normalizeRelKey(type: string): string {
 export function relationshipStyle(type: string): RelStyle {
   const base = RELATIONSHIP_STYLES[normalizeRelKey(type)]
   if (base) {
-    return { ...base, width: base.width ?? 1.4 }
+    return { ...base, width: base.width ?? 1 }
   }
-  return { color: '#8a95a3', dashed: false, arrow: 'open', label: '', width: 1.4 }
+  return { color: '#8a95a3', dashed: false, arrow: 'open', label: '', width: 1 }
 }
 
 // 元素类型（uml 名或枚举 code，忽略大小写） → 形状
@@ -109,6 +109,11 @@ const SHAPE_MAP: Record<string, ShapeKind> = {
   modellibrary: 'package',
   model: 'package',
   profile: 'package',
+  // 扩展图三件套：构造型与元类按 UML 画成带隔间的类框，标签定义用小类框。
+  stereotype: 'classifier',
+  metaclass: 'classifier',
+  tagdefinition: 'classifier',
+  diagramtype: 'classifier',
   requirement: 'requirement',
   testcase: 'requirement',
   usecase: 'usecase',

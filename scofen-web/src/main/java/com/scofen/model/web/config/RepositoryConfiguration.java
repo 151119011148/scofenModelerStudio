@@ -60,7 +60,7 @@ public class RepositoryConfiguration {
     }
 
     /**
-     * 示例项目：唯一的项目根 Package → 三层父子模型树 + 覆盖九大图，
+     * 示例项目：唯一的项目根 Package → 三层父子模型树 + 覆盖全部规范图，
      * 且每张图只引用自身允许的元素类型。
      * 所有写入仍走 CommandExecutor，保证种子数据与用户编辑同一条协议。
      */
@@ -142,6 +142,19 @@ public class RepositoryConfiguration {
             element(executor, "life-session", "Lifeline", "充电会话", "int-charge");
             element(executor, "cb-eff", "ConstraintBlock", "效率约束", "pkg-1");
 
+            /*
+             * 扩展图（Profile Diagram）示例：一个剖面下挂元类与构造型，构造型下挂标签定义，
+             * 再用一条泛化把构造型指向元类——这就是 UML «stereotype» 的画法（华望同款）。
+             * 元素挂在剖面下，ContainmentRules 已允许；扩展图只是这些元素的另一视角。
+             */
+            element(executor, "e-prof-veh", "Profile", "车载领域剖面", "pkg-1", false);
+            element(executor, "e-mc-veh-block", "Metaclass", "Block 元类", "e-prof-veh", false);
+            element(executor, "e-st-veh-controller", "Stereotype", "«Controller» 构造型", "e-prof-veh", false);
+            element(executor, "e-tag-veh-level", "TagDefinition", "控制等级", "e-st-veh-controller", false);
+            run(executor, "UPDATE_PROPERTY", Map.of("id", "e-tag-veh-level", "key", "custom:tagType", "value", "ENUM"));
+            run(executor, "CREATE_RELATIONSHIP", Map.of("id", "rel-stereo-block",
+                    "type", "generalization", "sourceId", "e-st-veh-controller", "targetId", "e-mc-veh-block"));
+
             // 组合片段：区间（起始/结束消息排位）与守卫都是可写元属性，图面按区间现算框。
             // 覆盖 3..4（鉴权 / 返回），避开被创建生命线的表头，免得框线横穿表头。
             element(executor, "frag-charge-opt", "CombinedFragment", "可选：鉴权", "int-charge");
@@ -181,6 +194,7 @@ public class RepositoryConfiguration {
                     "life-session", "frag-charge-opt"));
             refsByKind.put("stm", List.of("stm-vcu", "state-idle"));
             refsByKind.put("uc", List.of("uc-charge", "actor-driver"));
+            refsByKind.put("profile", List.of("e-prof-veh", "e-mc-veh-block", "e-st-veh-controller", "e-tag-veh-level"));
 
             // 图归其语义宿主所有：IBD/Par 归块/约束块，Act/Seq/Stm 归其对应行为元素，
             // 这样从图工具箱拖出的元素在 ContainmentRules 下都能合法挂载（见下方工具箱需求）。
@@ -194,6 +208,7 @@ public class RepositoryConfiguration {
             diagramOwner.put("seq", "int-charge");
             diagramOwner.put("stm", "stm-vcu");
             diagramOwner.put("uc", "pkg-1");
+            diagramOwner.put("profile", "e-prof-veh");
 
             for (DiagramKind kind : DiagramKind.values()) {
                 run(executor, "CREATE_DIAGRAM", Map.of(

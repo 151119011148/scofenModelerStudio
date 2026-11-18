@@ -12,11 +12,29 @@ class MetamodelRegistryTest {
 
     @Test
     void nineSysmlDiagramsAreAllRegistered() {
-        assertThat(MetamodelRegistry.diagramCount()).isEqualTo(9);
+        // SysML 九图 + UML 扩展图（Profile Diagram）= 十种规范图。
+        assertThat(MetamodelRegistry.diagramCount()).isEqualTo(10);
         assertThat(MetamodelRegistry.diagrams()).containsExactlyInAnyOrder(DiagramKind.values());
         assertThat(DiagramKind.fromCode("seq")).isEqualTo(DiagramKind.SEQ);
+        assertThat(DiagramKind.fromCode("profile")).isEqualTo(DiagramKind.PROFILE);
         assertThatThrownBy(() -> DiagramKind.fromCode("bpmn"))
                 .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void profileDiagramShowsMetamodelCustomizationElements() {
+        assertThat(MetamodelRegistry.allows(DiagramKind.PROFILE, ElementType.PROFILE)).isTrue();
+        assertThat(MetamodelRegistry.allows(DiagramKind.PROFILE, ElementType.STEREOTYPE)).isTrue();
+        assertThat(MetamodelRegistry.allows(DiagramKind.PROFILE, ElementType.METACLASS)).isTrue();
+        assertThat(MetamodelRegistry.allows(DiagramKind.PROFILE, ElementType.TAG_DEFINITION)).isTrue();
+        assertThat(MetamodelRegistry.allows(DiagramKind.PROFILE, ElementType.DIAGRAM_TYPE)).isTrue();
+        // 构造型扩展元类在图上画成泛化，剖面应用与包内归属也允许。
+        assertThat(MetamodelRegistry.allowsRelationship(DiagramKind.PROFILE, RelationshipType.GENERALIZATION)).isTrue();
+        assertThat(MetamodelRegistry.allowsRelationship(DiagramKind.PROFILE, RelationshipType.PROFILE_APPLICATION)).isTrue();
+        assertThat(MetamodelRegistry.allowsRelationship(DiagramKind.PROFILE, RelationshipType.CONTAINMENT)).isTrue();
+        // 剖面元素主归属仍是包图：扩展图是另一视角，导入重排不把它们挪走。
+        assertThat(MetamodelRegistry.primaryKind(ElementType.STEREOTYPE)).contains(DiagramKind.PKG);
+        assertThat(MetamodelRegistry.primaryKind(ElementType.TAG_DEFINITION)).contains(DiagramKind.PKG);
     }
 
     @Test

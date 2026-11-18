@@ -3,7 +3,8 @@
  *   1) UML / SysML 规范记法到位：参与者是火柴人、用例是椭圆、类是三栏矩形、
  *      组件双缺口伸出边框、部署节点是立方体、接口有凸出半圆、枚举有隔间、
  *      数据类型有双斜线、制品是折角纸片；
- *   2) 统一配色：默认描边是中性深灰 rgb(63,74,90)，不再是几乎看不见的浅灰；
+ *   2) 华望画布配色：结构块米黄渐变 + 赭石描边 #ad9d85、需求淡粉 / 用例淡黄渐变、
+ *      包浅蓝渐变，深灰 #4c4c4c 描边（actor/usecase），方角、1px 细线；
  *   3) 工具箱图标与画布符号同源（同一套几何，元素数量一致）。
  *
  * 运行方式见 tools/verify/README.md：Chrome 必须与本脚本在同一次 Bash 调用内启动，
@@ -120,11 +121,21 @@ const api = async (expression) => page.evaluate(`(async()=>{const h=${H};${expre
 console.log('[1] 登录')
 await page.goto(APP_URL)
 await waitFor(page, `!!document.querySelector('input[name="scofen-admin-password"]')`)
-await page.evaluate(`(()=>{const set=(el,v)=>{const s=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value').set;
-  s.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}))};
-  set(document.querySelector('input[name="scofen-admin-username"]'),'scofen');
-  set(document.querySelector('input[name="scofen-admin-password"]'),${JSON.stringify(PASSWORD)});
-  [...document.querySelectorAll('button')].find(b=>/登录/.test(b.textContent))?.click(); return 1})()`)
+// 登录表单存在重挂竞态：注入瞬间 input 可能短暂为 null，判空重试直到成功。
+let loginInjected = false
+for (let i = 0; i < 20 && !loginInjected; i++) {
+  try {
+    loginInjected = await page.evaluate(`(()=>{const q=(n)=>document.querySelector('input[name="scofen-admin-'+n+'"]');
+      if(!q('username')||!q('password')) return false;
+      const set=(el,v)=>{const s=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value').set;
+        s.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}))};
+      set(q('username'),'scofen');
+      set(q('password'),${JSON.stringify(PASSWORD)});
+      [...document.querySelectorAll('button')].find(b=>/登录/.test(b.textContent))?.click(); return true})()`)
+  } catch { /* 表单重挂中，重试 */ }
+  if (!loginInjected) await sleep(250)
+}
+check('登录注入成功', loginInjected)
 check('登录成功进入工作台', await waitFor(page, `!!document.querySelector('.props-dock')`, 120, 250))
 await sleep(1800)
 
@@ -231,10 +242,14 @@ const shapeOf = (elementId) => page.evaluate(`(()=>{
   const stroke=paint?.getAttribute('stroke')
     ?? g.getAttribute('stroke')
     ?? (paint?getComputedStyle(paint).stroke:null);
+  const fill=paint?.getAttribute('fill')??(paint?getComputedStyle(paint).fill:null);
+  const strokeW=paint?.getAttribute('stroke-width')??(paint?getComputedStyle(paint).strokeWidth:null);
+  const root=document.querySelector('.canvas svg');
+  const grads=[...(root?.querySelectorAll('linearGradient')??[])].map(x=>x.id);
   return {
     rect:q('rect'), circle:q('circle'), ellipse:q('ellipse'), line:q('line'),
     path:q('path'), polygon:q('polygon'),
-    stroke,
+    stroke, fill, strokeW, grads,
     text:g.textContent??''
   };
 })()`)
@@ -266,12 +281,15 @@ if (actor) {
     actor.circle === 1 && actor.line === 4,
     `circle=${actor.circle} line=${actor.line} path=${actor.path} rect=${actor.rect}`)
   check('参与者没有用矩形冒充', actor.rect === 0, `rect=${actor.rect}`)
-  check('参与者描边是中性深灰', sameColor(actor.stroke, '#3f4a5a'), String(actor.stroke))
+  check('参与者描边是华望深灰 #4c4c4c', sameColor(actor.stroke, '#4c4c4c'), String(actor.stroke))
 }
 const usecase = await shapeOf('e-shape-usecase')
 check('用例是椭圆', usecase?.ellipse === 1, JSON.stringify(usecase))
-// 用例按 UML 惯例用绿色识别色（不是中性灰），这是有意为之。
-check('用例描边是 UML 惯例绿', sameColor(usecase?.stroke, '#15803d'), String(usecase?.stroke))
+check('用例描边是华望深灰 #4c4c4c', sameColor(usecase?.stroke, '#4c4c4c'), String(usecase?.stroke))
+check('用例填充引用淡黄渐变', /url\(['"]?#hw-usecase/.test(String(usecase?.fill)), String(usecase?.fill))
+check('画布注入了华望 4 组渐变 defs',
+  ['hw-block', 'hw-requirement', 'hw-usecase', 'hw-package'].every((id) => usecase?.grads?.includes(id)),
+  JSON.stringify(usecase?.grads))
 
 // 用例图打开时，工具箱白名单里含参与者与用例。
 console.log('[4] 工具箱图标：成品 SVG 优先、内联 Glyph 兜底')
@@ -299,7 +317,9 @@ const cls = await shapeOf('e-shape-class')
 check('类渲染出来了', !!cls, JSON.stringify(cls))
 if (cls) {
   check('类保留三栏结构（2 条分隔线）', cls.line === 2, `line=${cls.line}`)
-  check('类描边是中性深灰', sameColor(cls.stroke, '#3f4a5a'), String(cls.stroke))
+  check('类描边是华望赭石 #ad9d85', sameColor(cls.stroke, '#ad9d85'), String(cls.stroke))
+  check('类填充引用米黄渐变', /url\(['"]?#hw-block/.test(String(cls?.fill)), String(cls?.fill))
+  check('类描边宽度为 1px', String(cls?.strokeW) === '1', String(cls?.strokeW))
 }
 const iface = await shapeOf('e-shape-iface')
 check('接口是圆 + 凸出半圆插座', iface?.circle === 1 && iface?.path === 1,
@@ -322,6 +342,8 @@ const reqOpen = await openDiagram('需求图')
 check('需求图已打开', reqOpen)
 const req = await shapeOf('e-shape-req')
 check('需求是折角纸片', req?.path === 1, JSON.stringify(req))
+check('需求填充引用淡粉渐变', /url\(['"]?#hw-requirement/.test(String(req?.fill)), String(req?.fill))
+check('需求描边是华望深灰 #4c4c4c', sameColor(req?.stroke, '#4c4c4c'), String(req?.stroke))
 
 console.log('[5] 截图')
 const shotUc = await page.screenshot('shape-notation')

@@ -76,7 +76,7 @@ public final class WorkspaceDirectory {
     /** 内置默认目录；落库模式下首次启动会写入库，之后由库接管。 */
     private void seedDefaults() {
         put(new ProjectDirectoryStore.ProjectRow(CURRENT_PROJECT_ID, "车载动力系统工程模型",
-                "SysML 1.6 九图示例 · 需求 → 功能 → 架构追溯", "我", PERSONAL, "编辑中", true), true);
+                "SysML 1.6 十图示例 · 需求 → 功能 → 架构 → 扩展", "我", PERSONAL, "编辑中", true), true);
         put(new ProjectDirectoryStore.ProjectRow("project-req", "需求工程样例",
                 "需求条目化与满足 / 验证追溯样例", "我", PERSONAL, "可打开", true), true);
         put(new ProjectDirectoryStore.ProjectRow("project-eea", "整车电子电气架构",

@@ -1,11 +1,11 @@
 # Scofen Modeler Studio
 
-> One model. Nine views.
+> One model. Ten views.
 
 轻量化 SysML 1.6 / UML 2.5.1 建模工具，对标 M-Design 与 MagicDraw / Cameo。
 模型优先、服务端权威：元素与关系是唯一事实源，图只是视图。
 
-**当前状态：M0 骨架 + 三件套已落地——MySQL 持久化、XMI 语义往返、RBAC 权限闭环，项目根固定为 Package，共 124 项用例（116 项运行通过，8 项 Testcontainers 因无 Docker 跳过），已上线 <http://47.117.110.143/scofen/modelerStudio/>；尚未进入 M1～M4 的完整产品实现。**
+**当前状态：M0 骨架 + 三件套已落地——MySQL 持久化、XMI 语义往返、RBAC 权限闭环，项目根固定为 Package，共 176 项用例（168 项运行通过，8 项 Testcontainers 因无 Docker 跳过），已上线 <http://47.117.110.143/scofen/modelerStudio/>；尚未进入 M1～M4 的完整产品实现。**
 方案全文见仓库上级目录的《产品方案与技术选型 v0.6》；首发完整范围约 21～25 周。
 
 ## 已实现（M0）
@@ -13,7 +13,7 @@
 | 能力 | 说明 |
 |---|---|
 | 四对象分离 | `ModelElement` / `Relationship` / `Diagram(View)` / `Notation`，图只持有 id 引用 |
-| 九图注册表 | 表驱动的 9 种图规格、元素集合、校验分组；序列图指向专用 `Java SequenceLayout` |
+| 十图注册表 | 表驱动的 10 种图规格、元素集合、校验分组；序列图指向专用 `Java SequenceLayout`。前九张是 SysML 1.6 标准图（包 / 需求 / 模块定义 / 内部块 / 参数 / 活动 / 序列 / 状态机 / 用例），第十张是**扩展图（Profile Diagram，对标 M-Design 侧栏的「扩展图」）** |
 | 元模型覆盖 | 可建类型 **157**（核心 89 / 规范扩展 68，后者默认收在工具箱「更多规范类型」里）、元类 **281**、元属性定义 **597**、关系类型 **37**。UML 2.5.1 的 §7 模板、§8 观察与区间约束、§9/§11 关联类与接口实现、§13 事件、§14 协议状态机、§15 控制节点族与区域、§16 四十余个具体动作、§17 交互片段、§19 部署类全部有可建入口；SysML 1.6 剖面 **49** 个构造型 |
 | 扩展包六库 | 项目自带 6 个顶层扩展根：SysML / UML 两个 Profile，加 **UML 原始类型库**（Boolean / Integer / Real / String / UnlimitedNatural）、**SysML 值类型库**（含 ControlValueKind / VerdictKind / FeatureDirectionKind 三个枚举）、**ISO 80000 / QUDV 单位量纲库**（7 量纲 + 7 基本单位 + 22 派生单位）、**UML 标准构造型库 L2/L3**（36 个）。值属性的 `type` 可直接指向 `prim-String`，`unit` 可指向 `unit-kilogram`；存量项目首次打开时按 id 差集增量补齐 |
 | 关系模型 | 两个 Profile 下各带一个**「关系」子包**：37 种关系类型逐个物化为模型条目——规范里是元类的建为 Metaclass（Association / Dependency / Generalization / Connector / Transition…），是构造型的建为 Stereotype（«satisfy» «verify» «deriveReqt» «allocate» «itemFlow»…），两者都用「扩展的元类」指回元类子包，属性面板可跳转、模型树可高亮。关系目录 `/api/metamodel/relationships` 同步下发 `metaclass` / `metaclassName` / `spec` / `stereotypeRelationship` |
@@ -24,7 +24,7 @@
 | 规则引擎 | 命名唯一性（大小写不敏感，对应 MySQL `utf8mb4_0900_ai_ci`）、端点存在、循环继承、图元素类型约束、删除元素后清理图引用 |
 | 交换契约 | 语义层 / 图层分离；`.xmi` 标准 UML 2.5.1 + `.di.json` 布局侧车 + `.scofen.json` 无损自有格式，导出导入双向可用 |
 | B/S 界面 | Vite + React + TS strict 三列工作区（模型树+属性 / 组件工具箱 / 画布），顶栏项目选择器、登录页、改名、新建、撤销、WS 实时同步 |
-| 层级模型树 | 按 `ownerId` 递归的父子结构，展开/折叠（飞书同款蓝色三角）、选中同步到属性面板与画布；项目根节点同样可折叠，不再是常驻展开；九图示例数据覆盖各图合法类型 |
+| 层级模型树 | 按 `ownerId` 递归的父子结构，展开/折叠（飞书同款蓝色三角）、选中同步到属性面板与画布；项目根节点同样可折叠，不再是常驻展开；十图示例数据覆盖各图合法类型 |
 | 扩展包隔离与内嵌 | 模型搜索栏右侧的开关控制 UML / SysML 扩展包在模型树里的显示 / 隐藏（偏好存 localStorage）。扩展包定义由 `/api/metamodel/extension` 从静态元模型目录下发，与项目快照 / revision 隔离：不计入项目元素数、不参与项目筛选与命令、XMI 导入导出自动剔除；开启时以内嵌「扩展包」虚拟分组只读展示，**层级与项目根一致**（是根的同级节点，而不是根的子节点），可逐级展开元类、构造型与关系用于引用定位 |
 | 关系虚拟节点 | 关系不再全局平铺：每个参与关系的元素下生成「关系」虚拟节点，父 id 即端点元素 id。方向由服务端关系目录 `directed` 字段权威下发——单向关系只挂源端一方，双向 / 无向关系（关联 / 连接器 / 绑定）在两端各挂一次；两端都失效时兜底到项目根 / 顶层分组。关系行可点选进属性窗口、可折叠、显示对端名称与方向 |
 | 规范约束的增删改 | 服务端 `ContainmentRules` 表驱动所有权规则（如 Port 只能属于 Block / PartProperty）、根类型限制、命名格式与同命名空间唯一性、图类型约束；前端右键菜单只列出规范允许的子类型 |
@@ -35,25 +35,26 @@
 | 连线路由 | 关系连线统一走**直角折线（曼哈顿）**：锚点取节点边框中点，拐段只走水平/垂直。竖直跨度重叠从左右边出入（同高直连、否则中缝竖直拐段），水平跨度重叠从上下边出入（同列直连、否则中缝水平拐段），完全错开时目标在上方走 Z 形、在下方走「底边出→目标行高→对边入」L 形，与标准 UML 泳道图连线一致；箭头沿末段方向、关系标签按折线弧长居中。路由集中在 `notation.ts` 的 `orthogonalRoute`，渲染器不按图类型硬编码；序列图生命线消息仍按时间槽水平铺开不受影响 |
 | 序列图 | 序列图不走通用「盒子 + 斜线」渲染，`sequenceLayout.ts` 从生命线记法现算图面：**Interaction 画成 UML 的 sd 图框**（左上五边形标签包住整张图，不再是一个能拖的方块；Interaction 只作为图 ownerId 没进图时按 ownerId 回查模型元素补框）；表头对齐到同一行、宽度取到放得下名字，竖直虚线从表头底边伸到**所有生命线共享的底边**；外部导入把生命线摆成 2×2 网格时 x 会重复，按 (y, x) 读列序并等距重排，避免两条表头叠在同一列。**消息的时间槽位置是模型数据**（`message` 关系的 `messageOrder`，就是 1..n 的排位），不是关系数组的下标——新建消息自动落到末尾（序号 = 末位 + 1），**按住消息线拖到目标时间槽**或 `Alt + ↑/↓` 改序，拖动时显示插入指示线，整条时间轴归一化后由一条 `SET_MESSAGE_ORDER` 写完（一个 revision、一步撤销）；标签前缀显示序号（`1: 提交订单`），`messageSort` 决定线型（同步实线实心三角 / 异步实线开放箭头 / 信号短点虚线 / 回复长虚线带 «reply» / 创建实线带 «create» / 销毁粗断虚线带 «delete»），自消息折成四段小回环回到本列。**工具箱把「消息」拆成七种组件**（同步 / 异步 / 异步信号 / 返回 / 创建 / 销毁 / 给自己的消息），按钮带同款线型缩略图，点选后依次点起点、终点生命线，种类随关系一次写进 `messageSort`；「给自己的消息」只点一条生命线即建成 `source = target` 的自反消息，其它消息工具点回原起点同样建自消息，取消连线按 `Esc`。**激活条按调用栈推导、不落库**：收到调用压一层、本线发出 reply 才收口——所以「A→B，B→C」不会把 B 的激活条截断，自消息在自己的栈顶再叠一条短线；`createMessage` 让目标生命线的表头落在消息行下方（绿色描边 + 左侧落点三角），箭头斜指表头顶边、这条消息本身不压激活条；`deleteMessage` 在虚线末端画红色终止符 X。**组合片段**：`CombinedFragment` 的 `interactionOperator`（alt/opt/loop/…）、`coveredFrom` / `coveredTo`（覆盖的消息排位区间）、`guards`（分支守卫）都是可写元属性，图面按区间现算 UML 片段框（五边形 operator 标签 + 操作数分隔虚线 + `[guard]`），不再画成普通方块；点左上角标签选中片段即可在属性面板改区间与守卫。**外部导入兼容**：关系不必带 `diagramId`（两端生命线都在本图即属于该时间轴）；序号可写在关系的 `name`（纯数字）或 `documentation`（「消息 N：…」）里，正文优先取 `documentation`；导入常带 Message 元素却只建了一部分 `message` 关系，缺失的按 `documentation` 里的「A → B「正文」」补成**只读虚拟消息**（灰色、不落库、不改序，点击定位到树上的 Message 元素）；没有 `messageSort` 的外部消息按标签关键词 + 方向推断 reply，可在属性面板改写 `messageSort` 覆盖。点真实消息即选中该 `message` 关系，属性面板可直接改 `messageSort` 与 `消息顺序`；拖动生命线时消息实时跟着换列、时间槽不重排。端点不是生命线的消息自动退回通用连线渲染，不会凭空消失。序列图工具箱不再给「消息」元素（它本质是关系，拖出来只会得到一个没用的方块）。示例序列图用四条生命线、七条消息把这七种线型和创建 / 销毁语义全部摆出来：其中「充电会话」由 `createMessage` 创建、由 `deleteMessage` 销毁；时间轴高于 640×420 的默认画布，打开图时会自动适应窗口一次（按图 id 只做一次，之后用户手动缩放 / 平移不会被拉回）。新建序列图时若宿主不是 Interaction，`ensureDiagramHost` 自动复用或补建一个 Interaction 作宿主——否则容器规则会拒绝生命线入图 |
 | 图形样式 | 工具箱「样式」页签是**图形样式编辑器**（对标 M-Design）：选中图形 / 多选 / 连线 / 图框后调文字（字号 / 字色 / 字重 / 对齐）、填充（颜色 / 不透明度）、边框（颜色 / 粗细 / 实虚线）、连线（颜色 / 粗细 / 线型 / 标签字号）与图框（标题 / 框线 / 标签色 / 字号），另带一键预设（默认 / 强调 / 关键 / 完成 / 草稿）与重置。样式是**表示层对象**，不进元属性：图形存 `Notation.style`、连线按图存关系的 `style:<diagramId>` 属性、图框存 `Diagram.style`，全部走服务端命令（`SET_NOTATION_STYLE` / `SET_DIAGRAM_STYLE` / `UPDATE_PROPERTY`）→ 增量合并 → 可撤销 → WS 广播；合法键与取值由 `/api/metamodel/styles` 下发、写入前再校验一遍，越界数值与非法颜色一律 400，不会把任意字符串塞进 SVG 属性。选中态用交互色（浅蓝底 + 主色描边）临时覆盖，取消选中即显示用户样式 |
-| 图标与视觉基调 | 界面视觉**对齐华望 M-Design**：主色 `#1890ff`、浅蓝外壳（标题栏 `#E8EEF9` / 工具栏 `#ecf4ff` / 侧栏 `#f4f8ff` / 页签 `#e6f0ff` / 隔行 `#e8eff7` / 选中 `#DCEBFD`），12px 字号、无圆角基调，全部集中在 `styles.css` 的 `:root` 语义变量里（一处切换全局生效）。模型树 / 工具箱 / 页签的**图片图标**用 M-Design 的成品符号：`frontend/public/icons/sysml/` 下 517 个 SysML/UML 符号 SVG（含九图图符），`icons/ui/` 下 192 个通用图标；`iconAssets.ts` 把类型 / 图 / 关系 code 映射到 SVG 文件名，`icons.tsx` 的 `Tile` 优先渲染成品 SVG、未命中回退内联参数化 Glyph（保证零图标缺失）。成品图标自带规范配色、透明底；**画布上的记法符号仍由 `shapeGlyphs.tsx` 参数化绘制**（可随样式编辑换色），与图标语义一致但职责不同。静态资源经 `import.meta.env.BASE_URL` 拼接，子路径部署自动带 `/scofen/modelerStudio/` 前缀 | 
+| 图标与视觉基调 | 界面视觉**对齐华望 M-Design**：主色 `#1890ff`、浅蓝外壳（标题栏 `#E8EEF9` / 工具栏 `#ecf4ff` / 侧栏 `#f4f8ff` / 页签 `#e6f0ff` / 隔行 `#e8eff7` / 选中 `#DCEBFD`），12px 字号、无圆角基调，全部集中在 `styles.css` 的 `:root` 语义变量里（一处切换全局生效）。模型树 / 工具箱 / 页签的**图片图标**用 M-Design 的成品符号：`frontend/public/icons/sysml/` 下 517 个 SysML/UML 符号 SVG（含十图图符），`icons/ui/` 下 192 个通用图标；`iconAssets.ts` 把类型 / 图 / 关系 code 映射到 SVG 文件名，`icons.tsx` 的 `Tile` 优先渲染成品 SVG、未命中回退内联参数化 Glyph（保证零图标缺失）。成品图标自带规范配色、透明底；**画布上的记法符号仍由 `shapeGlyphs.tsx` 参数化绘制**（可随样式编辑换色），与图标语义一致但职责不同。静态资源经 `import.meta.env.BASE_URL` 拼接，子路径部署自动带 `/scofen/modelerStudio/` 前缀 | 
 | SysML 图框 | 每张图按内容包围盒自动套一层标准图框：左上「首页标签」（五边形缺口 + 图种），标题按 **`图种 [宿主 [图名]]`** 三段式生成（与 Cameo / M-Design 一致），可自定义标题、框线颜色 / 粗细、标签底色与字号。图框按图存在 `Diagram.style` 里，**每张图独立**、刷新保持、随 SVG 导出；序列图例外——它自带 `sd` 图框（UML 只画一层），此时通用图框让开、样式直接作用在那个 sd 框上，工具条与样式面板的「显示图框」开关置灰并说明原因 |
-| 扩展图（自定义图类型） | 工具箱「定制」页签可以**自建图种类**（对标 MagicDraw Custom Diagram / M-Design 的扩展图）：以某张规范图为**布局基底**，再限定它允许出现的元素类型与关系类型，形成一条「扩展图」。新建图对话框的图类型下拉分「规范图 / 自定义图」两组，自定义图按 `Diagram.customTypeId` 指回定义元素；工具箱的组件 / 关系清单按白名单收敛，画布上放不进的东西服务端也直接拒绝（400）——**界面与校验共用同一份「有效规范」**（基底规范 ∩ 用户白名单），不会出现「界面能画但服务端不认」。图框标题可用自定义模板（`{图种}` / `{宿主}` / `{图名}`）。定义随模型保存、随 XMI / 侧车交换 |
+| 定制图（自定义图类型） | 工具箱「定制」页签可以**自建图种类**（对标 MagicDraw Custom Diagram）：以某张规范图为**布局基底**，再限定它允许出现的元素类型与关系类型，形成一张「定制图」（`DiagramType` 元素，界面里与第十种规范图「扩展图」是两个概念，页签名已改为「定制图」以免同名混淆）。新建图对话框的图类型下拉分「规范图 / 自定义图」两组，自定义图按 `Diagram.customTypeId` 指回定义元素；工具箱的组件 / 关系清单按白名单收敛，画布上放不进的东西服务端也直接拒绝（400）——**界面与校验共用同一份「有效规范」**（基底规范 ∩ 用户白名单），不会出现「界面能画但服务端不认」。图框标题可用自定义模板（`{图种}` / `{宿主}` / `{图名}`）。定义随模型保存、随 XMI / 侧车交换 |
 | 预置扩展图库 | 产品随附 **16 张 MBSE 扩展图模板**（系统上下文图 / 系统定义图 / 项目上下文图 / 利益相关方图 / 需求分解图 / 需求追溯图 / 功能分解图 / 逻辑架构图 / 物理架构图 / 主题域图 / 信息流图 / 场景图 / 安全分析图 / 参数分析图 / 状态概览图 / 交互概览图），对标 MagicDraw 的图种类库：**新建项目时自动播种，存量项目升级时按 id 差集补建**（定制面板上的「载入预置扩展图 (N)」按钮只补缺的那些）。模板落成模型里的真实 `DiagramType` 元素（id `e-dt-preset-*`，归在「扩展图库」包下），因此与用户手建的扩展图**完全同构**——可改名、可改白名单、可删除，随快照与 XMI 往返。定制面板把「预置扩展图库」与「用户自定义」分两段展示（预置带徽标、单独计数），预置模板不占「新建图类型」的编号 |
+| 扩展图（第十种规范图） | SysML 第十种图 **Profile Diagram**，也是元模型定制的可视化画布：图上画**剖面（Profile）/ 元类（Metaclass）/ 构造型（Stereotype）/ 标签定义（TagDefinition）/ 图类型（DiagramType）**。构造型用**泛化连线（空心三角）**指向元类来表达「扩展」（与 UML 剖面画法一致，`extendsMetaclass` 属性仍可在属性面板直接指向元类），标签定义挂在构造型之下，剖面画成包框、构造型与元类画成带 `«Stereotype»` / `«Metaclass»` 隔间的类框。`DiagramKind.PROFILE` 与其余九图同源注册，新建图对话框 / 元素白名单（放不进的类型服务端 400）/ XMI 侧车 / 主图归属重排全部自动覆盖；扩展图下工具箱把标签定义与图类型提到首屏（其它图仍收在「更多规范类型」）。种子模型自带一张「扩展图示例」：车载领域剖面 → Block 元类 ←«Controller» 构造型 → 控制等级标签定义 | 
 | 元模型定制（剖面） | 「定制」页签第二段可建**构造型**与其下的**标签定义**（STRING / BOOLEAN / INTEGER / REAL / ENUM、默认值、必填、枚举选项）。元素应用构造型后，属性面板「标签」页签自动出现**剖面标签**分区：按标签定义渲染成带类型的字段（布尔出下拉、数值出数字框、枚举出选项），值写回 `taggedValues`，整张表一步撤销。构造型与标签定义都是模型里的真实元素（不是前端状态），随模型交换 |
 | 建表脚本 | `MysqlSchema.ensure()` 幂等建六张表（项目、快照、用户、角色、用户角色、角色权限），MySQL 8.4 / InnoDB / utf8mb4 |
 | 登录与会话 | JWT(HS256) + PBKDF2 口令哈希，两个超管账号（`scofen` / `gaofeng`）共用口令；`/api/**` 与 WebSocket 握手都校验登录态，401 自动回登录页 |
-| 打开项目 | 顶栏项目选择器点击即打开、新建后自动打开；每个项目分配独立内存态模型运行时（唯一项目根 Package + 九图），统计 / revision / 撤销栈互不串写。**删除项目**（`DELETE /api/workspaces/projects/{id}`，`project.delete` 权限）同时移除目录项、运行时与落库快照；主示例项目受保护，删除当前项目会自动切到目录里的第一个项目 |
+| 打开项目 | 顶栏项目选择器点击即打开、新建后自动打开；每个项目分配独立内存态模型运行时（唯一项目根 Package + 十图），统计 / revision / 撤销栈互不串写。**删除项目**（`DELETE /api/workspaces/projects/{id}`，`project.delete` 权限）同时移除目录项、运行时与落库快照；主示例项目受保护，删除当前项目会自动切到目录里的第一个项目 |
 | 可调列宽 | 左栏（模型树 / 属性）与工具箱之间的两条分隔线可拖拽改宽，宽度落 localStorage 并跨刷新保持；窄屏（≤1180px）由媒体查询接管并隐藏手柄 |
 | 规范属性窗口 | 按 UML 2.5.1 元类继承链 + SysML 1.6 构造型展开每种元素类型的元属性；**标准 / 专家 / 全部**三档收进属性栏右上角下拉，工具栏支持按属性 key 搜索与升序 / 降序排序（排序时平铺为全局有序的一张表）。属性以两列表格只读展示，可编辑行右侧「⋯」打开编辑弹框：字符 / 长文本 / 数值 / JSON 用输入框，布尔与枚举用下拉，模型引用用元素选择器，数组与构造型用 chip 增删（即时写入、可撤销）。所有写入走通用 `UPDATE_PROPERTY` 命令（校验 + 乐观锁 + 撤销）；计算属性与派生属性（`id` / `qualifiedName` / 各类统计量）只读并由前端实时求值 |
 | 拖放加入图 | 模型树中把元素拖到「图」节点即把该元素加入该图并生成记法（自动排布落点、单条 `ADD_TO_DIAGRAM`、可撤销）；图只是视图，不复制、不拥有模型元素 |
 | MySQL 持久化 | 切 `scofen.persistence.mode=mysql` 后按项目隔离落库：项目目录、整包 JSON 快照（按 revision 留存最近 100 版）、用户与角色表；内存态仍是默认值，重启即复位 |
 | RBAC 权限闭环 | 9 个权限码两端共用一套：服务端 `@RequiresPermission` + 拦截器门控，前端读令牌里的 `perms` 收敛按钮显隐；内置 admin / editor / viewer 三角色 + 用户管理界面，权限码与界面显隐不会「藏了但还能调」 |
-| XMI 导入导出 | 「文件」菜单导出 `.xmi` / `.di.json` / `.scofen.json` 三种格式，导入 `.xmi`（可配 `.di.json`）；导入为**整包替换**当前项目，一次 Command、一次 revision、一个 Patch，天然幂等且可撤销；无侧车时由服务端按元素主图归属重排九图 |
+| XMI 导入导出 | 「文件」菜单导出 `.xmi` / `.di.json` / `.scofen.json` 三种格式，导入 `.xmi`（可配 `.di.json`）；导入为**整包替换**当前项目，一次 Command、一次 revision、一个 Patch，天然幂等且可撤销；无侧车时由服务端按元素主图归属重排十图 |
 | 连接失败自愈 | 页面初始化时若后端/网络瞬时不可用，模型快照与元模型目录按 1s→2s→4s…（上限 30s）自动退避重试，WebSocket 断线同样重连；顶部横幅显示故障原因与「立即重试」按钮。数据未就绪时禁止打开新建对话框，不再把连接故障显示成「该父类型不允许再包含子元素」 |
 
 ## 尚未实现（后续里程碑）
 
-九图完整记法渲染、ELK Java / SequenceLayout 自动布局、EMF UML2 + SysML 1.6 Profile 的标准 XMI 互操作、20 条黄金用例、项目级编辑锁与审计日志、SVG / PNG / Excel 导出、模型对比与批量导入。
+十图完整记法渲染、ELK Java / SequenceLayout 自动布局、EMF UML2 + SysML 1.6 Profile 的标准 XMI 互操作、20 条黄金用例、项目级编辑锁与审计日志、SVG / PNG / Excel 导出、模型对比与批量导入。
 
 ## 环境要求
 
@@ -127,14 +128,14 @@ SPRING_DATASOURCE_PASSWORD=<口令>
 | 格式 | 内容 | 用途 |
 |---|---|---|
 | `.xmi` | 标准 UML 2.5.1 `xmi:XMI`；SysML 非标准元类的原类型记在 `scofen:type` 扩展命名空间 | 与外部工具交换语义 |
-| `.di.json` | 布局侧车：九图的类型与名称、全部记号坐标 | 与 `.xmi` 配对，标准 XMI 装不下这些 |
+| `.di.json` | 布局侧车：规范图的类型与名称、全部记号坐标 | 与 `.xmi` 配对，标准 XMI 装不下这些 |
 | `.scofen.json` | 自有无损格式，四对象原样 | 备份与跨机迁移 |
 
 导入 `.xmi`（可配 `.di.json`）的语义是**整包替换当前项目**：
 
 - 一次 Command、一次 revision、一个 Patch，天然幂等——导入自己导出的文件，结果与导出前完全一致；
 - 通用扩展包（SysML/UML 元类清单）是每个项目自带的公共内容，导入时**保留不替换**；
-- 无 `.di.json` 时服务端按元素的主图归属重排九图，不会让九图塌成一个点；
+- 无 `.di.json` 时服务端按元素的主图归属重排十图，不会让规范图塌成一个点；
 - 校验在「替换后的世界」里做（旧的即将被清空，不能拿它比唯一性），且分两遍扫描，消除父子元素在文件中的顺序依赖；
 - `IMPORT_MODEL` ↔ `RESTORE_IMPORTED` 对称可撤销，撤销一次回到导入前，重做重新导入。
 
@@ -166,7 +167,7 @@ SCOFEN_BASE=/scofen/modelerStudio/ ./build.sh
 只跑测试：
 
 ```bash
-./mvnw -B -ntp test          # 124 个用例：metamodel 13 / core 50 / xmi 12 / web 49（其中 8 项 Testcontainers 因无 Docker 跳过）
+./mvnw -B -ntp test          # 176 个用例：metamodel 20 / core 85 / xmi 14 / web 57（其中 8 项 Testcontainers 因无 Docker 跳过）
 ```
 
 ## 主要 API
@@ -176,9 +177,9 @@ SCOFEN_BASE=/scofen/modelerStudio/ ./build.sh
 | POST | `/api/auth/login` | 公开：校验超管口令，返回 JWT 与用户资料 |
 | GET | `/api/auth/me` | 校验本地 token 是否仍有效 |
 | POST | `/api/auth/logout` | 确认会话有效（清 token 由前端完成） |
-| GET | `/api/health` | 公开：产品名、revision、九图数量、在线会话数 |
+| GET | `/api/health` | 公开：产品名、revision、规范图数量、在线会话数 |
 | GET | `/api/model` | 当前项目 / 当前 revision 下的四对象快照 |
-| GET | `/api/metamodel/diagrams` | 九图规格与该图允许的元素类型 (`allowedTypes`) |
+| GET | `/api/metamodel/diagrams` | 十图规格与该图允许的元素类型 (`allowedTypes`) |
 | GET | `/api/metamodel/containment` | 元素类型中文标签/构造型、父子包含规则、根类型、画布边界 |
 | GET | `/api/metamodel/properties` | UML 2.5.1 + SysML 1.6 元属性全集：元类继承链、每种元素类型的属性表、标准/专家/全部三档计数 |
 | GET | `/api/metamodel/extension` | 通用扩展包目录（SysML/UML 的元类、构造型、关系清单，供引用型属性与模型树浏览） |
@@ -192,7 +193,7 @@ SCOFEN_BASE=/scofen/modelerStudio/ ./build.sh
 | GET | `/api/exchange/xmi` | 导出标准 UML 2.5.1 XMI（需 `model.export`） |
 | GET | `/api/exchange/xmi.di.json` | 导出布局侧车（图类型、图名、记号坐标） |
 | GET | `/api/exchange/scofen.json` | 导出自有无损格式 |
-| GET | `/api/exchange/sidecar/preview` | 侧车概览：图数、记号数、九图规格 |
+| GET | `/api/exchange/sidecar/preview` | 侧车概览：图数、记号数、十图规格 |
 | POST | `/api/exchange/xmi` | 导入 XMI，整包替换当前项目（需 `model.import`） |
 | GET | `/api/admin/users` `/api/admin/roles` `/api/admin/permissions` | 用户、角色与权限码目录（需 `user.manage` / `role.manage`） |
 | WS | `/ws/patches?token=<JWT>` | 权威 Patch 广播（单写者 + 只读跟随），握手校验登录态 |
@@ -224,7 +225,7 @@ curl -X POST http://localhost:8080/api/commands \
 | `SET_NOTATIONS` | `items[{diagramId, elementId, x, y, width?, height?}]` | 批量改写记法坐标（自动排布用）：单次上限 5000 条，一条命令一次 revision，逆命令逐条回写原坐标与尺寸、一步撤销；宽高可选（泳道排布随内容改尺寸），缺省沿用原尺寸；逐条沿用 `MOVE_NOTATION` 的越界与图归属校验，宽高须为有限正数，任一条不合法整条拒绝 |
 | `SET_MESSAGE_ORDER` | `items[{id, order}]` | 序列图时间槽顺序：拖动消息线或 `Alt + ↑/↓` 改序时，一批 `message` 关系的 `messageOrder` 一次写完，一条命令一个 revision、一个 Patch、一步撤销（逆命令写回旧序号，原本没有就删字段，所以撤销能还原「无序号」状态）；只接受 `message` 关系，序号必须是整数，任一条不合法整条拒绝 |
 | `ADD_TO_DIAGRAM` / `REMOVE_FROM_DIAGRAM` | `diagramId, elementId` | 图与记法的引用维护 |
-| `RENAME_ELEMENT` / `UPDATE_DOCUMENTATION` | `id, name / documentation` | 语义层改名，九图同步 |
+| `RENAME_ELEMENT` / `UPDATE_DOCUMENTATION` | `id, name / documentation` | 语义层改名，全图同步 |
 
 ## 部署上线
 
@@ -263,7 +264,7 @@ docker compose --profile persistence up -d      # 附带 MySQL 8.4
 ## 目录
 
 ```
-scofen-metamodel/   四对象与九图注册表 + 元模型与属性目录
+scofen-metamodel/   四对象与十图注册表 + 元模型与属性目录
 scofen-core/        Repository / Command / revision CAS / 校验 / 撤销
 scofen-xmi/         XMI 语义往返（UmlXmiAdapter）+ 布局侧车 + 服务端重排
 scofen-web/         Spring Boot 4.1 REST + WebSocket + MySQL 落库 + RBAC + 静态前端

@@ -130,7 +130,7 @@ const TYPE_SVG: Record<string, string> = {
   ANY_RECEIVE_EVENT: 'AnyReceiveEvent',
 }
 
-/** 九大图 code → 图符 SVG 文件名。 */
+/** 十种规范图 code → 图符 SVG 文件名（SysML 九图 + UML 扩展图）。 */
 const DIAGRAM_SVG: Record<string, string> = {
   pkg: 'SysMLPackageDiagram',
   req: 'SysMLRequirementDiagram',
@@ -141,6 +141,7 @@ const DIAGRAM_SVG: Record<string, string> = {
   seq: 'SysMLSequenceDiagram',
   stm: 'SysMLStateMachineDiagram',
   uc: 'SysMLUseCaseDiagram',
+  profile: 'SysMLProfileDiagram',
 }
 
 /** 关系 key（normalizeRelKey 后）→ 关系符号 SVG 文件名。 */

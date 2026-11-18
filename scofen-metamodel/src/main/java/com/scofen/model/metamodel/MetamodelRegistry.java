@@ -7,7 +7,7 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * 表驱动的九图注册表：渲染器与校验器禁止按图类型硬编码。
+ * 表驱动的规范图注册表：渲染器与校验器禁止按图类型硬编码。
  *
  * <p>两张表各管一件事：{@link #SPECS} 说「这张图允许出现什么」（校验与工具箱），
  * {@link #PRIMARY_KIND} 说「这个类型本来属于哪张图」（导入无布局信息时的重排依据）。
@@ -219,8 +219,21 @@ public final class MetamodelRegistry {
                 rel("association", "include", "extend", "generalization"),
                 LAYOUT_ELK, "usecase");
 
+        // ── 扩展图（Profile Diagram，第十种图）──
+        // 可视化元模型定制：构造型 / 元类 / 标签定义 / 剖面，用泛化表达「构造型扩展元类」，
+        // profileApplication 表达「剖面应用」，containment 表达包内归属。元素类型与包图重叠
+        // 是有意的——构造型既能在包图里打包，也能在扩展图里画出扩展关系。
+        register(DiagramKind.PROFILE,
+                types(ElementType.PROFILE, ElementType.STEREOTYPE, ElementType.METACLASS,
+                        ElementType.TAG_DEFINITION, ElementType.DIAGRAM_TYPE,
+                        ElementType.PACKAGE, ElementType.CLASS, ElementType.COMMENT),
+                rel("generalization", "profileApplication", "containment", "dependency"),
+                LAYOUT_ELK, "namespace");
+
         // 主图归属：导入只吃语义时的服务端重排依据。
         // 每种类型只归一张图——一个元素不会同时铺在九张图上。
+        // 剖面元素仍归包图：扩展图是「另一视角」，不抢导入重排的主归属，
+        // 否则没有侧车的 XMI 导入会把这些元素从包图挪走。
         primary(DiagramKind.PKG,
                 ElementType.MODEL, ElementType.MODEL_LIBRARY, ElementType.PROFILE,
                 ElementType.PACKAGE, ElementType.METACLASS, ElementType.STEREOTYPE,

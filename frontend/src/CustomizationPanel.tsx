@@ -373,7 +373,7 @@ export default function CustomizationPanel({
       <div className="cust-tabs">
         <button type="button" className={section === 'diagrams' ? 'active' : ''}
           onClick={() => { setSection('diagrams'); setEditing(null) }}>
-          {t('扩展图')}
+          {t('定制图')}
         </button>
         <button type="button" className={section === 'stereotypes' ? 'active' : ''}
           onClick={() => { setSection('stereotypes'); setEditing(null) }}>

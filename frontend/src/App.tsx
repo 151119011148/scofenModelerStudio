@@ -57,7 +57,7 @@ import type {
 } from './types'
 import { arrowGeometry, controlGlyph, controlSizeOf, isBackdropShape, isLaneMembershipRelation, isPartitionType, moveRouteSegment, orthogonalRoute, readRoute, reattachRoute, relationshipStyle, routeMidpoint, shapeOf, simplifyRoute, SWIMLANE_HEADER, textWidth, wrapLabel, type RoutePoint } from './notation'
 // 图形符号：外观字典（配色 / 几何常量）与参数化记法生成器。
-import { appearanceOf, INTERACTIVE, INK, METRICS, TEXT } from './shapeStyle'
+import { appearanceOf, CANVAS_GRADIENTS, INTERACTIVE, INK, METRICS, TEXT } from './shapeStyle'
 import { classifierGlyph, glyphFor, packageGlyph, packageTabHeight, swimlaneGlyph } from './shapeGlyphs'
 import {
   layoutSequence, messageSortStyle, nextMessageOrder, reorderMessages, reorderMessagesTo,
@@ -5092,7 +5092,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         await refresh()
         say(importDialog.sidecar.trim()
           ? '已导入模型（rev {revision}）· {count} 个对象受影响 · 可撤销'
-          : '已导入模型（rev {revision}）· {count} 个对象受影响 · 未提供布局侧车，九图由服务端重排',
+          : '已导入模型（rev {revision}）· {count} 个对象受影响 · 未提供布局侧车，规范图由服务端重排',
         { revision: patch.revision, count: patch.affectedIds.length })
       } catch (error) {
         say('导入失败：{error}', { error: errorMessage(error) })
@@ -5535,13 +5535,21 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
    * 工具箱分组拆两层：核心类型直接铺开，规范全量类型（§16 具体动作）收进「更多」。
    * 两档都由服务端下发 tier，前端不硬编码名单。
    */
+  /**
+   * 核心工具箱：默认收起 ADVANCED 类型，但扩展图例外——标签定义与图类型是
+   * 扩展图的主角（构造型下挂标签、图类型画扩展），收进「更多」等于藏起来。
+   */
+  // code 是 ElementType 枚举名（TAG_DEFINITION / DIAGRAM_TYPE），不是 UML 名。
+  const coreUplift = useMemo(() => activeDiagramKind === 'profile'
+    ? new Set(['TAG_DEFINITION', 'DIAGRAM_TYPE'])
+    : new Set<string>(), [activeDiagramKind])
   const corePalette = useMemo<ElementTypeInfo[]>(
-    () => paletteEntries.filter((item) => item.tier !== 'ADVANCED'),
-    [paletteEntries],
+    () => paletteEntries.filter((item) => item.tier !== 'ADVANCED' || coreUplift.has(item.code)),
+    [paletteEntries, coreUplift],
   )
   const advancedPalette = useMemo<ElementTypeInfo[]>(
-    () => paletteEntries.filter((item) => item.tier === 'ADVANCED'),
-    [paletteEntries],
+    () => paletteEntries.filter((item) => item.tier === 'ADVANCED' && !coreUplift.has(item.code)),
+    [paletteEntries, coreUplift],
   )
   const elementGroups = useMemo(() => {
     const groups: { key: string; label: string; items: ElementTypeInfo[] }[] = []
@@ -6348,9 +6356,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const fill = isLinkSource ? INTERACTIVE.linkSourceFill : selected ? INTERACTIVE.selectedFill : colorOr(style, 'fill', look.fill)
     const stroke = isLinkSource ? INTERACTIVE.linkSourceStroke : selected ? INTERACTIVE.selectedStroke : colorOr(style, 'stroke', look.stroke)
     const strokeW = isLinkSource || selected ? 2 : numberValue(style, 'strokeWidth', look.strokeWidth)
-    const fontSize = numberValue(style, 'fontSize', 13)
+    const fontSize = numberValue(style, 'fontSize', 12)
     const smallFontSize = Math.max(8, fontSize - 2)
-    const fontColor = colorOr(style, 'fontColor', '')
+    const fontColor = colorOr(style, 'fontColor', look.textColor)
     const fontWeight = style.fontWeight === 'bold' ? 700 : undefined
     // CSS 类里的 fill / font-size 会盖住 SVG presentation attribute，
     // 因此样式覆盖必须用内联 style（优先级高于类选择器）。
@@ -6424,8 +6432,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         shapeSvg = glyphFor('frame', { x: bx, y: by, w: bw, h: bh }, { fill, stroke, strokeWidth: strokeW })
         break
       case 'swimlane': {
-        const headerFill = isLinkSource ? '#d8efe9' : selected ? '#dbe7fb' : '#eef2f7'
-        const bodyFill = isLinkSource ? '#f2fbf8' : selected ? '#f3f7fe' : colorOr(style, 'fill', '#fbfcfe')
+        const headerFill = isLinkSource ? '#d8efe9' : selected ? '#dbe7fb' : '#e8eef9'
+        const bodyFill = isLinkSource ? '#f2fbf8' : selected ? '#f3f7fe' : colorOr(style, 'fill', '#fafdff')
         shapeSvg = swimlaneGlyph({ x: bx, y: by, w: bw, h: bh },
           { fill: bodyFill, stroke, strokeWidth: strokeW },
           { headerFill, bodyFill, headerHeight: SWIMLANE_HEADER })
@@ -6434,7 +6442,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       case 'lifeline': {
         const axisX = bx + bw / 2
         const axisEnd = lifeline?.bottom ?? by + bh
-        const headerFill = isLinkSource ? '#d8efe9' : selected ? '#dbe7fb' : colorOr(style, 'fill', '#f7f9fc')
+        const headerFill = isLinkSource ? '#d8efe9' : selected ? '#dbe7fb' : colorOr(style, 'fill', '#e6f0ff')
         shapeSvg = (
           <g>
             {/* 先竖线后表头：线从框底边起笔，压在矩形之下不留毛边。 */}
@@ -7432,7 +7440,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         </div>
 
         <div className="top-actions">
-          <span className="pill">{t('SysML 1.6 · 九图')}</span>
+          <span className="pill">{t('SysML 1.6 · 十图')}</span>
           <span className="pill rev">{t('rev {revision}', { revision: health?.revision ?? model.revision })}</span>
         </div>
         </div>
@@ -8702,7 +8710,15 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             }}
             onDrop={handleCanvasDrop}
           >
-            <defs />
+            <defs>
+              {CANVAS_GRADIENTS.map((g) => (
+                <linearGradient key={g.id} id={g.id}
+                  x1="0" y1="0" x2={g.vertical ? '0' : '1'} y2={g.vertical ? '1' : '0'}>
+                  <stop offset="0%" stopColor={g.from} />
+                  <stop offset="100%" stopColor={g.to} />
+                </linearGradient>
+              ))}
+            </defs>
             {diagramFrame ? (
               <g
                 className={`diagram-frame${toolboxTab === 'styles' && !selectedId && !selectedRelationId ? ' frame-focused' : ''}`}
@@ -8858,7 +8874,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               // 用户连线样式按图挂在关系 properties 上，覆盖规范默认线型。
               const lineStyle = relationStyleOf(relation, activeDiagramId)
               const lineColor = colorOr(lineStyle, 'lineColor', style.color)
-              const lineWidth = numberValue(lineStyle, 'lineWidth', style.width ?? 1.4)
+              const lineWidth = numberValue(lineStyle, 'lineWidth', style.width ?? 1)
               const lineDash = dashArray(lineStyle, 'lineDash') ?? (style.dashed ? '5 4' : undefined)
               const labelSize = numberValue(lineStyle, 'labelFontSize', 10.5)
               const arrow = arrowGeometry(prevPoint.x, prevPoint.y, tEdge.x, tEdge.y)
@@ -9804,7 +9820,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               )}
             </label>
             <p className="hint">
-              {t('标准 XMI 不承载图类型、图名与坐标；没有侧车时语义完整，但九图布局由服务端重新排布。导入后可通过「撤销」一步回到导入前。')}
+              {t('标准 XMI 不承载图类型、图名与坐标；没有侧车时语义完整，但规范图布局由服务端重新排布。导入后可通过「撤销」一步回到导入前。')}
             </p>
             <div className="modal-actions">
               <button type="button" onClick={() => setImportDialog(null)}>{t('取消')}</button>

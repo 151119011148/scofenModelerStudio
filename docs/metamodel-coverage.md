@@ -227,7 +227,7 @@ FAIL ENUMERATION_LITERAL    owner=Block        → Containment rule violation（
 播种器 `sync()` 会按「落在扩展域但目录未定义」清理一次——用户元素若占了 `st-` 开头，下次打开项目
 就会被当成过期扩展内容删掉。
 
-**界面**：工具箱新增「定制」页签，分「扩展图 / 元模型」两段。新建图对话框的图类型下拉分「规范图 /
+**界面**：工具箱新增「定制」页签，分「定制图 / 元模型」两段（页签原名「扩展图」，与 6.8 的第十种规范图撞名，已改名）。新建图对话框的图类型下拉分「规范图 /
 自定义图」两组；元素应用构造型后，属性面板「标签」页签出现**剖面标签**分区，按标签定义渲染成
 带类型的字段（布尔下拉 / 数值框 / 枚举选项），值写回 `taggedValues`。
 
@@ -260,6 +260,44 @@ FAIL ENUMERATION_LITERAL    owner=Block        → Containment rule violation（
 
 ---
 
+## 6.8 第十种图：扩展图（Profile Diagram）
+
+6.6 / 6.7 的「扩展图」是**用户自建图种类**，名字占了但缺 SysML 标准的第十种图。
+M-Design 侧栏里的「扩展图」对应 `SysMLProfileDiagram`（UML/SysML 的 Profile Diagram），
+九图里没有它——元模型定制只能改属性面板里的文字树，没有可视化画布（本节补上，见下）。
+
+**图种**：`DiagramKind.PROFILE("profile", "扩展图", "Profile Diagram")`。加枚举后
+`MetamodelRegistry` 的 `values()` 遍历、`/api/metamodel/diagrams`、新建图对话框、
+`ServerRelayout` 的主图归属、XMI 侧车校验全部自动覆盖，没有第二处硬编码清单。
+
+**白名单**：`PROFILE / STEREOTYPE / METACLASS / TAG_DEFINITION / DIAGRAM_TYPE / PACKAGE / COMMENT`，
+关系 `generalization / profileApplication / containment`。三样东西都是**已有的 ElementType**
+（包图本来也允许它们），所以这次不是造元素类型，而是补一张图 + 一套画法。
+
+**「扩展」怎么画**：构造型用**泛化（空心三角）连到元类**表达 «stereotype» 关系——与 M-Design
+`CustomizationTest` 的画法一致；语义层仍以构造型的 `extendsMetaclass` 属性（REFERENCE → METACLASS）
+为准，不新增关系类型。标签定义挂在构造型之下（`ContainmentRules` 已有该层级：PROFILE → STEREOTYPE →
+TAG_DEFINITION），剖面画成包框。
+
+**图符与工具箱**：`notation.ts` 的 `SHAPE_MAP` 把 `Stereotype / Metaclass / TagDefinition` 映到
+`classifier`（带隔间的类框，隔间里现算 `«Stereotype»` 等字样），`Profile` 沿用 `package`。
+`TAG_DEFINITION / DIAGRAM_TYPE` 在其它图里是 ADVANCED 收在「更多规范类型」，扩展图下**提到首屏**
+（`App.tsx` 的 `coreUplift` 按 `activeDiagramKind === 'profile'` 放行）——否则扩展图的核心元素要展开折叠区才看得到。
+
+**命名去冲突**：工具箱「定制」页签原名也叫「扩展图」，与第十种图同名。页签改名为**「定制图」**，
+让「扩展图」专指第十种规范图。
+
+**种子示例**：随项目播种一张「扩展图示例」——车载领域剖面（`e-prof-veh`）→ Block 元类
+（`e-mc-veh-block`）←«Controller» 构造型（`e-st-veh-controller`）→ 控制等级标签定义（`e-tag-veh-level`），
+一条泛化关系。**id 必须用 `e-` 家族**：`mc- / st- / tag-` 都是扩展域保留前缀（见 6.6 的 id 命名空间），
+占了会被播种器当过期扩展内容清掉，模型树计数也会把它们算进扩展包。
+
+**踩坑**：定制 E2E 的清理段原本「删掉所有 `e-` 开头的 Stereotype / TagDefinition」，正好吃掉种子元素，
+导致后跑的扩展图 E2E 只剩 2 个图符——清理口径改成「按 owner 链排除种子剖面」（种子标签定义的 owner
+是构造型，不是剖面，只看一层不够）。
+
+---
+
 ## 7. 验证
 
 | 层 | 手段 | 结果 |
@@ -269,7 +307,7 @@ FAIL ENUMERATION_LITERAL    owner=Block        → Containment rule violation（
 | 关系守卫 | `everyRelationshipHasANormativeMetaclass`、`extensionLibraryMaterialisesEveryRelationshipType` | 37 种关系逐一断言「有规范元类 + 属性链含该元类 + 扩展包有对应条目 + 条目类型与 extendsMetaclass 正确」 |
 | 层级守卫 | `everyMetaclassIsConnectedToTheHierarchy` | 281 个元类不断链；抽象性按规范显式标注 |
 | 接口实测 | 真实命令写入 / 删除（本地实例） | 21 个新增类型全部可建，错误父级一律 400 `validation_rule violation`，无残留 |
-| 浏览器 E2E | headless Chrome + CDP | 全部对着**打包 jar** 跑（vite dev 的 WS 代理会干扰重连与切项目）：外壳 30 / 模型树与关系 37 / 属性栏 41 / 关系模型 20 / 根节点 19 / 图形样式 38 / 序列图 98 / 元模型定制 35 / 符号记法 25 / 引用高亮 18 / 断网自愈 19 / XMI 32 / 画布平移 47，共 **461 项全通过**。另 `auto-layout-e2e` 44/48——剩下 4 项的前提是「含 satisfy 关系链与交叉连线」的特定沙箱快照（本机无 `/tmp/mbse/mdesign_payload_final.json`），非产品回归 |
+| 浏览器 E2E | headless Chrome + CDP | 全部对着**打包 jar** 跑（vite dev 的 WS 代理会干扰重连与切项目）：外壳 30 / 模型树与关系 37 / 属性栏 41 / 关系模型 20 / 根节点 19 / 图形样式 38 / 序列图 98 / 元模型定制 35 / 符号记法 25 / 引用高亮 18 / 断网自愈 19 / XMI 32 / 画布平移 47 / 扩展图 19，共 **480 项全通过**。`auto-layout-e2e` 46/46（含语义分层断言，需先跑 `local-seed.mjs` 灌受控场景） |
 
 顺带修掉一个真实缺陷：`POST /api/commands` 载荷缺字段时 `Map.copyOf(null)` 抛 NPE 报 500，
 现在归一为空载荷走校验失败（400 `validation_failed`），并加单测锁定。
@@ -278,7 +316,7 @@ FAIL ENUMERATION_LITERAL    owner=Block        → Containment rule violation（
 
 ## 8. 仍未做（明确不在本次范围）
 
-- **部署图**：§19 的元类与关系已齐，但九图里还没有独立的部署图类型；要加需要新增 `DiagramKind` 与布局。
+- **部署图**：§19 的元类与关系已齐，但十图里还没有独立的部署图类型；要加需要新增 `DiagramKind` 与布局。
 - **XMI 映射**：新增类型按 `umlName` 输出，SysML 非标准元类走 `scofen:type` 扩展命名空间；
   与外部工具（Cameo）的往返一致性没有逐类型验证。
 - **QUDV 的量纲表达式**：单位库给的是扁平实例（量纲 + 单位 + 换算说明），没有做量纲代数推导。

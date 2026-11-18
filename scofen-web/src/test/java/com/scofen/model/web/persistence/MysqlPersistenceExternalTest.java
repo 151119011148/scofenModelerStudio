@@ -1,5 +1,6 @@
 package com.scofen.model.web.persistence;
 
+import com.scofen.model.metamodel.DiagramKind;
 import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.core.PersistenceService;
@@ -63,7 +64,7 @@ class MysqlPersistenceExternalTest {
         assertThat(reloaded).isPresent();
         assertThat(reloaded.get().revision()).isEqualTo(live.revision());
         assertThat(reloaded.get().elements()).hasSameSizeAs(live.elements());
-        assertThat(reloaded.get().diagrams()).hasSize(9);
+        assertThat(reloaded.get().diagrams()).hasSize(DiagramKind.values().length);
     }
 
     @Test
