@@ -135,10 +135,20 @@ await page.goto(APP_URL)
 
 console.log('[1] 登录并选中源元素')
 await waitFor(page, `!!document.querySelector('input[name="scofen-admin-username"]')`)
-await page.evaluate(`(()=>{const set=(el,v)=>{const s=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value').set;s.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}))};
- set(document.querySelector('input[name="scofen-admin-username"]'),'scofen');
- set(document.querySelector('input[name="scofen-admin-password"]'),${JSON.stringify(PASSWORD)});
- [...document.querySelectorAll('button')].find(b=>/登录/.test(b.textContent)).click();return 1})()`)
+// 登录表单存在重挂竞态：注入瞬间 input 可能短暂为 null，判空重试直到成功。
+let loginInjected = false
+for (let i = 0; i < 20 && !loginInjected; i++) {
+  try {
+    loginInjected = await page.evaluate(`(()=>{const q=(n)=>document.querySelector('input[name="scofen-admin-'+n+'"]');
+      if(!q('username')||!q('password')) return false;
+      const set=(el,v)=>{const s=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value').set;s.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}))};
+      set(q('username'),'scofen');
+      set(q('password'),${JSON.stringify(PASSWORD)});
+      [...document.querySelectorAll('button')].find(b=>/登录/.test(b.textContent))?.click();return true})()`)
+  } catch { /* 表单重挂中，重试 */ }
+  if (!loginInjected) await sleep(250)
+}
+check('登录注入成功', loginInjected)
 check('登录成功进入工作台', await waitFor(page, `!!document.querySelector('.props-dock')`, 120, 250))
 await sleep(1200)
 
