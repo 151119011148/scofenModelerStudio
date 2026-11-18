@@ -200,6 +200,48 @@ await cmd('SET_NOTATIONS', { items: [
   { diagramId: 'sem-diagram-bdd', elementId: sem.peer, x: 330, y: 330 },
 ] })
 
+// ── 排布交叉实测（不依赖快照，本地造）：链式结构锁定分层，交叉边提供排布前的交叉量 ──
+// 3 列 × 10 层：列内 derive 链把层号钉死（derive 无 satisfy/泛化的方向倾斜）；
+// 种子坐标故意把 B 列上下颠倒，A_i→B_{i+1} 的交叉边排布前两两相交；
+// 分层排布后应归零交叉、零重叠，且 10 层高度超过视口触发适应窗口（缩放 < 100%）。
+const CROSS_ROWS = 10
+const CROSS_COLS = ['a', 'b', 'c']
+const crossIds = []
+for (const col of CROSS_COLS) {
+  for (let i = 1; i <= CROSS_ROWS; i++) crossIds.push(`xnode-${col}-${i}`)
+}
+for (const [id, name] of crossIds.map((id) => [id, '交叉' + id.slice(6).toUpperCase().replace('-', '列').replace('-', '层')])) {
+  if (!created.has(id)) {
+    await cmd('CREATE_ELEMENT', { id, type: 'Requirement', name, ownerId: rootId, documentation: '' })
+    created.add(id)
+  }
+}
+for (const col of CROSS_COLS) {
+  for (let i = 1; i < CROSS_ROWS; i++) {
+    await cmd('CREATE_RELATIONSHIP', {
+      id: `xrel-${col}-${i}`, type: 'deriveReqt', sourceId: `xnode-${col}-${i}`, targetId: `xnode-${col}-${i + 1}`,
+      name: '', documentation: '', ownerId: rootId,
+    })
+  }
+}
+for (let i = 1; i < CROSS_ROWS; i++) {
+  await cmd('CREATE_RELATIONSHIP', {
+    id: `xrel-x-${i}`, type: 'deriveReqt', sourceId: `xnode-a-${i}`, targetId: `xnode-b-${i + 1}`,
+    name: '', documentation: '', ownerId: rootId,
+  })
+}
+await cmd('CREATE_DIAGRAM', {
+  id: 'x-diagram-cross', kind: 'req', name: '排布交叉实测',
+  ownerId: rootId, elementIds: crossIds,
+})
+const xSeedItems = []
+for (let i = 1; i <= CROSS_ROWS; i++) {
+  xSeedItems.push({ diagramId: 'x-diagram-cross', elementId: `xnode-a-${i}`, x: 60, y: 60 + i * 120 })
+  xSeedItems.push({ diagramId: 'x-diagram-cross', elementId: `xnode-b-${i}`, x: 460, y: 60 + (CROSS_ROWS - i) * 120 })
+  xSeedItems.push({ diagramId: 'x-diagram-cross', elementId: `xnode-c-${i}`, x: 860, y: 60 + i * 120 })
+}
+await cmd('SET_NOTATIONS', { items: xSeedItems })
+
 const final = await api('api/model', { headers: scoped })
 console.log('灌数完成 rev', final.revision,
   '· 元素', final.elements.length, '· 关系', final.relationships.length,

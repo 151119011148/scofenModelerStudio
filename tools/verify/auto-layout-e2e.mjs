@@ -15,7 +15,7 @@ const APP_URL = process.env.APP_URL ?? 'http://127.0.0.1:18095/'
 const PORT = Number(process.env.CDP_PORT ?? 9457)
 const PASSWORD = process.env.SCOFEN_PASSWORD ?? ''
 const PROJECT_NAME = process.env.SCOFEN_PROJECT_NAME ?? '自动排布实测'
-const DIAGRAMS = (process.env.SCOFEN_DIAGRAMS ?? '需求图-D1,用例图-D7,活动图-注册验证')
+const DIAGRAMS = (process.env.SCOFEN_DIAGRAMS ?? '排布交叉实测')
   .split(',').map((s) => s.trim()).filter(Boolean)
 const SHOTS = '/tmp/scofen-layout-shots'
 
@@ -375,8 +375,14 @@ check('排布后自动适应窗口（缩放 < 100%）', zoomAfterLayout !== null
 console.log('\n[3] 撤销一步回到排布前')
 check('撤销按钮可用', await waitFor(page, undoButton))
 await page.evaluate(clickUndo)
+// 撤销本身也是一条命令、走写队列异步落账：等 redoDepth 抬起来再读快照，否则会读到撤销前的旧账。
+let redoSeen = false
+for (let i = 0; i < 40 && !redoSeen; i++) {
+  if ((await health()).redoDepth >= 1) redoSeen = true
+  else await sleep(150)
+}
+check('撤销记入重做栈', redoSeen)
 const undone = await snapshot()
-check('撤销记入重做栈', (await health()).redoDepth >= 1)
 const restoredSame = undone.notations
   .filter((n) => n.diagramId === diagram.id)
   .every((n) => {
@@ -435,6 +441,12 @@ for (let i = 0; i < 6; i++) {
   await page.evaluate(clickUndo)
   await sleep(700)
 }
+// 最后一记 undo 也可能还在写队列里：等 undoDepth 真正落到牌子线再收快照。
+for (let i = 0; i < 40; i++) {
+  if ((await health()).undoDepth <= depthBeforeAll) break
+  await sleep(200)
+}
+await sleep(300)
 const cleaned = await snapshot()
 const sameAll = cleaned.notations.every((n) => {
   const old = undone.notations.find((x) => x.diagramId === n.diagramId && x.elementId === n.elementId)
@@ -478,7 +490,9 @@ async function layoutSemantic(diagramName) {
   check('弹出对话框', await waitFor(page, `!!document.querySelector('.modal')`, 20, 150))
   check('策略切到「分层」', await page.evaluate(setSelectByValue(1, 'layered')))
   await page.evaluate(`(()=>{const b=[...document.querySelectorAll('.modal button')].find(x=>x.textContent.trim()==='开始排布');if(b)b.click();return !!b})()`)
-  check('排布完成', await waitFor(page, layoutDone(), 60, 250))
+  const doneOk = await waitFor(page, layoutDone(), 60, 250)
+  check('排布完成', doneOk)
+  console.log('    [debug] 提示：' + await page.evaluate(messageText()))
   return snapshot()
 }
 

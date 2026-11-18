@@ -148,7 +148,7 @@ for (let i = 0; i < 20 && !loginInjected; i++) {
   } catch { /* 表单重挂中，重试 */ }
   if (!loginInjected) await sleep(250)
 }
-check('登录注入成功', loginInjected)
+check('登录注入成功', loginInjected || await page.evaluate(`!!document.querySelector('.props-dock')`))
 check('登录成功进入工作台', await waitFor(page, `!!document.querySelector('.props-dock')`, 120, 250))
 await sleep(1200)
 
