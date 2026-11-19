@@ -285,6 +285,8 @@ export interface ContainmentSpec {
   types: ElementTypeInfo[]
   canvas: { maxX: number; maxY: number; width: number; height: number }
   node: { width: number; height: number }
+  /** 按「图种:元素枚举名」偏离全局默认的节点尺寸（扩展图构造型 100×50 等）。 */
+  nodeSizes?: Record<string, { width: number; height: number }>
 }
 
 /** 空间下的项目目录项；当前项目的统计由服务端模型快照实时填充。 */

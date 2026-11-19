@@ -6,7 +6,8 @@ import type {
 import { pick, t } from './i18n'
 import { isExtensionId } from './extensionIds'
 import {
-  CUSTOM_PREFIX, isDiagramType, isStereotype, isTagDefinition, listHasType, propList, propText,
+  CUSTOM_PREFIX, isDiagramType, isMetaclass, isProperty, isStereotype, isTagDefinition,
+  listHasType, normalizeTypeName, propList, propText,
 } from './customTypes'
 
 /**
@@ -50,6 +51,8 @@ export default function CustomizationPanel({
 }: CustomizationPanelProps) {
   const [section, setSection] = useState<'diagrams' | 'stereotypes'>('diagrams')
   const [editing, setEditing] = useState<string | null>(null)
+  /** 创建按钮的防重入：命令发到服务端落地前，busy 尚未置位，快速连点会建出重复元素。 */
+  const creatingRef = useRef(false)
 
   /**
    * 预置扩展图库里的图类型定义（产品随附的模板）。
@@ -79,6 +82,16 @@ export default function CustomizationPanel({
     () => elements.filter((element) => isStereotype(element) && !isExtensionId(element.id)),
     [elements],
   )
+  /** 用户自建的元类（扩展图里由「元类」组件或本面板创建）；扩展包的规范元类不列。 */
+  const metaclasses = useMemo(
+    () => elements.filter((element) => isMetaclass(element) && !isExtensionId(element.id)),
+    [elements],
+  )
+  /** 属性类型下拉的候选：原始类型、枚举、值类型、数据类型与块。 */
+  const attributeTypes = useMemo(() => {
+    const allowed = new Set(['primitivetype', 'enumeration', 'valuetype', 'datatype', 'block'])
+    return elements.filter((element) => allowed.has(normalizeTypeName(element.type)))
+  }, [elements])
   const keyLabels = customization?.keyLabels ?? {}
   const tagTypes = customization?.tagTypes ?? ['STRING', 'BOOLEAN', 'INTEGER', 'REAL', 'ENUM']
   /** 预置扩展图模板：已落库的（installed）不再重复创建。 */
@@ -142,24 +155,29 @@ export default function CustomizationPanel({
 
   /* ── 自定义图类型 ── */
   const createDiagramType = async () => {
-    if (!canEdit) return
-    const id = newId('dt')
-    const ok = await runCommand('CREATE_ELEMENT', {
-      id,
-      type: 'DiagramType',
-      name: t('自定义图 {count}', { count: customTypes.length + 1 }),
-      ownerId,
-    })
-    if (ok) {
-      await writeProps(id, {
-        [`${PREFIX}baseKind`]: 'bdd',
-        // 白名单用元素类型的枚举名（BLOCK / CLASS / COMMENT）：服务端下发与工具箱过滤
-        // 都按这个形式比对，写成 UML 名（Block）会让勾选框全灭。
-        [`${PREFIX}allowedTypes`]: ['BLOCK', 'CLASS', 'COMMENT'],
-        [`${PREFIX}allowedRelationships`]: ['association', 'generalization'],
+    if (!canEdit || creatingRef.current) return
+    creatingRef.current = true
+    try {
+      const id = newId('dt')
+      const ok = await runCommand('CREATE_ELEMENT', {
+        id,
+        type: 'DiagramType',
+        name: t('自定义图 {count}', { count: customTypes.length + 1 }),
+        ownerId,
       })
-      setEditing(id)
-      onSelectElement(id)
+      if (ok) {
+        await writeProps(id, {
+          [`${PREFIX}baseKind`]: 'bdd',
+          // 白名单用元素类型的枚举名（BLOCK / CLASS / COMMENT）：服务端下发与工具箱过滤
+          // 都按这个形式比对，写成 UML 名（Block）会让勾选框全灭。
+          [`${PREFIX}allowedTypes`]: ['BLOCK', 'CLASS', 'COMMENT'],
+          [`${PREFIX}allowedRelationships`]: ['association', 'generalization'],
+        })
+        setEditing(id)
+        onSelectElement(id)
+      }
+    } finally {
+      creatingRef.current = false
     }
   }
 
@@ -171,39 +189,92 @@ export default function CustomizationPanel({
 
   /* ── 构造型与标签定义 ── */
   const createStereotype = async () => {
-    if (!canEdit) return
-    const id = newId('st')
-    const ok = await runCommand('CREATE_ELEMENT', {
-      id,
-      type: 'Stereotype',
-      name: t('自定义构造型 {count}', { count: stereotypes.length + 1 }),
-      ownerId,
-    })
-    if (ok) {
-      setEditing(id)
-      onSelectElement(id)
+    if (!canEdit || creatingRef.current) return
+    creatingRef.current = true
+    try {
+      const id = newId('st')
+      const ok = await runCommand('CREATE_ELEMENT', {
+        id,
+        type: 'Stereotype',
+        name: t('自定义构造型 {count}', { count: stereotypes.length + 1 }),
+        ownerId,
+      })
+      if (ok) {
+        setEditing(id)
+        onSelectElement(id)
+      }
+    } finally {
+      creatingRef.current = false
+    }
+  }
+
+  const createMetaclass = async () => {
+    if (!canEdit || creatingRef.current) return
+    creatingRef.current = true
+    try {
+      const id = newId('mc')
+      const ok = await runCommand('CREATE_ELEMENT', {
+        id,
+        type: 'Metaclass',
+        name: t('自定义元类 {count}', { count: metaclasses.length + 1 }),
+        ownerId,
+      })
+      if (ok) {
+        setEditing(id)
+        onSelectElement(id)
+      }
+    } finally {
+      creatingRef.current = false
     }
   }
 
   const createTag = async (stereotypeId: string) => {
-    if (!canEdit) return
-    const siblings = elements.filter((element) =>
-      isTagDefinition(element) && element.ownerId === stereotypeId)
-    const id = newId('tag')
-    const ok = await runCommand('CREATE_ELEMENT', {
-      id,
-      type: 'TagDefinition',
-      name: t('标签 {count}', { count: siblings.length + 1 }),
-      ownerId: stereotypeId,
-    })
-    if (ok) {
-      await writeProps(id, {
-        [`${PREFIX}tagType`]: 'STRING',
-        [`${PREFIX}defaultValue`]: '',
-        [`${PREFIX}required`]: 'false',
+    if (!canEdit || creatingRef.current) return
+    creatingRef.current = true
+    try {
+      const siblings = elements.filter((element) =>
+        isTagDefinition(element) && element.ownerId === stereotypeId)
+      const id = newId('tag')
+      const ok = await runCommand('CREATE_ELEMENT', {
+        id,
+        type: 'TagDefinition',
+        name: t('标签 {count}', { count: siblings.length + 1 }),
+        ownerId: stereotypeId,
       })
-      // 保持在构造型卡片上展开：新标签就挂在它下面，切走等于把刚建的东西藏起来。
-      setEditing(stereotypeId)
+      if (ok) {
+        await writeProps(id, {
+          [`${PREFIX}tagType`]: 'STRING',
+          [`${PREFIX}defaultValue`]: '',
+          [`${PREFIX}required`]: 'false',
+        })
+        // 保持在构造型卡片上展开：新标签就挂在它下面，切走等于把刚建的东西藏起来。
+        setEditing(stereotypeId)
+      }
+    } finally {
+      creatingRef.current = false
+    }
+  }
+
+  /** 给构造型 / 元类添加属性：Property 作为分类器成员挂在它下面。 */
+  const createAttribute = async (owner: ModelElement) => {
+    if (!canEdit || creatingRef.current) return
+    creatingRef.current = true
+    try {
+      const siblings = elements.filter((element) =>
+        isProperty(element) && element.ownerId === owner.id)
+      const id = newId('prop')
+      const ok = await runCommand('CREATE_ELEMENT', {
+        id,
+        type: 'Property',
+        name: t('属性 {count}', { count: siblings.length + 1 }),
+        ownerId: owner.id,
+      })
+      if (ok) {
+        setEditing(owner.id)
+        onSelectElement(owner.id)
+      }
+    } finally {
+      creatingRef.current = false
     }
   }
 
@@ -230,7 +301,8 @@ export default function CustomizationPanel({
    * 整批走一条 CREATE_ELEMENTS：一个 revision、一步撤销。</p>
    */
   const loadPresets = async () => {
-    if (!canEdit || missingPresets.length === 0) return
+    if (!canEdit || missingPresets.length === 0 || creatingRef.current) return
+    creatingRef.current = true
     const pack = customization?.presetPackage
     const rows: Record<string, unknown>[] = []
     if (pack && !libraryInstalled) {
@@ -252,10 +324,75 @@ export default function CustomizationPanel({
         },
       })
     }
-    const ok = await runCommand('CREATE_ELEMENTS', { elements: rows })
-    if (ok) {
-      onNotice('已载入预置扩展图')
+    try {
+      const ok = await runCommand('CREATE_ELEMENTS', { elements: rows })
+      if (ok) {
+        onNotice('已载入预置扩展图')
+      }
+    } finally {
+      creatingRef.current = false
     }
+  }
+
+  /**
+   * 一条属性的编辑行：名称 + 类型引用 + 删除。
+   *
+   * <p>属性是分类器的成员（Property），修改其 {@code type} 就是普通的
+   * UPDATE_PROPERTY——与属性面板写的是同一份数据。</p>
+   */
+  const renderAttributeRow = (attribute: ModelElement) => (
+    <div className="cust-tag-row" key={attribute.id}>
+      <input
+        defaultValue={attribute.name}
+        disabled={!canEdit}
+        data-cust-field="attributeName"
+        onBlur={(event) => void runCommand('RENAME_ELEMENT', {
+          id: attribute.id, name: event.target.value,
+        })}
+      />
+      <select
+        value={propText(attribute, 'type')}
+        data-cust-field="attributeType"
+        disabled={!canEdit}
+        onChange={(event) => void runCommand('UPDATE_PROPERTY', {
+          id: attribute.id, key: 'type', value: event.target.value,
+        })}
+      >
+        <option value="">{t('未指定类型')}</option>
+        {attributeTypes.map((type) => (
+          <option key={type.id} value={type.id}>{type.name}</option>
+        ))}
+      </select>
+      <button
+        type="button"
+        className="cust-del tiny"
+        disabled={!canEdit || busy}
+        data-cust-action="delete-attribute"
+        onClick={() => void removeElement(attribute.id)}
+      >✕</button>
+    </div>
+  )
+
+  /** 构造型 / 元类卡片的「属性」区：列出并允许新增分类器属性。 */
+  const renderAttributes = (owner: ModelElement) => {
+    const attributes = elements.filter((element) =>
+      isProperty(element) && element.ownerId === owner.id)
+    return (
+      <div className="cust-attrs">
+        <span className="cust-pick-title">
+          {t('属性（{count}）', { count: attributes.length })}
+        </span>
+        {attributes.length === 0 && <p className="cust-empty">{t('尚无属性')}</p>}
+        {attributes.map(renderAttributeRow)}
+        <button
+          type="button"
+          className="cust-add subtle"
+          data-cust-action="add-attribute"
+          disabled={!canEdit || busy}
+          onClick={() => void createAttribute(owner)}
+        >＋ {t('添加属性')}</button>
+      </div>
+    )
   }
 
   /**
@@ -459,9 +596,56 @@ export default function CustomizationPanel({
                     <button type="button" className="cust-add subtle" data-cust-action="add-tag"
                       disabled={!canEdit || busy}
                       onClick={() => void createTag(stereotype.id)}>＋ {t('添加标签定义')}</button>
+                    {renderAttributes(stereotype)}
                     <button type="button" className="cust-del" data-cust-action="delete-stereotype"
                       disabled={!canEdit || busy}
                       onClick={() => void removeElement(stereotype.id)}>{t('删除构造型')}</button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+
+          {/* 元类：用户可以给自建元类加属性；扩展包里的规范元类不在这里列。 */}
+          <p className="cust-section">{t('元类（{count}）', { count: metaclasses.length })}</p>
+          <div className="cust-actions">
+            <button type="button" className="cust-add subtle" data-cust-action="add-metaclass"
+              disabled={!canEdit || busy} onClick={() => void createMetaclass()}>
+              ＋ {t('新建元类')}
+            </button>
+          </div>
+          {metaclasses.length === 0 && <p className="cust-empty">{t('尚无自建元类')}</p>}
+          {metaclasses.map((metaclass) => {
+            const attributes = elements.filter((element) =>
+              isProperty(element) && element.ownerId === metaclass.id)
+            return (
+              <div className={`cust-card${editing === metaclass.id ? ' open' : ''}`} key={metaclass.id}>
+                <button type="button" className="cust-card-head" onClick={() => {
+                  setEditing(editing === metaclass.id ? null : metaclass.id)
+                  onSelectElement(metaclass.id)
+                }}>
+                  <span className="cust-name">{metaclass.name}</span>
+                  <span className="cust-badge">
+                    {t('属性（{count}）', { count: attributes.length })}
+                  </span>
+                </button>
+                {editing === metaclass.id && (
+                  <div className="cust-card-body">
+                    <label className="cust-field">
+                      <span>{t('名称')}</span>
+                      <input
+                        defaultValue={metaclass.name}
+                        data-cust-field="metaclassName"
+                        disabled={!canEdit}
+                        onBlur={(event) => void runCommand('RENAME_ELEMENT', {
+                          id: metaclass.id, name: event.target.value,
+                        })}
+                      />
+                    </label>
+                    {renderAttributes(metaclass)}
+                    <button type="button" className="cust-del" data-cust-action="delete-metaclass"
+                      disabled={!canEdit || busy}
+                      onClick={() => void removeElement(metaclass.id)}>{t('删除构造型')}</button>
                   </div>
                 )}
               </div>

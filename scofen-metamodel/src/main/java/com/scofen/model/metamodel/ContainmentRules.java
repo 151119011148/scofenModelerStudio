@@ -134,10 +134,11 @@ public final class ContainmentRules {
         allow(SLOT, COMMENT);
 
         // ── 扩展机制 ──
-        allow(STEREOTYPE, TAG_DEFINITION, COMMENT);
+        // 构造型继承 Class，因此可以拥有属性（Property）；标签定义仍是它自己的扩展槽。
+        allow(STEREOTYPE, TAG_DEFINITION, PROPERTY, VALUE_PROPERTY, COMMENT);
         allow(TAG_DEFINITION, COMMENT);
-        // 元类可容纳其特化的构造型：UML 里 Stereotype 是 Metaclass 的子类。
-        allow(METACLASS, STEREOTYPE, COMMENT);
+        // 元类即 Class 的实例，既可拥有属性，也可容纳其特化的构造型。
+        allow(METACLASS, STEREOTYPE, PROPERTY, COMMENT);
 
         // ── SysML 需求 / 视图 ──
         allow(REQUIREMENT, REQUIREMENT, TEST_CASE, COMMENT);

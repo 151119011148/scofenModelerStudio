@@ -31,6 +31,16 @@ export function isTagDefinition(element: ModelElement): boolean {
   return matches(element, 'TAG_DEFINITION', 'TagDefinition')
 }
 
+/** 元类元素（扩展图里由「元类」组件创建）。 */
+export function isMetaclass(element: ModelElement): boolean {
+  return matches(element, 'METACLASS', 'Metaclass')
+}
+
+/** 分类器属性（构造型 / 元类下的 Property 子元素）。 */
+export function isProperty(element: ModelElement): boolean {
+  return matches(element, 'PROPERTY', 'Property')
+}
+
 /** 从属性包里读字符串（定制属性以字符串形态往返）。 */
 export function propText(element: ModelElement, key: string): string {
   const value = element.properties?.[key]

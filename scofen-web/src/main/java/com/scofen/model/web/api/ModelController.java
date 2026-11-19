@@ -13,6 +13,7 @@ import com.scofen.model.metamodel.ElementType;
 import com.scofen.model.metamodel.ExtensionLibrary;
 import com.scofen.model.metamodel.MetamodelRegistry;
 import com.scofen.model.metamodel.ModelSnapshot;
+import com.scofen.model.metamodel.NodeSizeCatalog;
 import com.scofen.model.metamodel.NotationStyle;
 import com.scofen.model.metamodel.PropertyCatalog;
 import com.scofen.model.metamodel.RelationshipType;
@@ -371,7 +372,9 @@ public class ModelController {
                         "maxY", ValidationEngine.CANVAS_MAX_Y,
                         "width", 640.0, "height", 420.0),
                 "node", Map.of("width", ValidationEngine.NODE_WIDTH,
-                        "height", ValidationEngine.NODE_HEIGHT));
+                        "height", ValidationEngine.NODE_HEIGHT),
+                // 按「图种:元素类型」偏离全局默认的尺寸（目前只有扩展图）。
+                "nodeSizes", NodeSizeCatalog.deviations());
     }
 
     private Map<String, Object> typeInfo(ElementType type) {

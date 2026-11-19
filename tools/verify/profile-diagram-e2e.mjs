@@ -156,6 +156,62 @@ check('工具箱显示扩展图元素组件', await page.evaluate(`(()=>{
   const box=[...document.querySelectorAll('.tb-item[data-tb-type]')].map(x=>x.dataset.tbType);
   return ['STEREOTYPE','METACLASS','TAG_DEFINITION','DIAGRAM_TYPE'].every(t=>box.includes(t))})()`),
   await page.evaluate(`JSON.stringify([...document.querySelectorAll('.tb-item[data-tb-type]')].map(x=>x.dataset.tbType))`))
+console.log('[2b] 扩展图新建构造型默认尺寸对齐华望（100×50）')
+const sizeProbe = await page.evaluate(`(async()=>{
+  const h=${authHeaders};
+  const b=document.querySelector('.tb-item[data-tb-type="STEREOTYPE"]');
+  if(!b) return {clicked:false};
+  b.click();
+  await new Promise(r=>setTimeout(r,1600));
+  const d=await (await fetch('api/model',{headers:h})).json();
+  const el=(d.elements??[]).find(e=>e.type==='Stereotype'&&String(e.id).startsWith('e-')
+    && e.id!=='e-st-veh-controller');
+  const n=el?(d.notations??[]).find(x=>x.diagramId==='d-profile'&&x.elementId===el.id):null;
+  return {clicked:true,id:el?.id,width:n?.width,height:n?.height,hasNotation:!!n};
+})()`, true)
+check('工具箱点选在扩展图里建出构造型', sizeProbe.clicked && sizeProbe.hasNotation, JSON.stringify(sizeProbe))
+check('构造型默认尺寸为 100×50',
+  sizeProbe.width === 100 && sizeProbe.height === 50,
+  `${sizeProbe.width}×${sizeProbe.height}`)
+if (sizeProbe.id) {
+  await page.evaluate(undoExpr, true)
+  await sleep(900)
+}
+
+console.log('[2c] 重复泛化被服务端拒绝（同源同目标只留一条）')
+const duplicateProbe = await page.evaluate(`(async()=>{
+  const h=${authHeaders};
+  const d=await (await fetch('api/model',{headers:h})).json();
+  const res=await fetch('api/commands',{method:'POST',
+    headers:{...h,'Content-Type':'application/json','X-Scofen-Session':'web-ui',
+      'X-Scofen-Project':localStorage.getItem('scofen.modeler.project')||'project-vehicle'},
+    body:JSON.stringify({type:'CREATE_RELATIONSHIP',baseRevision:d.revision,
+      clientCmdId:'profile-dup-'+Date.now(),
+      payload:{id:'rel-dup-'+Date.now(),type:'generalization',
+        sourceId:'e-st-veh-controller',targetId:'e-mc-veh-block',diagramId:'d-profile'}})});
+  return {status:res.status, body:(await res.text()).slice(0,200)};
+})()`, true)
+check('重复泛化返回 400',
+  duplicateProbe.status === 400 && /already exists/.test(duplicateProbe.body),
+  JSON.stringify(duplicateProbe))
+
+console.log('[2d] 图不能挂在构造型下')
+const hostProbe = await page.evaluate(`(async()=>{
+  const h=${authHeaders};
+  const d=await (await fetch('api/model',{headers:h})).json();
+  const res=await fetch('api/commands',{method:'POST',
+    headers:{...h,'Content-Type':'application/json','X-Scofen-Session':'web-ui',
+      'X-Scofen-Project':localStorage.getItem('scofen.modeler.project')||'project-vehicle'},
+    body:JSON.stringify({type:'CREATE_DIAGRAM',baseRevision:d.revision,
+      clientCmdId:'profile-host-'+Date.now(),
+      payload:{id:'dg-host-'+Date.now(),kind:'profile',name:'不该挂构造型下',
+        ownerId:'e-st-veh-controller',elementIds:[]}})});
+  return {status:res.status, body:(await res.text()).slice(0,200)};
+})()`, true)
+check('构造型不能作为图宿主（400）',
+  hostProbe.status === 400 && /Diagram owner must be a namespace/.test(hostProbe.body),
+  JSON.stringify(hostProbe))
+
 await page.screenshot('01-profile-canvas')
 
 console.log('[3] 新建图对话框能选扩展图')

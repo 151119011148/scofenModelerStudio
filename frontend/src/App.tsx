@@ -107,6 +107,19 @@ const FRAME_KIND_COLORS: Record<string, string> = {
   pkg: '#6b46c1', req: '#2b6cb0', bdd: '#2c7a7b', ibd: '#2f855a', par: '#805ad5',
   act: '#b7791f', seq: '#3182ce', stm: '#c05621', uc: '#b23c3c',
 }
+/**
+ * 可以作为图宿主（ownerId）的类型：包、模型、剖面与各类可拥有图的分类器。
+ *
+ * <p>构造型、元类、属性、标签定义这类叶子/成员元素不能拥有图——否则「选中构造型
+ * 新建图」会把图挂到构造型下，随后在图上创建的元素也跟着挂过去，看起来就像
+ * 自定义元模型被重复建到了新建图里。</p>
+ */
+const NAMESPACE_HOST_CODES = new Set([
+  'PACKAGE', 'MODEL', 'MODEL_LIBRARY', 'PROFILE', 'CLASS', 'BLOCK', 'INTERFACE',
+  'COMPONENT', 'CONSTRAINT_BLOCK', 'COLLABORATION', 'NODE', 'DEVICE',
+  'EXECUTION_ENVIRONMENT', 'INTERACTION', 'ACTIVITY', 'STATE_MACHINE',
+  'PROTOCOL_STATE_MACHINE', 'USE_CASE', 'REQUIREMENT', 'TEST_CASE', 'ACTOR',
+])
 /** 估算单行文本宽度：CJK / 全角字符按整字号，其余按 0.58 字号，用于图框首页标签自适应宽度。 */
 function estimateTextWidth(text: string, size: number): number {
   let width = 0
@@ -1007,6 +1020,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   // 连线工具：选中关系组件后在画布上依次点击起点、终点创建关系。
   const [relationTool, setRelationTool] = useState<string | null>(null)
   const [relationSource, setRelationSource] = useState<string | null>(null)
+  /** 连线创建防重入：一次点击到命令落地之间，快速双击会建出多条同源同目标的关系。 */
+  const relationCreatingRef = useRef(false)
   /**
    * 序列图的「消息种类」工具：relationTool 仍是 'message'（服务端只认这个关系类型），
    * 这里额外记住选的是同步 / 异步 / 信号 / 返回 / 创建 / 销毁 / 自消息，
@@ -1920,6 +1935,29 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     [rootElements],
   )
   const projectRootId = projectRoot?.id ?? null
+  /** 首次落图的节点尺寸：扩展图按服务端下发的类型表取值，其他图沿用全局默认。 */
+  const nodeSizeFor = useCallback(
+    (typeCode: string) => {
+      const sizes = containment?.nodeSizes
+      const key = `${activeDiagramKind}:${codeOf(typeCode)}`
+      return sizes?.[key] ?? nodeSize
+    },
+    [containment, activeDiagramKind, codeOf, nodeSize],
+  )
+  /** 把任意候选宿主收敛成合法的命名空间/分类器；不能拥有图的元素回退到项目根。 */
+  const namespaceHostId = useCallback(
+    (candidate: string | null | undefined) => {
+      if (!candidate) {
+        return projectRootId
+      }
+      const element = model.elements.find((item) => item.id === candidate)
+      if (!element) {
+        return projectRootId
+      }
+      return NAMESPACE_HOST_CODES.has(codeOf(element.type)) ? candidate : projectRootId
+    },
+    [model.elements, projectRootId, codeOf],
+  )
   const isProjectRoot = useCallback(
     (element: ModelElement | null) =>
       !!element && !element.ownerId && element.id === 'model-root',
@@ -3838,7 +3876,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       say('模型数据尚未就绪，正在重新连接服务端；也可点顶部横幅的「立即重试」')
       return
     }
-    const effective = ownerId ?? projectRootId
+    // 编辑既有图时保持原宿主；新建图时宿主必须是命名空间/分类器，
+    // 选中构造型/元类时回退到项目根，避免图与后续元素挂到元模型元素下。
+    const effective = edit
+      ? (edit.ownerId ?? projectRootId)
+      : (namespaceHostId(ownerId) ?? projectRootId)
     const owner = effective
       ? model.elements.find((element) => element.id === effective)?.name ?? effective
       : t('项目根')
@@ -3896,7 +3938,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const chosen = allSpecs.find((spec) => spec.code === diagramDialog.kind)
     const custom = customization?.diagramTypes.find((item) => item.id === diagramDialog.kind)
     const baseKind = custom?.baseKind ?? chosen?.code ?? diagramDialog.kind
-    const hostOwnerId = await ensureDiagramHost(baseKind, diagramDialog.ownerId ?? '')
+    const safeOwner = namespaceHostId(diagramDialog.ownerId ?? '') ?? projectRootId ?? ''
+    const hostOwnerId = await ensureDiagramHost(baseKind, safeOwner)
     if (hostOwnerId === null) {
       return
     }
@@ -5727,17 +5770,37 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     )
   }
 
-  /** 由连线工具建一条关系：成功后只清起点，工具保持激活以便连续画同类消息。 */
+  /**
+   * 由连线工具建一条关系。
+   *
+   * <p>序列图消息保持工具激活以便连续画同类消息；其他关系（含泛化）一次只建一条，
+   * 建完退出连线模式——反复点击同一个起点/终点正是在堆重复泛化。</p>
+   */
   const createToolRelationship = async (tool: string, sourceId: string, targetId: string) => {
-    const id = `rel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
-    const ok = await runCommand('CREATE_RELATIONSHIP', relationPayload(id, tool, sourceId, targetId))
-    if (ok) {
-      setRelationSource(null)
-      say(sourceId === targetId
-        ? '已创建给自己的消息，可继续连线或按 Esc 退出'
-        : '已创建 «{relation}» 关系，可继续连线或按 Esc 退出', { relation: relationLabel(tool) })
+    if (relationCreatingRef.current) {
+      return false
     }
-    return ok
+    relationCreatingRef.current = true
+    try {
+      const id = `rel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+      const ok = await runCommand('CREATE_RELATIONSHIP', relationPayload(id, tool, sourceId, targetId))
+      if (ok) {
+        setRelationSource(null)
+        const continuous = activeDiagramKind === 'seq' && tool === 'message'
+        if (!continuous) {
+          setRelationTool(null)
+          setSeqMessageTool(null)
+        }
+        say(continuous
+          ? (sourceId === targetId
+            ? '已创建给自己的消息，可继续连线或按 Esc 退出'
+            : '已创建 «{relation}» 关系，可继续连线或按 Esc 退出')
+          : '已创建 «{relation}» 关系', { relation: relationLabel(tool) })
+      }
+      return ok
+    } finally {
+      relationCreatingRef.current = false
+    }
   }
 
   const openRelationDialog = () => {
@@ -5749,7 +5812,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }
 
   const handleRelationPick = async (elementId: string) => {
-    if (!relationTool) {
+    if (!relationTool || relationCreatingRef.current) {
       return
     }
     const tool = relationTool === 'message' ? seqMessageToolOf(seqMessageTool) : null
@@ -5789,13 +5852,19 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     if (!activeDiagramObj || !activeDiagramId) {
       return
     }
+    // 图的宿主必须是命名空间/分类器：不合法时不要发命令，否则元素会挂到元模型元素下。
+    const diagramOwner = activeDiagramObj.ownerId ?? ''
+    if (diagramOwner && namespaceHostId(diagramOwner) !== diagramOwner) {
+      say('当前图的宿主不是命名空间，无法在此新建元素')
+      return
+    }
     const info = typeInfo.get(typeCode)
     const id = `e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
     const payload: Record<string, unknown> = {
       id,
       type: info?.uml ?? typeCode,
       name: t('新建{label} {count}', { label: pick(info?.label, info?.labelEn) ?? typeCode, count: model.elements.length + 1 }),
-      ownerId: activeDiagramObj.ownerId ?? '',
+      ownerId: diagramOwner,
       stereotypes: info?.stereotype ? [info.stereotype] : [],
       diagramId: activeDiagramId,
       x: Math.round(clamp(x, 0, canvas.maxX)),
@@ -5808,6 +5877,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }
 
+  /** 工具箱点选：把新元素放在视口中心，尺寸按当前图种/类型取，避免扩展图节点偏移。 */
+  const createFromPaletteAtCenter = (typeCode: string) => {
+    const size = nodeSizeFor(typeCode)
+    void createElementFromPalette(
+      typeCode,
+      canvas.width / 2 - size.width / 2,
+      canvas.height / 2 - size.height / 2,
+    )
+  }
+
   const handleCanvasDrop = (event: ReactDragEvent<SVGSVGElement>) => {
     event.preventDefault()
     const relationCode = event.dataTransfer.getData('text/scofen-relation')
@@ -5816,13 +5895,14 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       return
     }
     const point = toSvgPoint(event.clientX, event.clientY)
-    // 以鼠标落点作为图形中心，视觉上更符合「拖到这里就生成在这里」。
-    const x = Math.round(clamp(point.x - nodeSize.width / 2, 0, canvas.maxX))
-    const y = Math.round(clamp(point.y - nodeSize.height / 2, 0, canvas.maxY))
 
     // 模型树里已有的元素：已在当前图 → 移动；未在当前图 → 加入图并落在指定位置。
     const elementId = event.dataTransfer.getData('text/scofen-element')
     if (elementId) {
+      const existing = model.elements.find((element) => element.id === elementId)
+      const size = existing ? nodeSizeFor(codeOf(existing.type)) : nodeSize
+      const x = Math.round(clamp(point.x - size.width / 2, 0, canvas.maxX))
+      const y = Math.round(clamp(point.y - size.height / 2, 0, canvas.maxY))
       const inCurrentDiagram = activeDiagramObj?.elementIds.includes(elementId) ?? false
       void runCommand(inCurrentDiagram ? 'MOVE_NOTATION' : 'ADD_TO_DIAGRAM', {
         diagramId: activeDiagramId,
@@ -5831,12 +5911,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         y,
       })
       setSelectedId(elementId)
-      say('已把「{name}」放置在 ({x}, {y})', { name: model.elements.find((e) => e.id === elementId)?.name ?? elementId, x, y })
+      say('已把「{name}」放置在 ({x}, {y})', { name: existing?.name ?? elementId, x, y })
       return
     }
 
     const code = event.dataTransfer.getData('text/scofen-type')
     if (code) {
+      // 以鼠标落点作为图形中心；尺寸随图种/类型变化（扩展图构造型是 100×50）。
+      const size = nodeSizeFor(code)
+      const x = Math.round(clamp(point.x - size.width / 2, 0, canvas.maxX))
+      const y = Math.round(clamp(point.y - size.height / 2, 0, canvas.maxY))
       void createElementFromPalette(code, x, y)
     }
   }
@@ -8431,11 +8515,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   title={t('«{stereotype}» {label} · {uml}｜点击或拖入画布', { stereotype: type.stereotype, label: pick(type.label, type.labelEn), uml: type.uml })}
                   draggable={canEdit}
                   onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
-                  onClick={() => void createElementFromPalette(
-                    type.code,
-                    canvas.width / 2 - nodeSize.width / 2,
-                    canvas.height / 2 - nodeSize.height / 2,
-                  )}
+                  onClick={() => createFromPaletteAtCenter(type.code)}
                 >
                   <TypeIcon code={type.code} size={16} />
                 </button>
@@ -8503,13 +8583,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                               draggable={canEdit}
                               disabled={busy}
                               onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
-                              onClick={() =>
-                                void createElementFromPalette(
-                                  type.code,
-                                  canvas.width / 2 - nodeSize.width / 2,
-                                  canvas.height / 2 - nodeSize.height / 2,
-                                )
-                              }
+                              onClick={() => createFromPaletteAtCenter(type.code)}
                               title={t('«{stereotype}» {label} · {uml}｜点击或拖入画布', { stereotype: type.stereotype, label: pick(type.label, type.labelEn), uml: type.uml })}
                             >
                               <TypeIcon code={type.code} size={16} />
@@ -8548,13 +8622,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                                 draggable={canEdit}
                                 disabled={busy}
                                 onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
-                                onClick={() =>
-                                  void createElementFromPalette(
-                                    type.code,
-                                    canvas.width / 2 - nodeSize.width / 2,
-                                    canvas.height / 2 - nodeSize.height / 2,
-                                  )
-                                }
+                                onClick={() => createFromPaletteAtCenter(type.code)}
                                 title={t('«{stereotype}» {label} · {uml}｜点击或拖入画布', { stereotype: type.stereotype, label: pick(type.label, type.labelEn), uml: type.uml })}
                               >
                                 <TypeIcon code={type.code} size={16} />

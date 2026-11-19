@@ -51,6 +51,23 @@ public final class ValidationEngine {
     public static final double NODE_WIDTH = InMemoryModelRepository.NODE_WIDTH;
     public static final double NODE_HEIGHT = InMemoryModelRepository.NODE_HEIGHT;
 
+    /**
+     * 结构上「同一对端点只应存在一条」的关系：泛化、包含、剖面应用。
+     * 重复创建既无 UML 语义，也会让树与画布出现多条重合线（用户报的「多个泛化关系模型」）。
+     */
+    private static final Set<RelationshipType> SINGLE_VALUED_RELATIONSHIPS = Set.of(
+            RelationshipType.GENERALIZATION, RelationshipType.CONTAINMENT,
+            RelationshipType.PROFILE_APPLICATION);
+
+    /** 不能作为图宿主（ownerId）的叶子/成员类型：图只能挂在包、块、交互等命名空间或分类器上。 */
+    private static final Set<ElementType> NON_NAMESPACE_HOSTS = Set.of(
+            ElementType.STEREOTYPE, ElementType.METACLASS, ElementType.TAG_DEFINITION,
+            ElementType.DIAGRAM_TYPE, ElementType.PROPERTY, ElementType.VALUE_PROPERTY,
+            ElementType.REFERENCE_PROPERTY, ElementType.FLOW_PROPERTY, ElementType.OPERATION,
+            ElementType.RECEPTION, ElementType.PARAMETER, ElementType.PORT, ElementType.FLOW_PORT,
+            ElementType.SLOT, ElementType.ENUMERATION_LITERAL, ElementType.CONSTRAINT_PARAMETER,
+            ElementType.COMMENT);
+
     public void validate(Command cmd, InMemoryModelRepository repository) {
         switch (cmd.type()) {
             case "CREATE_ELEMENT" -> {
@@ -501,6 +518,17 @@ public final class ValidationEngine {
                         && createsCycle(target, source, repository.relationships())) {
                     throw new ValidationException("Generalization cycle is not allowed");
                 }
+                // 单值关系去重：前端防重入之外的服务端兜底，避免同源同目标堆出多条重合线。
+                if (SINGLE_VALUED_RELATIONSHIPS.contains(relType)) {
+                    boolean duplicate = repository.relationships().stream().anyMatch(relation ->
+                            relation.type() != null && relation.type().equalsIgnoreCase(relType.code())
+                                    && source.equals(relation.sourceId())
+                                    && target.equals(relation.targetId()));
+                    if (duplicate) {
+                        throw new ValidationException("Relationship already exists: «" + relType.code()
+                                + "» " + source + " -> " + target);
+                    }
+                }
             }
             case "DELETE_RELATIONSHIP", "DELETE_DIAGRAM" -> require(cmd.str("id"), "id");
             /*
@@ -547,6 +575,19 @@ public final class ValidationEngine {
                     kind = DiagramKind.fromCode(cmd.str("kind"));
                 } catch (IllegalArgumentException ex) {
                     throw new ValidationException("Unknown diagram kind: " + cmd.str("kind"));
+                }
+                // 图的宿主必须是命名空间/分类器：选着构造型、元类、属性就新建图时，
+                // 图会挂到这些叶子元素下，随后工具箱创建的元素也跟着挂过去，
+                // 表现为「自定义元模型重复出现在新建图下」。
+                String hostId = blankToNull(cmd.str("ownerId"));
+                if (hostId != null) {
+                    ModelElement host = repository.findElement(hostId)
+                            .orElseThrow(() -> new ValidationException("Unknown diagram owner: " + hostId));
+                    ElementType hostType = ElementType.fromAny(host.type()).orElse(null);
+                    if (hostType == null || NON_NAMESPACE_HOSTS.contains(hostType)) {
+                        throw new ValidationException("Diagram owner must be a namespace or classifier: "
+                                + hostType + " (" + hostId + ")");
+                    }
                 }
                 String customTypeId = blankToNull(cmd.str("customTypeId"));
                 if (customTypeId != null) {

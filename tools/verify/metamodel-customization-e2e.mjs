@@ -403,6 +403,19 @@ const tagType = await api(`const d=await (await fetch('api/model',{headers:h})).
   return tags[0]?.properties?.['custom:tagType'] ?? ''`)
 check('标签类型已落库（ENUM）', tagType === 'ENUM', tagType)
 
+console.log('[8b] 构造型添加分类器属性')
+check('构造型卡片有「添加属性」入口', await page.evaluate(
+  `!!document.querySelector('[data-cust-action="add-attribute"]')`))
+await page.evaluate(`(()=>{const b=document.querySelector('[data-cust-action="add-attribute"]');
+  if(b) b.click(); return !!b})()`)
+await sleep(1600)
+const attribute = await api(`const d=await (await fetch('api/model',{headers:h})).json();
+  const props=(d.elements??[]).filter(e=>e.type==='Property'&&e.ownerId===${JSON.stringify(stereotype?.id ?? '')});
+  return props[0]?{id:props[0].id,name:props[0].name,ownerId:props[0].ownerId}:null`)
+check('属性落库为 Property 子元素', !!attribute, JSON.stringify(attribute))
+check('属性挂在构造型之下', attribute?.ownerId === stereotype?.id,
+  `${attribute?.ownerId} vs ${stereotype?.id}`)
+
 console.log('[9] 元素应用构造型 → 剖面标签')
 // 选中一个块（模型树里点），属性面板「属性」页签给 stereotypes 加自造构造型名。
 const target = await api(`const d=await (await fetch('api/model',{headers:h})).json();

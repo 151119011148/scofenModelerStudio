@@ -372,4 +372,69 @@ class ModelEditingTest {
         assertThatThrownBy(() -> cmd("SET_NOTATIONS", Map.of("items", List.of())))
                 .isInstanceOf(ValidationException.class).hasMessageContaining("Nothing to lay out");
     }
+
+    @Test
+    void profileDiagramUsesHuawangDefaultNodeSizes() {
+        cmd("CREATE_ELEMENT", Map.of("id", "pkg", "type", "Package", "name", "系统", "ownerId", ""));
+        cmd("CREATE_ELEMENT", Map.of("id", "st", "type", "Stereotype", "name", "控制器构造型", "ownerId", "pkg"));
+        cmd("CREATE_ELEMENT", Map.of("id", "mc", "type", "Metaclass", "name", "Block", "ownerId", "pkg"));
+        cmd("CREATE_ELEMENT", Map.of("id", "prof", "type", "Profile", "name", "车辆剖面", "ownerId", "pkg"));
+        cmd("CREATE_DIAGRAM", Map.of("id", "d-prof", "kind", "profile", "name", "扩展图",
+                "elementIds", List.of("st", "mc", "prof")));
+
+        assertThat(notation("d-prof", "st").width()).isEqualTo(100.0);
+        assertThat(notation("d-prof", "st").height()).isEqualTo(50.0);
+        assertThat(notation("d-prof", "mc").width()).isEqualTo(100.0);
+        assertThat(notation("d-prof", "mc").height()).isEqualTo(50.0);
+        assertThat(notation("d-prof", "prof").width()).isEqualTo(100.0);
+        assertThat(notation("d-prof", "prof").height()).isEqualTo(80.0);
+
+        // 其他图种保持既有默认尺寸。
+        cmd("CREATE_DIAGRAM", Map.of("id", "d-bdd", "kind", "bdd", "name", "模块定义图"));
+        cmd("CREATE_ELEMENT", Map.of("id", "blk", "type", "Block", "name", "控制器", "ownerId", "pkg",
+                "diagramId", "d-bdd"));
+        assertThat(notation("d-bdd", "blk").width()).isEqualTo(168.0);
+        assertThat(notation("d-bdd", "blk").height()).isEqualTo(84.0);
+    }
+
+    @Test
+    void sameGeneralizationBetweenTheSameEndpointsIsRejected() {
+        cmd("CREATE_ELEMENT", Map.of("id", "pkg", "type", "Package", "name", "系统", "ownerId", ""));
+        cmd("CREATE_ELEMENT", Map.of("id", "st", "type", "Stereotype", "name", "构造型", "ownerId", "pkg"));
+        cmd("CREATE_ELEMENT", Map.of("id", "blk", "type", "Block", "name", "控制器", "ownerId", "pkg"));
+        cmd("CREATE_RELATIONSHIP", Map.of(
+                "id", "r-1", "type", "generalization", "sourceId", "st", "targetId", "blk"));
+
+        assertThatThrownBy(() -> cmd("CREATE_RELATIONSHIP", Map.of(
+                "id", "r-2", "type", "generalization", "sourceId", "st", "targetId", "blk")))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Relationship already exists");
+        assertThat(executor.snapshot().relationships()).hasSize(1);
+    }
+
+    @Test
+    void diagramCannotBeOwnedByAMetamodelLeafElement() {
+        cmd("CREATE_ELEMENT", Map.of("id", "pkg", "type", "Package", "name", "系统", "ownerId", ""));
+        cmd("CREATE_ELEMENT", Map.of("id", "st", "type", "Stereotype", "name", "构造型", "ownerId", "pkg"));
+
+        assertThatThrownBy(() -> cmd("CREATE_DIAGRAM", Map.of(
+                "id", "d-bad", "kind", "profile", "name", "不该挂这里", "ownerId", "st")))
+                .isInstanceOf(ValidationException.class)
+                .hasMessageContaining("Diagram owner must be a namespace");
+    }
+
+    @Test
+    void stereotypeAndMetaclassCanOwnProperties() {
+        cmd("CREATE_ELEMENT", Map.of("id", "pkg", "type", "Package", "name", "系统", "ownerId", ""));
+        cmd("CREATE_ELEMENT", Map.of("id", "st", "type", "Stereotype", "name", "构造型", "ownerId", "pkg"));
+        cmd("CREATE_ELEMENT", Map.of("id", "mc", "type", "Metaclass", "name", "控制器元类", "ownerId", "pkg"));
+
+        cmd("CREATE_ELEMENT", Map.of("id", "a-1", "type", "Property", "name", "level", "ownerId", "st"));
+        cmd("CREATE_ELEMENT", Map.of("id", "a-2", "type", "Property", "name", "gain", "ownerId", "mc"));
+
+        assertThat(executor.snapshot().elements())
+                .filteredOn(element -> "Property".equals(element.type()))
+                .extracting(ModelElement::ownerId)
+                .containsExactlyInAnyOrder("st", "mc");
+    }
 }

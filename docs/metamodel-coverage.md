@@ -302,18 +302,36 @@ TAG_DEFINITION），剖面画成包框。
 导致后跑的扩展图 E2E 只剩 2 个图符——清理口径改成「按 owner 链排除种子剖面」（种子标签定义的 owner
 是构造型，不是剖面，只看一层不够）。
 
+**初始尺寸**：Profile 图节点按华望 M-Design 的默认 bounds 取类型尺寸——构造型 / 元类（Class 系）
+`100 × 50`，标签定义 `120 × 50`（«TagDefinition» 关键字更长，100 宽会截断），
+剖面 / 包 `100 × 80`，其余类型回退既有的 `168 × 84`；其他九图不变。
+尺寸表在 `NodeSizeCatalog`（metamodel），`InMemoryModelRepository` 建 Notation 时按「图种 + 元素类型」取值，
+`/api/metamodel/containment` 下发 `nodeSizes` 供前端拖放落点居中，两边同源。
+
+**自定义元模型属性**：构造型继承 Class，`ContainmentRules` 允许 `STEREOTYPE / METACLASS` 拥有
+`Property`（及 ValueProperty）子元素；定制面板「元模型」段给构造型与自建元类提供「添加属性」，
+属性就是普通 Property，类型引用走 `UPDATE_PROPERTY key=type`，与属性面板同一份数据。
+
+**重复关系的两道闸**：前端连线工具创建期间加锁，非序列图关系（含泛化）建完即退出连线模式
+（序列图消息仍可连续画）；服务端对 `generalization / containment / profileApplication`
+拒绝同源同目标的第二条，避免重合线在树与画布上堆成多条。
+
+**图宿主必须是命名空间**：`CREATE_DIAGRAM` 的 owner 不能是构造型、元类、属性、标签定义等叶子/成员元素，
+前端新建图时把这类选中项回退到项目根。否则图会挂到元模型元素下，随后在图上新建的元素也跟着挂过去，
+表现为「自定义元模型重复出现在新建图下」。
+
 ---
 
 ## 7. 验证
 
 | 层 | 手段 | 结果 |
 | --- | --- | --- |
-| 单元测试 | `./mvnw -B -ntp test` | **175 项、167 通过**（metamodel 19 / core 85 / xmi 14 / web 57；8 项 Testcontainers 无 Docker 跳过），BUILD SUCCESS |
+| 单元测试 | `./mvnw -B -ntp test` | **180 项、172 通过**（metamodel 20 / core 89 / xmi 14 / web 57；8 项 Testcontainers 无 Docker 跳过），BUILD SUCCESS |
 | 目录守卫 | `MetamodelRegistryTest.everyElementTypeIsFullyRegistered` | 159 个类型逐一断言「有主图归属 + 有属性表 + 有可挂载父类型」 |
 | 关系守卫 | `everyRelationshipHasANormativeMetaclass`、`extensionLibraryMaterialisesEveryRelationshipType` | 37 种关系逐一断言「有规范元类 + 属性链含该元类 + 扩展包有对应条目 + 条目类型与 extendsMetaclass 正确」 |
 | 层级守卫 | `everyMetaclassIsConnectedToTheHierarchy` | 281 个元类不断链；抽象性按规范显式标注 |
 | 接口实测 | 真实命令写入 / 删除（本地实例） | 21 个新增类型全部可建，错误父级一律 400 `validation_rule violation`，无残留 |
-| 浏览器 E2E | headless Chrome + CDP | 全部对着**打包 jar** 跑（vite dev 的 WS 代理会干扰重连与切项目）：外壳 30 / 模型树与关系 37 / 属性栏 41 / 关系模型 20 / 根节点 19 / 图形样式 38 / 序列图 98 / 元模型定制 35 / 符号记法 25 / 引用高亮 18 / 断网自愈 19 / XMI 32 / 画布平移 47 / 扩展图 19，共 **480 项全通过**。`auto-layout-e2e` 46/46（含语义分层断言，需先跑 `local-seed.mjs` 灌受控场景） |
+| 浏览器 E2E | headless Chrome + CDP | 全部对着**打包 jar** 跑（vite dev 的 WS 代理会干扰重连与切项目）：外壳 30 / 模型树与关系 37 / 属性栏 41 / 关系模型 20 / 根节点 19 / 图形样式 38 / 序列图 98 / 符号记法 25 / 引用高亮 18 / 断网自愈 19 / XMI 32 / 画布平移 47 / 扩展图 23 / 元模型定制 39，共 **486 项全通过**。`auto-layout-e2e` 46/46（含语义分层断言，需先跑 `local-seed.mjs` 灌受控场景） |
 
 顺带修掉一个真实缺陷：`POST /api/commands` 载荷缺字段时 `Map.copyOf(null)` 抛 NPE 报 500，
 现在归一为空载荷走校验失败（400 `validation_failed`），并加单测锁定。

@@ -6,6 +6,7 @@ import com.scofen.model.metamodel.ElementType;
 import com.scofen.model.metamodel.ExtensionLibrary;
 import com.scofen.model.metamodel.ModelElement;
 import com.scofen.model.metamodel.ModelSnapshot;
+import com.scofen.model.metamodel.NodeSizeCatalog;
 import com.scofen.model.metamodel.Notation;
 import com.scofen.model.metamodel.NotationStyle;
 import com.scofen.model.metamodel.Relationship;
@@ -149,8 +150,9 @@ public final class InMemoryModelRepository {
                         // 拖放落位：命令自带坐标时由服务端一次性写入 Notation，
                         // 避免「CREATE_ELEMENT + MOVE_NOTATION」两条命令引发的 baseRevision 竞态。
                         Notation notation = hasPosition(cmd)
-                                ? placedNotation(diagramId, id, cmd.decimal("x"), cmd.decimal("y"))
-                                : defaultNotation(diagramId, id, refs.size() - 1);
+                                ? placedNotation(diagramId, id, before.kind(), element.type(),
+                                        cmd.decimal("x"), cmd.decimal("y"))
+                                : defaultNotation(diagramId, id, before.kind(), element.type(), refs.size() - 1);
                         notations.put(notation.id(), notation);
                         changes.add(new Change("add", "notation", notation.id(), null, notation));
                         affected.add(notation.id());
@@ -757,7 +759,9 @@ public final class InMemoryModelRepository {
                     if (restored.isEmpty()) {
                         int index = 0;
                         for (String ref : diagram.elementIds()) {
-                            Notation notation = defaultNotation(id, ref, index++);
+                            ModelElement element = elements.get(ref);
+                            String elementType = element == null ? "" : element.type();
+                            Notation notation = defaultNotation(id, ref, kind, elementType, index++);
                             notations.put(notation.id(), notation);
                             changes.add(new Change("add", "notation", notation.id(), null, notation));
                             affected.add(notation.id());
@@ -831,9 +835,13 @@ public final class InMemoryModelRepository {
                     String notationId = notationId(diagramId, elementId);
                     Notation current = notations.get(notationId);
                     if (current == null) {
+                        ModelElement element = elements.get(elementId);
+                        String elementType = element == null ? "" : element.type();
                         Notation notation = hasPosition(cmd)
-                                ? placedNotation(diagramId, elementId, cmd.decimal("x"), cmd.decimal("y"))
-                                : defaultNotation(diagramId, elementId, refs.size() - 1);
+                                ? placedNotation(diagramId, elementId, before.kind(), elementType,
+                                        cmd.decimal("x"), cmd.decimal("y"))
+                                : defaultNotation(diagramId, elementId, before.kind(), elementType,
+                                        refs.size() - 1);
                         notations.put(notationId, notation);
                         changes.add(new Change("add", "notation", notationId, null, notation));
                         affected.add(notationId);
@@ -990,10 +998,12 @@ public final class InMemoryModelRepository {
         return "n-" + diagramId + "-" + elementId;
     }
 
-    private static Notation defaultNotation(String diagramId, String elementId, int index) {
+    private static Notation defaultNotation(String diagramId, String elementId, DiagramKind kind,
+                                           String elementType, int index) {
+        NodeSizeCatalog.Size size = NodeSizeCatalog.of(kind, elementType);
         return new Notation(notationId(diagramId, elementId), diagramId, elementId,
                 36 + (index % 3) * GRID_X, 36 + (index / 3) * GRID_Y,
-                NODE_WIDTH, NODE_HEIGHT, Map.of());
+                size.width(), size.height(), Map.of());
     }
 
     /** 命令是否携带放置坐标：由 ValidationEngine 先做边界校验，这里只负责写入。 */
@@ -1002,9 +1012,11 @@ public final class InMemoryModelRepository {
     }
 
     /** 拖放落点：服务端权威生成记法，前端不再补发 MOVE_NOTATION。 */
-    private static Notation placedNotation(String diagramId, String elementId, double x, double y) {
+    private static Notation placedNotation(String diagramId, String elementId, DiagramKind kind,
+                                           String elementType, double x, double y) {
+        NodeSizeCatalog.Size size = NodeSizeCatalog.of(kind, elementType);
         return new Notation(notationId(diagramId, elementId), diagramId, elementId,
-                x, y, NODE_WIDTH, NODE_HEIGHT, Map.of());
+                x, y, size.width(), size.height(), Map.of());
     }
 
     private static Map<String, Object> elementToMap(ModelElement element) {
