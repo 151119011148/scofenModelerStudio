@@ -203,10 +203,12 @@ await page.screenshot('03-diagram-highlight')
 
 console.log('[5] 关系行右键 → 树上高亮')
 // 关系挂在源元素下；源元素行需展开才能看到关系行。
-await page.evaluate(`(()=>{const r=[...document.querySelectorAll('.tree-row[data-tree-id]')]
-  .find(x=>x.getAttribute('data-tree-id')===${JSON.stringify(IDS.src)});
-  const tw=r?.querySelector('.tree-twisty')||r?.querySelector('[class*=twisty]');if(tw)tw.click();return 1})()`)
-await sleep(400)
+// 用 dispatchEvent 而非 HTMLElement.click()：无头 Chrome 里后者偶发不触发 React 的 onClick。
+await page.evaluate(`(()=>{const r=document.querySelector('.tree-row[data-tree-id=${JSON.stringify(IDS.src)}]');
+  const tw=r?.querySelector('.twisty');
+  if(tw && tw.getAttribute('aria-expanded')!=='true'){tw.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}))}
+  return 1})()`)
+await waitFor(page, `document.querySelector('.tree-row[data-tree-id=${JSON.stringify(IDS.src)}] .twisty')?.getAttribute('aria-expanded')==='true'`, 20, 200)
 const relRowExists = await waitFor(page, `!!document.querySelector('[data-relation-id=${JSON.stringify(IDS.rel)}]')`, 40, 250)
 check('关系行已渲染', relRowExists)
 if (relRowExists) {

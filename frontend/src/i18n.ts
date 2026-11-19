@@ -587,6 +587,9 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
   /* ── 引用型属性与树上高亮 ── */
   '树上高亮': { zh: '树上高亮', en: 'Highlight in tree' },
   '查看关系属性': { zh: '查看关系属性', en: 'View relationship properties' },
+  '快捷创建关系': { zh: '快捷创建关系', en: 'Quick create relationship' },
+  '以「{name}」为起点': { zh: '以「{name}」为起点', en: 'Start from “{name}”' },
+  '当前图未开放关系类型': { zh: '当前图未开放关系类型', en: 'No relationship types allowed in this diagram' },
   '右键可在模型树中高亮当前对象': {
     zh: '右键可在模型树中高亮当前对象',
     en: 'Right-click to highlight this object in the model tree',

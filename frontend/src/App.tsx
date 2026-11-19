@@ -67,6 +67,7 @@ import type { SeqActivation, SeqFragment, SeqMessage, SeqMessageToolDef } from '
 import { autoLayout, isLayoutImmutable } from './layout'
 import type { LayoutChoice } from './layout'
 import { DiagramIcon, FAMILIES, RelationIcon, TypeIcon, familyOfType } from './icons'
+import { svgUrl } from './iconAssets'
 import { pick, setLocale, t, useLocale } from './i18n'
 import LocaleSwitch from './LocaleSwitch'
 import LoginView from './LoginView'
@@ -648,7 +649,9 @@ const TreeRow = memo(function TreeRow(props: TreeRowProps) {
         label={isOpen ? t('折叠') : t('展开')}
         onToggle={() => actions.toggleExpanded(element.id)}
       />
-      <TypeIcon code={data.codeOf(element.type)} size={16} title={info} />
+      {isRoot
+        ? <img className="tree-icon-img" src={svgUrl('Project')} width={16} height={16} alt="" title={info} />
+        : <TypeIcon code={data.codeOf(element.type)} size={16} title={info} />}
       <span className="tree-label">{element.name}</span>
       {isRoot ? (
         <span className="root-tag" title={t('项目根节点，不可删除')}>{t('项目根')}</span>
@@ -1020,8 +1023,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   // 连线工具：选中关系组件后在画布上依次点击起点、终点创建关系。
   const [relationTool, setRelationTool] = useState<string | null>(null)
   const [relationSource, setRelationSource] = useState<string | null>(null)
+  /** 画布「+」快捷菜单：以选中图形为起点，直接选一种关系再点终点。 */
+  const [quickMenu, setQuickMenu] = useState<{ x: number; y: number; sourceId: string } | null>(null)
   /** 连线创建防重入：一次点击到命令落地之间，快速双击会建出多条同源同目标的关系。 */
   const relationCreatingRef = useRef(false)
+  /** 工具箱建元素防重入：快速双击会在第一条命令落地前再发一条，树里就多出重复元素。 */
+  const elementCreatingRef = useRef(false)
   /**
    * 序列图的「消息种类」工具：relationTool 仍是 'message'（服务端只认这个关系类型），
    * 这里额外记住选的是同步 / 异步 / 信号 / 返回 / 创建 / 销毁 / 自消息，
@@ -1668,6 +1675,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return () => window.removeEventListener('pointerdown', close)
   }, [menu])
 
+  // 画布「+」快捷菜单：点击菜单之外任意位置即收起（菜单自身阻止冒泡）。
+  useEffect(() => {
+    if (!quickMenu) {
+      return
+    }
+    const close = () => setQuickMenu(null)
+    window.addEventListener('pointerdown', close)
+    return () => window.removeEventListener('pointerdown', close)
+  }, [quickMenu])
+
   // 项目选择器：点击面板之外关闭；面板自身阻止冒泡，内部按钮可正常点击。
   useEffect(() => {
     if (!projectPickerOpen) {
@@ -2211,7 +2228,15 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const hits = new Set<string>()
     // 隔离内容不参与项目模型筛选：扩展包只在自己的虚拟分组里浏览。
     for (const element of projectElements) {
-      if (element.name.toLowerCase().includes(needle)) {
+      // 名称之外还要匹配类型：用户搜「block」是想找块，不是找名字里带 block 的元素。
+      const code = codeOf(element.type)
+      const info = typeInfo.get(code)
+      const haystack: (string | undefined)[] = [
+        element.name, code, element.type,
+        info?.label, info?.labelEn, info?.uml, info?.stereotype,
+        ...(element.stereotypes ?? []),
+      ]
+      if (haystack.some((value) => typeof value === 'string' && value.toLowerCase().includes(needle))) {
         hits.add(element.id)
       }
     }
@@ -2229,7 +2254,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       }
     }
     return hits
-  }, [treeFilter, projectElements, model.diagrams, elementById])
+  }, [treeFilter, projectElements, model.diagrams, elementById, codeOf, typeInfo])
 
   /** 图表视图：按图类型分组，和工具箱的九图语义一致。 */
   const diagramsByKind = useMemo(() => {
@@ -3851,6 +3876,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     })
   }
 
+  /** 选中图形右缘的「+」：以该图形为起点，列当前图允许的关系。 */
+  const openQuickMenu = (event: ReactMouseEvent, sourceId: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setQuickMenu({ x: event.clientX, y: event.clientY, sourceId })
+  }
+
   // 空白处的「新建」一律落到项目根 Package 下，保证模型树始终只有一个根。
   // 数据未就绪时不要打开一个空对话框——那会显示「该父类型不允许再包含子元素」，
   // 把连接故障伪装成元模型规则，用户根本无从判断发生了什么。
@@ -4581,6 +4613,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       const relation = relationById.get(targetId)
       if (relation) {
         for (const ownerId of [relation.sourceId, relation.targetId]) {
+          // 关系分组挂在端点元素下：端点行本身就是折叠态时，只展开祖先链还不够，
+          // 分组里的关系行根本不会渲染。把两端元素一并展开。
+          chain.push(ownerId)
           let cursor = elementById.get(ownerId)
           while (cursor?.ownerId) {
             chain.push(cursor.ownerId)
@@ -5849,31 +5884,36 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
    * 不再补发 MOVE_NOTATION，避免连续命令的 409 竞态与「撤销两次才删掉元素」。
    */
   const createElementFromPalette = async (typeCode: string, x: number, y: number) => {
-    if (!activeDiagramObj || !activeDiagramId) {
+    if (!activeDiagramObj || !activeDiagramId || elementCreatingRef.current) {
       return
     }
-    // 图的宿主必须是命名空间/分类器：不合法时不要发命令，否则元素会挂到元模型元素下。
-    const diagramOwner = activeDiagramObj.ownerId ?? ''
-    if (diagramOwner && namespaceHostId(diagramOwner) !== diagramOwner) {
-      say('当前图的宿主不是命名空间，无法在此新建元素')
-      return
-    }
-    const info = typeInfo.get(typeCode)
-    const id = `e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
-    const payload: Record<string, unknown> = {
-      id,
-      type: info?.uml ?? typeCode,
-      name: t('新建{label} {count}', { label: pick(info?.label, info?.labelEn) ?? typeCode, count: model.elements.length + 1 }),
-      ownerId: diagramOwner,
-      stereotypes: info?.stereotype ? [info.stereotype] : [],
-      diagramId: activeDiagramId,
-      x: Math.round(clamp(x, 0, canvas.maxX)),
-      y: Math.round(clamp(y, 0, canvas.maxY)),
-    }
-    const ok = await runCommand('CREATE_ELEMENT', payload)
-    if (ok) {
-      setSelectedId(id)
-      say('已在 ({x}, {y}) 放置「{name}」', { x: payload.x, y: payload.y, name: payload.name })
+    elementCreatingRef.current = true
+    try {
+      // 图的宿主必须是命名空间/分类器：不合法时不要发命令，否则元素会挂到元模型元素下。
+      const diagramOwner = activeDiagramObj.ownerId ?? ''
+      if (diagramOwner && namespaceHostId(diagramOwner) !== diagramOwner) {
+        say('当前图的宿主不是命名空间，无法在此新建元素')
+        return
+      }
+      const info = typeInfo.get(typeCode)
+      const id = `e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+      const payload: Record<string, unknown> = {
+        id,
+        type: info?.uml ?? typeCode,
+        name: t('新建{label} {count}', { label: pick(info?.label, info?.labelEn) ?? typeCode, count: model.elements.length + 1 }),
+        ownerId: diagramOwner,
+        stereotypes: info?.stereotype ? [info.stereotype] : [],
+        diagramId: activeDiagramId,
+        x: Math.round(clamp(x, 0, canvas.maxX)),
+        y: Math.round(clamp(y, 0, canvas.maxY)),
+      }
+      const ok = await runCommand('CREATE_ELEMENT', payload)
+      if (ok) {
+        setSelectedId(id)
+        say('已在 ({x}, {y}) 放置「{name}」', { x: payload.x, y: payload.y, name: payload.name })
+      }
+    } finally {
+      elementCreatingRef.current = false
     }
   }
 
@@ -6138,6 +6178,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     // （包图里画包自己）。画布点选会「在模型树中定位」，把两者一起展开，递归就会在
     // 元素 ↔ 图之间无限往返、把调用栈打爆。用一条路径栈拦住重复进入，行照常输出一次。
     const path = new Set<string>()
+    // 同一元素可能既是项目层级的子节点、又是某张图的成员；只按路径防环挡不住这种
+    // 跨分支重复，会把元类 / 块在树里显示两遍。全树按 id 只输出一次，先到先得——
+    // rootNodes 先铺项目层级，因此元素优先保留在自己的命名空间下。
+    const emitted = new Set<string>()
 
     const pushDiagram = (diagram: Diagram, depth: number) => {
       if (!keep(diagram.id) || path.has(diagram.id)) {
@@ -6161,7 +6205,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
 
     function pushElement(element: ModelElement, depth: number): void {
-      if (!keep(element.id) || path.has(element.id)) {
+      if (!keep(element.id) || path.has(element.id) || emitted.has(element.id)) {
         return
       }
       const kids = childrenByOwner.get(element.id) ?? []
@@ -6174,6 +6218,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         isSelected: selectedId === element.id,
         isDropTarget: false,
       })
+      emitted.add(element.id)
       if (!open) {
         return
       }
@@ -6786,6 +6831,24 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           />
         )}
         {shapeSvg}
+        {selected && !multiSelected && !relationTool && (
+          <g
+            className="node-quick-add"
+            data-export="omit"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => openQuickMenu(event, element.id)}
+          >
+            <title>{t('快捷创建关系')}</title>
+            <circle cx={bx + bw + 14} cy={by + bh / 2} r={11} fill="#ffffff" stroke="#1890ff" strokeWidth={1.4} />
+            <text
+              x={bx + bw + 14}
+              y={by + bh / 2 + 5}
+              textAnchor="middle"
+              className="quick-add-plus"
+              fill="#1890ff"
+            >+</text>
+          </g>
+        )}
         {glyphKind && (
           <text x={labelX} y={by + bh + 15} textAnchor={labelAnchor} className="control-label" style={smallTextStyle} fillOpacity={1}>
             {wrapLabel(element.name, 150, smallFontSize, 2).map((line, index) => (
@@ -9155,6 +9218,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       setSelectedId(null)
                       setSelectedDiagramId(null)
                     }}
+                    onContextMenu={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      openMenu(event, { kind: 'relation', id: relation.id })
+                    }}
                   >
                     <title>
                       {relation.name?.trim() || `«${relation.type}» ${relationLabel(relation.type)}`}
@@ -9708,6 +9776,42 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <button type="button" onClick={() => openDiagramDialog(null)}>{t('在项目根下新建图…')}</button>
             </>
           )}
+        </div>
+      )}
+
+      {/* 画布「+」快捷菜单：选中图形 → 选关系 → 该图形即起点，再点终点即可建成 */}
+      {quickMenu && (
+        <div
+          className="quick-menu"
+          style={{
+            left: Math.min(quickMenu.x, window.innerWidth - 248),
+            top: Math.min(quickMenu.y, window.innerHeight - 340),
+          }}
+          onPointerDown={(event) => event.stopPropagation()}
+        >
+          <div className="menu-title">
+            <span>
+              {t('以「{name}」为起点', {
+                name: elementById.get(quickMenu.sourceId)?.name ?? quickMenu.sourceId,
+              })}
+            </span>
+          </div>
+          {relationEntries.length === 0 ? (
+            <div className="quick-menu-empty">{t('当前图未开放关系类型')}</div>
+          ) : relationEntries.map((rel) => (
+            <button
+              type="button"
+              key={rel.code}
+              onClick={() => {
+                activateRelationTool(rel.code)
+                setRelationSource(quickMenu.sourceId)
+                setQuickMenu(null)
+              }}
+            >
+              <RelationIcon code={rel.code} size={14} />
+              <span>{pick(rel.label, rel.labelEn)}</span>
+            </button>
+          ))}
         </div>
       )}
 
