@@ -1169,17 +1169,17 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
     en: '{action} · UML / SysML packages are isolated from the project and embedded by the system',
   },
   'UML / SysML 扩展包与项目模型隔离，由系统内嵌提供，仅用于浏览与引用定位': {
-    zh: 'UML / SysML 扩展包与项目模型隔离，由系统内嵌提供，仅用于浏览与引用定位',
-    en: 'UML / SysML packages are isolated from the project model, embedded by the system for browsing and reference lookup only',
+    zh: 'UML / SysML 扩展包与项目模型隔离，由系统内嵌提供，用于浏览、引用定位与拖入图',
+    en: 'UML / SysML packages are isolated from the project model, embedded by the system for browsing, reference lookup and dragging onto diagrams',
   },
   '系统 · 隔离': { zh: '系统 · 隔离', en: 'System · isolated' },
   '系统内容，不计入项目元素数，也不参与项目命令': {
-    zh: '系统内容，不计入项目元素数，也不参与项目命令',
-    en: 'System content: excluded from project element counts and project commands',
+    zh: '系统内容，不计入项目元素数；拖入图时只建只读引用',
+    en: 'System content: excluded from project element counts; dragging onto a diagram creates a read-only reference',
   },
-  '{name} · 扩展包只读定义（与项目模型隔离）': {
-    zh: '{name} · 扩展包只读定义（与项目模型隔离）',
-    en: '{name} · read-only package definition (isolated from the project model)',
+  '{name} · 扩展包只读定义（与项目模型隔离）· 可拖入图引用': {
+    zh: '{name} · 扩展包只读定义（与项目模型隔离）· 可拖入图引用',
+    en: '{name} · read-only package definition (isolated from the project model) · drag onto a diagram as a reference',
   },
   '单向关系只挂到源端一方，双向关系同时挂到两端元素': {
     zh: '单向关系只挂到源端一方，双向关系同时挂到两端元素',

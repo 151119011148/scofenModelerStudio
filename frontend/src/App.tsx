@@ -408,6 +408,10 @@ const TreeRow = memo(function TreeRow(props: TreeRowProps) {
     if (!element) {
       return null
     }
+    // 扩展包元素是只读定义，但可以作为「引用」拖入图：扩展图里把元类摆上画布、
+    // 再让构造型画泛化指过去，是 Profile 建模的常规用法。元素已在项目快照里物化，
+    // ADD_TO_DIAGRAM 只建记法，不会复制或改写扩展内容。
+    const draggable = data.canEdit
     return (
       <div
         className="tree-row virtual-group extension-element"
@@ -416,12 +420,21 @@ const TreeRow = memo(function TreeRow(props: TreeRowProps) {
         style={indent}
         role="button"
         tabIndex={0}
-        title={t('{name} · 扩展包只读定义（与项目模型隔离）', { name: element.name })}
+        draggable={draggable}
+        title={t('{name} · 扩展包只读定义（与项目模型隔离）· 可拖入图引用', { name: element.name })}
         onClick={() => {
           actions.selectExtensionElement(element.id)
           if (hasChildren) {
             actions.toggleExpanded(element.id)
           }
+        }}
+        onDragStart={(event) => {
+          if (!draggable) {
+            event.preventDefault()
+            return
+          }
+          event.dataTransfer.setData('text/scofen-element', element.id)
+          event.dataTransfer.effectAllowed = 'link'
         }}
         onKeyDown={(event) => {
           if (event.key === 'Enter' || event.key === ' ') {
