@@ -3154,12 +3154,13 @@ body.col-resizing * { cursor: col-resize !important; }
 .mb-brand strong { color: #fff; }
 .mb-brand .mark, .mb-brand .mark::after { border-radius: 0; border-color: #fff; }
 .mb-brand .mark::after { background: #fff; box-shadow: 0 5px 0 #fff, 0 5px 0 1px #fff; }
-.topbar button {
+/* 反白只用于深蓝菜单栏；工具条是浅蓝底，若一起反白会让 .tbi / .project-switch 变成隐形白字。 */
+.topbar .menubar button {
   background: rgba(255, 255, 255, .1);
   border-color: rgba(255, 255, 255, .42);
   color: #fff;
 }
-.topbar button:hover:not(:disabled) { background: rgba(255, 255, 255, .2); color: #fff; border-color: #fff; }
+.topbar .menubar button:hover:not(:disabled) { background: rgba(255, 255, 255, .2); color: #fff; border-color: #fff; }
 .topbar .mb-btn { background: transparent; border-color: transparent; color: #eaf2ff; }
 .topbar .mb-btn.open, .topbar .mb-btn:hover:not(:disabled) {
   background: rgba(255, 255, 255, .16);
@@ -3487,3 +3488,17 @@ button.primary.danger { background: var(--surface); border-color: var(--danger);
 .statusbar { height: 30px; background: var(--md-color-sub2, #e7edff); border-top: 1px solid #d0d0d0; }
 
 :root { --md-color-sub2: #e7edff; }
+
+/* ── 页签文字对比度修正：--text-3 (#8a95a3) 在浅蓝底 #ecf4ff 上仅约 2.8:1，
+   12px 小字读不清（截图里几乎与背景同色）；默认改 --text-2 (#5f6c88，约 5:1)，
+   选中态仍是华望蓝。仅作用于左栏页签与工具箱页签，不改其它弱化文字。 ── */
+.tree-head-tab, .tb-tabs button {
+  color: var(--text-2);
+  font-weight: 500;
+}
+.tree-head-tab:hover:not(:disabled), .tb-tabs button:hover:not(:disabled) { color: var(--accent); }
+.tree-head-tab.active, .tb-tabs button.active { color: var(--accent); font-weight: 600; }
+
+/* 左栏降到 244px 后，四个页签若可被 flex 压缩会把中文挤成竖排；固定不收缩 + 收紧内边距。 */
+.tree-head-tab { flex: none; white-space: nowrap; padding: 5px 6px 4px; }
+.tree-head { overflow: hidden; }

@@ -127,6 +127,15 @@ const menubar = await page.evaluate(`(()=>{const bar=document.querySelector('.me
 check('菜单栏透明且不遮挡深蓝顶栏', menubar.bg === 'rgba(0, 0, 0, 0)', JSON.stringify(menubar))
 check('品牌文字反白', menubar.brand === 'rgb(255, 255, 255)', JSON.stringify(menubar))
 
+// 浅蓝工具条不能被菜单行的反白规则带跑：白字画在 #ecf4ff 上几乎不可见。
+const readable = await page.evaluate(`(()=>{const c=(s)=>{const e=document.querySelector(s);return e?getComputedStyle(e).color:null};
+ return {tbi:c('.topbar .tbi'),project:c('.project-switch'),treeTab:c('.tree-head-tab:not(.active)'),toolTab:c('.tb-tabs button:not(.active)')}})()`)
+const TEXT2 = 'rgb(95, 108, 136)'
+check('工具图标按钮是深色而非隐形白字', readable.tbi === TEXT2, JSON.stringify(readable))
+check('项目选择器文字是深色而非隐形白字', readable.project === TEXT2, JSON.stringify(readable))
+check('左栏页签文字对比度提至 --text-2（约 5:1）', readable.treeTab === TEXT2, JSON.stringify(readable))
+check('工具箱页签文字对比度提至 --text-2（约 5:1）', readable.toolTab === TEXT2, JSON.stringify(readable))
+
 console.log('[3] 成品 SVG 图标渲染')
 const icons = await page.evaluate(`(()=>{const all=[...document.querySelectorAll('.icon-tile')];
  const assets=all.filter(e=>e.classList.contains('icon-tile-asset'));
