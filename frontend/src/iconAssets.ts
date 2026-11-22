@@ -141,7 +141,7 @@ const DIAGRAM_SVG: Record<string, string> = {
   seq: 'SysMLSequenceDiagram',
   stm: 'SysMLStateMachineDiagram',
   uc: 'SysMLUseCaseDiagram',
-  profile: 'SysMLProfileDiagram',
+  profile: 'ProfileDiagram',
 }
 
 /** 关系 key（normalizeRelKey 后）→ 关系符号 SVG 文件名。 */

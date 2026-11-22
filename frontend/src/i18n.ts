@@ -763,9 +763,9 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
   '全局搜索': { zh: '全局搜索', en: 'Global search' },
   '全局搜索…': { zh: '全局搜索…', en: 'Global search…' },
   '全局搜索（Ctrl/⌘+K）': { zh: '全局搜索（Ctrl/⌘+K）', en: 'Global search (Ctrl/⌘+K)' },
-  '搜索元素、图、关系：名称 / 文档 / 标签 / 属性值…': {
-    zh: '搜索元素、图、关系：名称 / 文档 / 标签 / 属性值…',
-    en: 'Search elements, diagrams, relations: name / docs / tags / property values…',
+  '按名称搜索元素、图、关系…': {
+    zh: '按名称搜索元素、图、关系…',
+    en: 'Search elements, diagrams, relations by name…',
   },
   '搜索结果': { zh: '搜索结果', en: 'Search results' },
   '没有匹配「{keyword}」的模型对象': {
@@ -957,7 +957,7 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
   '已打开的标签页': { zh: '已打开的标签页', en: 'Open tabs' },
   '图 · 点击切换画布': { zh: '图 · 点击切换画布', en: 'Diagram · click to switch the canvas' },
   '对象 · 点击编辑属性': { zh: '对象 · 点击编辑属性', en: 'Object · click to edit its properties' },
-  '筛选元素 / 图…': { zh: '筛选元素 / 图…', en: 'Filter elements / diagrams…' },
+  '按名称筛选元素 / 图…': { zh: '按名称筛选元素 / 图…', en: 'Filter elements / diagrams by name…' },
   '筛选模型树': { zh: '筛选模型树', en: 'Filter model tree' },
   '清除筛选': { zh: '清除筛选', en: 'Clear filter' },
   '按图类型分组 · 共 {count} 张': {

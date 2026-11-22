@@ -184,6 +184,9 @@ export const DIAGRAM_ICONS: Record<string, IconSpec> = {
   seq: { glyph: 'd-seq', color: '#c026d3' },
   stm: { glyph: 'd-stm', color: '#be123c' },
   uc: { glyph: 'd-uc', color: '#15803d' },
+  // 扩展图（Profile Diagram）：缺了这一项时 diagramIcon 会回退到通用 glyph，
+  // 即使 iconAssets 里有正确的 SVG 映射也不会被用上。
+  profile: { glyph: 'd-pkg', color: '#7c3aed' },
 }
 
 export function familyOfType(code: string): string {

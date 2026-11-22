@@ -118,8 +118,14 @@ check('页签 --accent-soft = #e6f0ff', vars.soft === '#e6f0ff', vars.soft)
 check('侧栏 --sider-bg = #f4f8ff', vars.sider === '#f4f8ff', vars.sider)
 check('无圆角基调 --radius = 0px', vars.radius === '0px', vars.radius)
 check('正文 12px 字号', vars.font === '12px', vars.font)
-const topbarBg = await page.evaluate(`getComputedStyle(document.querySelector('.topbar')).backgroundColor`)
-check('顶栏实际背景为华望标题蓝 rgb(232, 238, 249)', topbarBg === 'rgb(232, 238, 249)', topbarBg)
+// 成品 v4.6.0.1 的顶栏是深蓝渐变 #3561a8 → #4a76c0；源码档的变量 --titlebar-bg 仍保留浅蓝语义。
+const topbarBg = await page.evaluate(`(()=>{const s=getComputedStyle(document.querySelector('.topbar'));return s.backgroundImage+'|'+s.backgroundColor})()`)
+check('顶栏实际背景为华望成品深蓝渐变 #3561a8',
+  /linear-gradient/.test(topbarBg) && topbarBg.includes('rgb(53, 97, 168)'), topbarBg)
+const menubar = await page.evaluate(`(()=>{const bar=document.querySelector('.menubar');const brand=document.querySelector('.mb-brand strong');
+ return {bg:bar?getComputedStyle(bar).backgroundColor:'',brand:brand?getComputedStyle(brand).color:''}})()`)
+check('菜单栏透明且不遮挡深蓝顶栏', menubar.bg === 'rgba(0, 0, 0, 0)', JSON.stringify(menubar))
+check('品牌文字反白', menubar.brand === 'rgb(255, 255, 255)', JSON.stringify(menubar))
 
 console.log('[3] 成品 SVG 图标渲染')
 const icons = await page.evaluate(`(()=>{const all=[...document.querySelectorAll('.icon-tile')];

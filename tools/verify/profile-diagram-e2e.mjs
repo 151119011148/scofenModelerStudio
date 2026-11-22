@@ -156,6 +156,10 @@ check('工具箱显示扩展图元素组件', await page.evaluate(`(()=>{
   const box=[...document.querySelectorAll('.tb-item[data-tb-type]')].map(x=>x.dataset.tbType);
   return ['STEREOTYPE','METACLASS','TAG_DEFINITION','DIAGRAM_TYPE'].every(t=>box.includes(t))})()`),
   await page.evaluate(`JSON.stringify([...document.querySelectorAll('.tb-item[data-tb-type]')].map(x=>x.dataset.tbType))`))
+check('扩展图使用 16×16 ProfileDiagram.svg（不再误用 48×48 包图 sprite）', await page.evaluate(`(()=>{
+  const srcs=[...document.querySelectorAll('img')].map(i=>i.getAttribute('src')||'');
+  return srcs.some(s=>/ProfileDiagram\\.svg$/.test(s))
+    && !srcs.some(s=>/SysMLProfileDiagram\\.svg$/.test(s))})()`))
 console.log('[2b] 扩展图新建构造型默认尺寸对齐华望（100×50）')
 const sizeProbe = await page.evaluate(`(async()=>{
   const h=${authHeaders};
@@ -223,6 +227,51 @@ check('下拉含「规范图」分组', groups.includes('规范图'), JSON.strin
 check('规范图下拉含「扩展图」选项', await page.evaluate(`(()=>{
   const g=[...document.querySelectorAll('.modal optgroup')].find(x=>x.label==='规范图');
   return !!g && [...g.querySelectorAll('option')].some(o=>o.textContent.trim()==='扩展图')})()`))
+
+console.log('[3b] 新建空扩展图：初始图框四周内缩')
+const emptyName = `空扩展图E2E-${Date.now()}`
+await page.evaluate(`(()=>{const s=document.querySelector('.modal select');
+  const d=Object.getOwnPropertyDescriptor(s.constructor.prototype,'value').set;
+  d.call(s,'profile');s.dispatchEvent(new Event('change',{bubbles:true}));
+  const i=document.querySelector('.modal input');
+  const si=Object.getOwnPropertyDescriptor(i.constructor.prototype,'value').set;
+  si.call(i,${JSON.stringify(emptyName)});i.dispatchEvent(new Event('input',{bubbles:true}));return 1})()`)
+await sleep(300)
+await page.evaluate(`(()=>{const b=[...document.querySelectorAll('.modal button')]
+  .find(x=>x.textContent.trim()==='创建');b?.click();return !!b})()`)
+check('空扩展图已创建并打开', await waitFor(page,
+  `document.querySelector('.doc-tab.active .doc-tab-label')?.textContent?.includes(${JSON.stringify(emptyName)})`))
+const emptyFrame = await page.evaluate(`(()=>{const f=document.querySelector('.canvas .diagram-frame');
+  if(!f)return null;const b=f.getBBox();return {x:b.x,y:b.y,w:b.width,h:b.height}})()`)
+check('初始图框四周内缩 28、底边不贴画布边缘',
+  !!emptyFrame && Math.abs(emptyFrame.x - 28) <= 1 && Math.abs(emptyFrame.y - 28) <= 1
+    && Math.abs(emptyFrame.w - (640 - 56)) <= 1 && Math.abs(emptyFrame.h - (420 - 56)) <= 1,
+  JSON.stringify(emptyFrame))
+
+console.log('[3c] 拖入首个图形后画布不缩小')
+const dropProbe = await page.evaluate(`(()=>{
+  const svg=document.querySelector('svg[role="img"]');const b=svg.getBoundingClientRect();
+  const dt=new DataTransfer();dt.setData('text/scofen-type','STEREOTYPE');
+  const x=Math.round(b.x+b.width*0.35),y=Math.round(b.y+b.height*0.55);
+  const target=document.elementFromPoint(x,y)||svg;
+  target.dispatchEvent(new DragEvent('drop',{bubbles:true,cancelable:true,dataTransfer:dt,clientX:x,clientY:y}));
+  return {tag:target.tagName}})()`)
+await sleep(1600)
+const frameAfterDrop = await page.evaluate(`(()=>{const f=document.querySelector('.canvas .diagram-frame');
+  if(!f)return null;const b=f.getBBox();return {x:b.x,y:b.y,w:b.width,h:b.height}})()`)
+check('拖入图形后画布图框只增不减',
+  !!frameAfterDrop && frameAfterDrop.w >= emptyFrame.w - 1 && frameAfterDrop.h >= emptyFrame.h - 1,
+  JSON.stringify({ dropProbe, emptyFrame, frameAfterDrop }))
+const cleanEmpty = await page.evaluate(`(async()=>{const h=${authHeaders};
+  const m=await (await fetch('api/model',{headers:h})).json();
+  const d=(m.diagrams||[]).find(x=>x.name===${JSON.stringify(emptyName)});
+  if(!d)return 'missing';
+  const r=await fetch('api/commands',{method:'POST',
+    headers:{...h,'X-Scofen-Session':'web-ui','Content-Type':'application/json'},
+    body:JSON.stringify({type:'DELETE_DIAGRAM',payload:{id:d.id},baseRevision:m.revision,
+      clientCmdId:'clean-profile-empty-'+Date.now()})});
+  return String(r.status)})()`, true)
+check('清理空扩展图', cleanEmpty === '200', cleanEmpty)
 
 console.log('────────────')
 console.log(`通过 ${passed} / ${passed + failed}`)

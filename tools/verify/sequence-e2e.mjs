@@ -300,7 +300,9 @@ const sceneExpr = `(()=>{const svg=document.querySelector('.canvas > svg')
    .map(g=>{const r=g.querySelector('rect')
      return {x:num(r,'x'),y:num(r,'y'),w:num(r,'width'),h:num(r,'height'),
        type:(g.querySelector('text')?.textContent||'').trim(),
-       name:[...g.querySelectorAll('text')].map(t=>t.textContent.trim()).filter(s=>!s.startsWith('«')).join('')}})
+       name:[...g.querySelectorAll('text')]
+         .filter(t=>!t.classList.contains('quick-add-plus'))
+         .map(t=>t.textContent.trim()).filter(s=>!s.startsWith('«')).join('')}})
  // 激活条画在图面层（一条可能横跨好几行），不再挂在某条消息里：先收全表，再按行归属。
  const bars=[...svg.querySelectorAll('.seq-bar')].map(b=>({x:num(b,'x'),y:num(b,'y'),w:num(b,'width'),h:num(b,'height')}))
  const messages=[...svg.querySelectorAll('.seq-message')].map(g=>{
@@ -579,6 +581,21 @@ check('属性面板列出该消息的 messageSort 行',
 check('点选消息不写数据', (await snapshot()).revision === revBeforeRender,
   `${revBeforeRender} → ${(await snapshot()).revision}`)
 await page.screenshot('seq-message-selected')
+
+console.log('\n[6b] 右键消息 = 关系菜单（含树上高亮）')
+await page.evaluate(`(()=>{const g=[...document.querySelectorAll('.seq-message')]
+  .find(x=>x.textContent.includes('扣减库存'));const l=g.querySelector('.seq-hit')
+  const b=l.getBoundingClientRect()
+  l.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,
+    clientX:Math.round(b.left+b.width/2),clientY:Math.round(b.top+b.height/2)}))})()`)
+check('右键消息弹出关系菜单', await waitFor(page, `!!document.querySelector('.context-menu')`, 20, 150))
+const seqMenuItems = await page.evaluate(`[...document.querySelectorAll('.context-menu button')]
+  .map(b=>b.textContent.trim())`)
+check('消息右键菜单含「树上高亮」', seqMenuItems.includes('树上高亮'), JSON.stringify(seqMenuItems))
+check('消息右键菜单含「查看关系属性」', seqMenuItems.includes('查看关系属性'), JSON.stringify(seqMenuItems))
+await page.evaluate(`(()=>{const b=[...document.querySelectorAll('.context-menu button')]
+  .find(x=>x.textContent.trim()==='树上高亮');b?.click()})()`)
+check('点「树上高亮」后菜单关闭', await waitFor(page, `!document.querySelector('.context-menu')`, 20, 150))
 
 console.log('\n[7] 拖动生命线：消息实时跟着换列')
 // 默认视口只到 640×420 模型单位，第三条生命线列（记法 x=600，表头宽 168）落在画布右边之外。

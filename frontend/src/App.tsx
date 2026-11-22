@@ -73,6 +73,9 @@ import LocaleSwitch from './LocaleSwitch'
 import LoginView from './LoginView'
 import AdminPanel from './AdminPanel'
 import { buildModelReportHtml } from './report'
+import TableView from './TableView'
+import { TABLE_VIEWS, tableViewIcon, tableViewLabel } from './TableView'
+import type { TableViewId } from './TableView'
 import TaggedValuesEditor from './TaggedValuesEditor'
 import TypedTagsEditor from './TypedTagsEditor'
 import CustomizationPanel from './CustomizationPanel'
@@ -121,6 +124,17 @@ const NAMESPACE_HOST_CODES = new Set([
   'EXECUTION_ENVIRONMENT', 'INTERACTION', 'ACTIVITY', 'STATE_MACHINE',
   'PROTOCOL_STATE_MACHINE', 'USE_CASE', 'REQUIREMENT', 'TEST_CASE', 'ACTOR',
 ])
+/** 名称的模糊归一化：忽略大小写、空白与常见分隔符，便于「订单 查询」命中「订单查询…」。 */
+function normalizeName(text: string): string {
+  return text.toLowerCase().replace(/[\s·\-_/\\()[\]（）【】「」:：,，.。]+/g, '')
+}
+/** 名称模糊匹配：归一化后按包含关系命中（搜索框只按名称检索）。 */
+function nameMatches(name: string, needle: string): boolean {
+  if (!needle) {
+    return false
+  }
+  return normalizeName(name).includes(normalizeName(needle))
+}
 /** 估算单行文本宽度：CJK / 全角字符按整字号，其余按 0.58 字号，用于图框首页标签自适应宽度。 */
 function estimateTextWidth(text: string, size: number): number {
   let width = 0
@@ -780,7 +794,8 @@ interface ImportDialogState {
  * 图标签切换画布内容；对象标签只切换属性窗口的编辑对象，画布保持当前图。
  */
 interface DocTab {
-  kind: 'diagram' | 'element'
+  /** view = 需求表 / 通用表 / 通用矩阵等模型数据表视图（不占 DiagramKind）。 */
+  kind: 'diagram' | 'element' | 'view'
   id: string
 }
 
@@ -929,6 +944,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [customization, setCustomization] = useState<CustomizationCatalog | null>(null)
   const [containment, setContainment] = useState<ContainmentSpec | null>(null)
   const [activeDiagramId, setActiveDiagramId] = useState('')
+  /** 当前打开的需求表 / 通用表 / 通用矩阵视图；与 activeDiagramId 并存，切回图标签即恢复画布。 */
+  const [activeViewId, setActiveViewId] = useState<TableViewId | ''>('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [selectedDiagramId, setSelectedDiagramId] = useState<string | null>(null)
   // 关系是独立模型对象：选中连线后在属性窗口按关系类型的元类链编辑属性。
@@ -998,6 +1015,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [layoutDialog, setLayoutDialog] = useState<LayoutScope | null>(null)
   const [layoutStrategy, setLayoutStrategy] = useState<LayoutChoice>('auto')
   const [createType, setCreateType] = useState('')
+  /** 华望式「新建元素」弹窗的关键字过滤（中文名 / 英文名 / code）。 */
+  const [createQuery, setCreateQuery] = useState('')
   const [createName, setCreateName] = useState('')
   const [createStereotype, setCreateStereotype] = useState('')
   const [joinDiagram, setJoinDiagram] = useState(true)
@@ -1093,7 +1112,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   /** 已打开的文档标签（图 + 对象），顺序即标签顺序。 */
   const [tabs, setTabs] = useState<DocTab[]>([])
   /** 左栏视图：项目（包树）/ 图表（按图类型）/ 模型库（扩展包与元类构造型）。 */
-  const [leftTab, setLeftTab] = useState<'project' | 'charts' | 'library'>('project')
+  const [leftTab, setLeftTab] = useState<'project' | 'charts' | 'tables' | 'library'>('project')
   /** 图表页按图类型分组后，被折叠的类型集合：偏好落 localStorage，刷新后保持。 */
   const [collapsedChartKinds, setCollapsedChartKinds] = useState<Set<string>>(() => {
     try {
@@ -1733,6 +1752,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }, [activeDiagramId, model.diagrams])
 
+  // 从模型树 / 图表视图直接切图时，同样要退出表格视图，避免画布被数据表遮住。
+  useEffect(() => {
+    setActiveViewId('')
+  }, [activeDiagramId])
+
   // 当前图必须有对应标签：从模型树、图表视图或菜单切图时自动补一个标签页。
   useEffect(() => {
     if (!activeDiagramId) {
@@ -1749,9 +1773,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   useEffect(() => {
     setTabs((previous) => {
       const kept = previous.filter((tab) => (
-        tab.kind === 'diagram'
-          ? model.diagrams.some((diagram) => diagram.id === tab.id)
-          : model.elements.some((element) => element.id === tab.id)
+        tab.kind === 'view'
+          ? TABLE_VIEWS.some((item) => item.id === tab.id)
+          : tab.kind === 'diagram'
+            ? model.diagrams.some((diagram) => diagram.id === tab.id)
+            : model.elements.some((element) => element.id === tab.id)
       ))
       return kept.length === previous.length ? previous : kept
     })
@@ -2219,42 +2245,45 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return map
   }, [model.elements, codeOf])
 
-  /** 模型树筛选：命中项 + 其祖先链，保证命中行所在的路径可见。 */
+  /** 模型树筛选：按名称模糊命中，命中项 + 其祖先链，保证命中行所在的路径可见。 */
   const treeFilterHits = useMemo(() => {
-    const needle = treeFilter.trim().toLowerCase()
+    const needle = treeFilter.trim()
     if (!needle) {
       return null
     }
     const hits = new Set<string>()
     // 隔离内容不参与项目模型筛选：扩展包只在自己的虚拟分组里浏览。
     for (const element of projectElements) {
-      // 名称之外还要匹配类型：用户搜「block」是想找块，不是找名字里带 block 的元素。
-      const code = codeOf(element.type)
-      const info = typeInfo.get(code)
-      const haystack: (string | undefined)[] = [
-        element.name, code, element.type,
-        info?.label, info?.labelEn, info?.uml, info?.stereotype,
-        ...(element.stereotypes ?? []),
-      ]
-      if (haystack.some((value) => typeof value === 'string' && value.toLowerCase().includes(needle))) {
+      if (nameMatches(element.name, needle)) {
         hits.add(element.id)
       }
     }
     for (const diagram of model.diagrams) {
-      if (diagram.name.toLowerCase().includes(needle)) {
+      if (nameMatches(diagram.name, needle)) {
         hits.add(diagram.id)
       }
     }
-    // 祖先链：只留命中项会导致父节点被过滤、子树根本渲染不出来。
-    for (const id of [...hits]) {
-      let cursor = elementById.get(id)?.ownerId ?? null
-      while (cursor) {
-        hits.add(cursor)
-        cursor = elementById.get(cursor)?.ownerId ?? null
+    // 扩展包（SysML / UML 元模型）与项目元素一样按名称命中：
+    // 用户搜 Block 时，SysML 元模型里的 Block 元类必须能被筛出来。
+    for (const element of extensionElements) {
+      if (nameMatches(element.name, needle)) {
+        hits.add(element.id)
       }
     }
+    // 祖先链：只留命中项会导致父节点被过滤、子树根本渲染不出来。
+    // 项目元素与扩展元素各有一套 parent 关系，按 id 逐级向上补齐。
+    for (const id of [...hits]) {
+      let cursor = elementById.get(id)?.ownerId ?? extensionElementById.get(id)?.ownerId ?? null
+      while (cursor) {
+        hits.add(cursor)
+        cursor = elementById.get(cursor)?.ownerId ?? extensionElementById.get(cursor)?.ownerId ?? null
+      }
+    }
+    if (extensionElements.some((element) => hits.has(element.id))) {
+      hits.add(EXTENSION_GROUP_ID)
+    }
     return hits
-  }, [treeFilter, projectElements, model.diagrams, elementById, codeOf, typeInfo])
+  }, [treeFilter, projectElements, model.diagrams, elementById, extensionElements, extensionElementById])
 
   /** 图表视图：按图类型分组，和工具箱的九图语义一致。 */
   const diagramsByKind = useMemo(() => {
@@ -2495,11 +2524,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }, [pan, zoom, canvas])
 
   // ── 文档标签：图标签切画布，对象标签只切属性窗口的编辑对象 ──
-  const activeTabKey = selectedId && tabs.some((tab) => tab.kind === 'element' && tab.id === selectedId)
-    ? `element:${selectedId}`
-    : activeDiagramId
-      ? `diagram:${activeDiagramId}`
-      : ''
+  const activeTabKey = activeViewId
+    ? `view:${activeViewId}`
+    : selectedId && tabs.some((tab) => tab.kind === 'element' && tab.id === selectedId)
+      ? `element:${selectedId}`
+      : activeDiagramId
+        ? `diagram:${activeDiagramId}`
+        : ''
 
   const openTab = useCallback((tab: DocTab) => {
     setTabs((previous) => (
@@ -2508,6 +2539,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }, [])
 
   const activateTab = useCallback((tab: DocTab) => {
+    if (tab.kind === 'view') {
+      setActiveViewId(tab.id as TableViewId)
+      return
+    }
+    setActiveViewId('')
     if (tab.kind === 'diagram') {
       setActiveDiagramId(tab.id)
       setSelectedDiagramId(tab.id)
@@ -2517,6 +2553,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       setSelectedDiagramId(null)
       setSelectedRelationId(null)
     }
+  }, [])
+
+  /** 打开（或复用）一张表格 / 矩阵视图；与图标签并列，切走再切回保留筛选状态。 */
+  const openTableView = useCallback((id: TableViewId) => {
+    const tab: DocTab = { kind: 'view', id }
+    setTabs((previous) => (
+      previous.some((item) => item.kind === 'view' && item.id === id) ? previous : [...previous, tab]
+    ))
+    setActiveViewId(id)
+    setMenu(null)
   }, [])
 
   /**
@@ -2530,7 +2576,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
     const next = tabs.filter((_, position) => position !== index)
     setTabs(next)
-    const wasActive = target.kind === 'diagram' ? target.id === activeDiagramId : target.id === selectedId
+    const wasActive = target.kind === 'diagram' ? target.id === activeDiagramId
+      : target.kind === 'view' ? target.id === activeViewId
+        : target.id === selectedId
     if (!wasActive) {
       return
     }
@@ -2538,10 +2586,15 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       setSelectedId(null)
       return
     }
-    const fallback = next[index] ?? next[index - 1] ?? next.find((tab) => tab.kind === 'diagram') ?? null
+    if (target.kind === 'view') {
+      setActiveViewId('')
+    }
+    const fallback = next[index] ?? next[index - 1]
+      ?? next.find((tab) => tab.kind === 'view')
+      ?? next.find((tab) => tab.kind === 'diagram') ?? null
     if (fallback) {
       activateTab(fallback)
-    } else {
+    } else if (target.kind !== 'view') {
       setSelectedDiagramId(null)
     }
   }
@@ -3673,6 +3726,34 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return rule?.children ?? []
   }, [containment, createDialog, model.elements, typeInfo])
 
+  /**
+   * 华望式新建元素弹窗的四段分组：服务端仍决定「能建什么」，前端只按类型语义
+   * 做展示分组与过滤（对应华望 getCanCreateChildTypes 返回的 tag 字段）。
+   */
+  const createGroups = useMemo(() => {
+    const keyword = createQuery.trim().toLowerCase()
+    const options = createOptions.filter((item) => (
+      !keyword
+      || `${item.label} ${item.labelEn ?? ''} ${item.code} ${item.uml} ${item.stereotype}`.toLowerCase().includes(keyword)
+    ))
+    const bucketOf = (item: ElementTypeInfo): number => {
+      const code = `${item.code} ${item.uml} ${item.stereotype}`.toLowerCase()
+      if (/fme|fault|failure|hazard|risk|reliab|safety|安全|可靠|故障|风险/.test(code)) return 1
+      if (/requirement|需求|functionalrequirement|performancerequirement|interfacerequirement/.test(code)
+        && !/^requirement$/i.test(item.uml)) return 3
+      if (/^(package|block|requirement|activity|usecase|actor|component|interface|class|diagramtype|tagdefinition|profile|metaclass|stereotype)$/i.test(item.uml)) return 0
+      if (/block|part|port|connector|item|flow|state|activity|action|operation|property|module|模块|部件|端口/.test(code)) return 2
+      return 0
+    }
+    const names = ['常用元素', '安全和可靠性', '其他模块', '其他需求']
+    const namesEn = ['Common Elements', 'Security and Reliability', 'Other Blocks', 'Other Requirements']
+    return names.map((name, index) => ({
+      name,
+      nameEn: namesEn[index],
+      items: options.filter((item) => bucketOf(item) === index),
+    })).filter((group) => group.items.length > 0)
+  }, [createOptions, createQuery])
+
   const canJoinDiagram = activeSpec?.allowedTypes.includes(createType) ?? false
 
   useEffect(() => {
@@ -3897,6 +3978,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       : t('项目根')
     setCreateDialog({ ownerId: effective, ownerName: owner })
     setCreateType('')
+    setCreateQuery('')
     setCreateName('')
     setCreateStereotype('')
     setJoinDiagram(true)
@@ -3947,6 +4029,50 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     if (ok) {
       setSelectedId(id)
       setCreateDialog(null)
+    }
+  }
+
+  /** 表格工具栏的快捷新建：与对话框走同一条 CREATE_ELEMENT 命令，只是省去选择弹窗。 */
+  const createTableElement = async (kind: 'requirement' | 'generic', ownerId: string, typeCode?: string) => {
+    const rule = containment?.rules.find((item) => item.parent.toLowerCase() === 'package')
+    const candidates = rule?.children ?? containment?.types ?? []
+    const code = typeCode
+      ?? (kind === 'requirement'
+        ? candidates.find((item) => item.code === 'requirement')?.code
+          ?? candidates.find((item) => /requirement/i.test(item.code))?.code
+        : candidates.find((item) => item.code === 'Block')?.code)
+      ?? candidates[0]?.code
+    if (!code) {
+      say('元模型规则尚未加载，无法新建元素')
+      return
+    }
+    const info = typeInfo.get(code)
+    const label = info ? pick(info.label, info.labelEn) : code
+    const id = `e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+    const ok = await runCommand('CREATE_ELEMENT', {
+      id,
+      type: info?.uml ?? code,
+      name: t('新建{label} {count}', { label, count: model.elements.length + 1 }),
+      ownerId: ownerId || projectRootId || '',
+      stereotypes: info?.stereotype ? [info.stereotype] : [],
+    })
+    if (ok) {
+      selectOnTree({ kind: 'element', id })
+    }
+  }
+
+  /** 矩阵单元格的快捷建关系：矩阵视图打开时通常没有当前图，diagramId 传空由服务端按模型层处理。 */
+  const createTableRelation = async (type: string, sourceId: string, targetId: string) => {
+    const id = `rel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+    const ok = await runCommand('CREATE_RELATIONSHIP', {
+      id,
+      type,
+      sourceId,
+      targetId,
+      ...(activeDiagramId ? { diagramId: activeDiagramId } : {}),
+    })
+    if (ok) {
+      say('已在矩阵单元格创建 «{type}» 关系', { type })
     }
   }
 
@@ -4640,6 +4766,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         chain.push(cursor.ownerId)
         cursor = elementById.get(cursor.ownerId)
       }
+    } else if (extensionElementById.has(targetId)) {
+      // 扩展包元素（SysML / UML 元模型）：展开扩展分组与扩展内的祖先链，
+      // 否则搜索结果只能定位到一个不存在的项目树行。
+      setShowExtensions(true)
+      chain.push(EXTENSION_GROUP_ID)
+      let cursor: ModelElement | undefined = extensionElementById.get(targetId)
+      while (cursor?.ownerId) {
+        chain.push(cursor.ownerId)
+        cursor = extensionElementById.get(cursor.ownerId)
+      }
     } else {
       let cursor = elementById.get(targetId)
       while (cursor?.ownerId) {
@@ -4889,10 +5025,24 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const margin = FRAME_MARGIN
     const headerH = FRAME_HEADER_H
     const notch = FRAME_NOTCH
-    const box = contentBox ?? {
-      left: margin, top: margin + headerH,
-      right: canvas.width - margin, bottom: canvas.height - margin,
+    // 空图也留出与内容图一致的四周留白：回退盒本身再内缩一个 margin，
+    // 展开成图框后才是 (margin, margin, canvas - 2*margin)，否则图框会正好铺满
+    // 整个视口、底边压在画布边缘被裁掉。
+    const nominal = {
+      left: margin * 2, top: margin * 2 + headerH,
+      right: canvas.width - margin * 2, bottom: canvas.height - margin * 2,
     }
+    // 画布货架不应缩水：往空图里拖入第一个图形时，内容包围盒会比初始画布小得多，
+    // 若直接用 contentBox，图框会瞬间从整张画布缩成一个小框（华望的 ViewModel
+    // 边界只会增长）。这里与初始画布取并集，保证图框至少保持初始尺寸，只增不减。
+    const box = contentBox
+      ? {
+        left: Math.min(contentBox.left, nominal.left),
+        top: Math.min(contentBox.top, nominal.top),
+        right: Math.max(contentBox.right, nominal.right),
+        bottom: Math.max(contentBox.bottom, nominal.bottom),
+      }
+      : nominal
     const x = Math.round(box.left - margin)
     const y = Math.round(box.top - margin - headerH)
     const w = Math.round(box.right - box.left + margin * 2)
@@ -5209,6 +5359,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         setRelationTool(null)
         setRelationSource(null)
         setTabs([])
+        setActiveViewId('')
         setExpanded(new Set())
         await refresh()
         say(importDialog.sidecar.trim()
@@ -6076,8 +6227,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           setSelectedId(null)
           setSelectedDiagramId(null)
           setSelectedRelationId(null)
-          // 文档标签是按旧项目的图/元素打开的，换项目后一律清空。
+          // 文档标签是按旧项目的图/元素/表格打开的，换项目后一律清空。
           setTabs([])
+          setActiveViewId('')
           expandedSeeded.current = false
           relationMountsSeeded.current = false
           setExpanded(new Set())
@@ -6160,8 +6312,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
 
     const pushExtensionElement = (element: ModelElement, depth: number) => {
+      // 扩展包也参与名称筛选：未命中的分支整支剪掉，命中项在筛选态强制展开，
+      // 否则用户搜到 Block 却只能看到折叠的 SysML 包。
+      if (hits && !hits.has(element.id)) {
+        return
+      }
       const kids = extensionChildrenByOwner.get(element.id) ?? []
-      const open = expanded.has(element.id)
+      const open = hits ? true : expanded.has(element.id)
       rows.push({
         kind: 'extensionElement', id: element.id, depth, childCount: kids.length,
         isOpen: open, isSelected: false, isDropTarget: false,
@@ -6244,16 +6401,20 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         pushDiagram(node.ref, 0)
       }
     }
-    // 扩展包与项目根同级：它是系统提供的独立内容，不是项目根的子节点，也不参与筛选。
-    if (showExtensions && extensionRoots.length > 0 && !hits) {
-      const open = expanded.has(EXTENSION_GROUP_ID)
+    // 扩展包与项目根同级：它是系统提供的独立内容，不是项目根的子节点。
+    // 筛选态下只有命中扩展元素时才渲染该分组，并强制展开到命中项；
+    // 即使扩展包平时被开关隐藏，搜索命中也要临时显示，否则 Block 元类“搜不到”。
+    const extensionHits = !hits || extensionElements.some((element) => hits.has(element.id))
+    if (extensionRoots.length > 0 && extensionHits && (showExtensions || hits)) {
+      const open = hits ? true : expanded.has(EXTENSION_GROUP_ID)
+      const roots = hits ? extensionRoots.filter((root) => hits.has(root.id)) : extensionRoots
       rows.push({
         kind: 'extensionGroup', id: EXTENSION_GROUP_ID, depth: 0,
-        childCount: extensionRoots.length, isOpen: open, isSelected: false,
+        childCount: roots.length, isOpen: open, isSelected: false,
         isDropTarget: false,
       })
       if (open) {
-        for (const root of extensionRoots) {
+        for (const root of roots) {
           pushExtensionElement(root, 1)
         }
       }
@@ -6264,7 +6425,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return rows
   }, [
     childrenByOwner, collapsedRelationGroups, diagramMembersByDiagram, diagramsByOwner, expanded,
-    extensionChildrenByOwner, extensionRoots, relationsByOwner, rootNodes, selectedDiagramId,
+    extensionChildrenByOwner, extensionElements, extensionRoots, relationsByOwner, rootNodes, selectedDiagramId,
     selectedId, selectedRelationId, showExtensions, treeDropTarget, treeFilterHits,
   ])
   // 定位大行号时按这份最新行表算 scrollTop（revealInTree 的定时器闭包读 ref，不读旧渲染）。
@@ -6280,8 +6441,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     if (!treeVirtual) {
       return { start: 0, end: visibleRows.length, rows: visibleRows }
     }
-    const start = Math.max(0, Math.floor(treeViewport.top / TREE_ROW_H) - 10)
-    const end = Math.min(visibleRows.length, Math.ceil((treeViewport.top + treeViewport.height) / TREE_ROW_H) + 10)
+    const start = Math.max(0, Math.min(
+      Math.floor(treeViewport.top / TREE_ROW_H) - 10,
+      Math.max(0, visibleRows.length - 1),
+    ))
+    const end = Math.max(start, Math.min(visibleRows.length, Math.ceil((treeViewport.top + treeViewport.height) / TREE_ROW_H) + 10))
     return { start, end, rows: visibleRows.slice(start, end) }
   }, [treeVirtual, visibleRows, treeViewport])
 
@@ -6301,6 +6465,21 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       window.cancelAnimationFrame(treeScrollRaf.current)
     }
   }, [])
+
+  /**
+   * 筛选词变化时把树滚回顶部。
+   *
+   * <p>大项目里用户往往已经滚到树的中后段；筛选后行数骤减，滚动位置却仍停在旧底部，
+   * 视口落在命中列表的尾部甚至空白处，看起来就像筛选没生效。这里同时复位 DOM
+   * 滚动与虚拟窗口起点，保证命中行第一时间出现在视野里。</p>
+   */
+  useEffect(() => {
+    const node = browserRef.current
+    if (node) {
+      node.scrollTop = 0
+    }
+    setTreeViewport((previous) => (previous.top === 0 ? previous : { ...previous, top: 0 }))
+  }, [treeFilter])
 
   /**
    * 树行的只读取数表。身份只在模型快照 / 目录 / 权限变化时更换，
@@ -6340,65 +6519,44 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       }))
     }
     const results: SearchResult[] = []
+    // 只按名称做模糊检索：归一化掉大小写与空白 / 分隔符后再比包含关系，
+    // 不再扫文档、标签、属性值与 id（那些命中往往与用户输入的名称无关，噪音太大）。
+    const normalizedNeedle = normalizeName(needle)
     const fieldScore = (text: string): number => {
-      const lower = text.toLowerCase()
-      if (lower === needle) {
+      const normalized = normalizeName(text)
+      if (!normalized) {
+        return 0
+      }
+      if (normalized === normalizedNeedle) {
         return 100
       }
-      if (lower.startsWith(needle)) {
+      if (normalized.startsWith(normalizedNeedle)) {
         return 60
       }
-      return lower.includes(needle) ? 40 : 0
-    }
-    const weakHit = (text: string): boolean => text.toLowerCase().includes(needle)
-    const propertyText = (properties: Record<string, unknown> | undefined): string => {
-      if (!properties) {
-        return ''
-      }
-      return Object.values(properties).map((value) => {
-        if (value == null) {
-          return ''
-        }
-        if (Array.isArray(value)) {
-          return value.map((item) => String(item)).join(' ')
-        }
-        return typeof value === 'object' ? JSON.stringify(value) : String(value)
-      }).join(' ')
+      return normalized.includes(normalizedNeedle) ? 40 : 0
     }
     for (const element of projectElements) {
-      let score = fieldScore(element.name)
-      if (score === 0 && element.stereotypes.some((item) => weakHit(item))) {
-        score = 25
+      const score = fieldScore(element.name)
+      if (score > 0) {
+        results.push({ kind: 'element', id: element.id, name: element.name, sub: typeLabel(element.type), score })
       }
-      if (score === 0 && (
-        weakHit(element.documentation)
-        || Object.entries(element.taggedValues ?? {}).some(([key, value]) => weakHit(key) || weakHit(value))
-        || weakHit(propertyText(element.properties))
-        || weakHit(element.id)
-      )) {
-        score = 15
-      }
+    }
+    // 扩展包（SysML / UML 元模型）同样参与名称搜索：搜 Block 要能搜到元模型里的 Block。
+    for (const element of extensionElements) {
+      const score = fieldScore(element.name)
       if (score > 0) {
         results.push({ kind: 'element', id: element.id, name: element.name, sub: typeLabel(element.type), score })
       }
     }
     for (const diagram of model.diagrams) {
-      const score = fieldScore(diagram.name) || (weakHit(diagram.id) ? 15 : 0)
+      const score = fieldScore(diagram.name)
       if (score > 0) {
         results.push({ kind: 'diagram', id: diagram.id, name: diagram.name, sub: diagramLabel(diagram.kind), score })
       }
     }
     for (const relation of model.relationships) {
       const label = relation.name?.trim() || relationLabel(relation.type)
-      let score = fieldScore(label)
-      if (score === 0 && (
-        weakHit(relation.documentation)
-        || Object.entries(relation.taggedValues ?? {}).some(([key, value]) => weakHit(key) || weakHit(value))
-        || weakHit(propertyText(relation.properties))
-        || weakHit(relation.id)
-      )) {
-        score = 15
-      }
+      const score = fieldScore(label)
       if (score > 0) {
         const source = elementById.get(relation.sourceId)?.name ?? relation.sourceId
         const target = elementById.get(relation.targetId)?.name ?? relation.targetId
@@ -7021,6 +7179,23 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         moved: false,
       })
     }
+    // 与通用关系连线一致：右键命中线弹出关系菜单（含「树上高亮」）；
+    // 虚拟消息没有真实关系，改弹 Message 元素的元素菜单。
+    const openMessageMenu = (event: ReactMouseEvent<SVGElement>) => {
+      if (relationTool) {
+        return
+      }
+      setSelectedId(null)
+      setSelectedDiagramId(null)
+      if (message.virtual) {
+        setSelectedRelationId(null)
+        setSelectedId(message.relation.id.slice('virtual:'.length))
+        openMenu(event, { kind: 'element', id: message.relation.id.slice('virtual:'.length) })
+        return
+      }
+      setSelectedRelationId(message.relation.id)
+      openMenu(event, { kind: 'relation', id: message.relation.id })
+    }
     return (
       /* 与通用连线同规矩：整组不吃指针，只有末尾透明粗线负责命中点选。 */
       <g
@@ -7085,6 +7260,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             pointerEvents={relationTool ? 'none' : 'stroke'}
             style={{ cursor: relationTool ? 'crosshair' : message.virtual ? 'default' : 'grab' }}
             onPointerDown={pickMessage}
+            onContextMenu={openMessageMenu}
           >
             {messageTip}
           </polyline>
@@ -7102,6 +7278,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             pointerEvents={relationTool ? 'none' : 'stroke'}
             style={{ cursor: relationTool ? 'crosshair' : message.virtual ? 'default' : 'grab' }}
             onPointerDown={pickMessage}
+            onContextMenu={openMessageMenu}
           >
             {messageTip}
           </line>
@@ -7310,6 +7487,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         'separator',
         { label: '新建元素…', run: () => openCreate(null) },
         { label: '新建图…', run: () => openDiagramDialog(null) },
+        { label: '新建需求表', run: () => openTableView('requirement-table') },
+        { label: '新建通用表', run: () => openTableView('generic-table') },
+        { label: '新建通用矩阵', run: () => openTableView('generic-matrix') },
         { label: '新建关系…', run: openRelationDialog, disabled: !canEdit || !activeDiagramObj },
         'separator',
         { label: '导入 XMI…', run: openImportDialog, disabled: !canImport },
@@ -7372,6 +7552,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       entries: [
         { label: '左栏 · 项目', run: () => setLeftTab('project'), checked: leftTab === 'project' },
         { label: '左栏 · 图表', run: () => setLeftTab('charts'), checked: leftTab === 'charts' },
+        { label: '左栏 · 表格', run: () => setLeftTab('tables'), checked: leftTab === 'tables' },
         { label: '左栏 · 模型库', run: () => setLeftTab('library'), checked: leftTab === 'library' },
         'separator',
         { label: '属性档位 · 标准', run: () => setPropView('STANDARD'), checked: propView === 'STANDARD' },
@@ -7488,7 +7669,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           },
           disabled: !canEdit || tabs.length < 2,
         },
-        { label: '关闭全部标签', run: () => setTabs([]), disabled: !canEdit || tabs.length === 0 },
+        { label: '关闭全部标签', run: () => { setTabs([]); setActiveViewId('') }, disabled: !canEdit || tabs.length === 0 },
       ],
     },
     {
@@ -7869,6 +8050,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             <button
               type="button"
               role="tab"
+              aria-selected={leftTab === 'tables'}
+              className={`tree-head-tab ${leftTab === 'tables' ? 'active' : ''}`}
+              onClick={() => setLeftTab('tables')}
+            >{t('表格')}</button>
+            <button
+              type="button"
+              role="tab"
               aria-selected={leftTab === 'library'}
               className={`tree-head-tab ${leftTab === 'library' ? 'active' : ''}`}
               onClick={() => setLeftTab('library')}
@@ -7891,7 +8079,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <input
                 value={treeFilter}
                 onChange={(event) => setTreeFilter(event.target.value)}
-                placeholder={t('筛选元素 / 图…')}
+                placeholder={t('按名称筛选元素 / 图…')}
                 aria-label={t('筛选模型树')}
               />
               {treeFilter && (
@@ -7929,6 +8117,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 >{t('折叠全部')}</button>
               </span>
             </div>
+          ) : leftTab === 'tables' ? (
+            <div className="panel-title">{t('表格与矩阵 · 双击打开视图')}</div>
           ) : (
             <div className="panel-title">
               {t('通用扩展包 · 元类 / 构造型 / 关系')}
@@ -7990,6 +8180,25 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 })}
                 {diagramsByKind.length === 0 && <p className="hint">{t('暂无图，右键空白处新建图')}</p>}
               </>
+            ) : leftTab === 'tables' ? (
+              <>
+                {TABLE_VIEWS.map((item) => (
+                  <button
+                    type="button"
+                    key={item.id}
+                    className={`chart-row chart-item ${activeViewId === item.id ? 'active' : ''}`}
+                    data-table-view-id={item.id}
+                    title={item.labelEn}
+                    onClick={() => openTableView(item.id)}
+                  >
+                    <img src={svgUrl(item.icon)} width={15} height={15} alt="" aria-hidden="true" />
+                    <span className="chart-row-name">{t(item.label)}</span>
+                  </button>
+                ))}
+                <p className="browser-note">
+                  {t('需求表、通用表与通用矩阵直接读取当前模型；属性与关系的修改仍走模型命令，可撤销。')}
+                </p>
+              </>
             ) : leftTab === 'library' ? (
               <>
                 {libraryPackages.map(({ pkg, metaclasses, stereotypes, relationships }) => (
@@ -8046,6 +8255,20 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         <aside
           className="props-dock"
           aria-label={t('属性窗口（常驻左下角）')}
+          onContextMenu={(event) => {
+            // 属性栏正文也接受关系右键：顶部对象头已有菜单，但用户常常直接右键正文，
+            // 这里按当前展示的关系补一个同款菜单；输入框 / 按钮保留原生右键。
+            if (!selectedRelation) {
+              return
+            }
+            const target = event.target as HTMLElement
+            if (target.closest('input, textarea, select, button, a, .props-object')) {
+              return
+            }
+            event.preventDefault()
+            event.stopPropagation()
+            openMenu(event, { kind: 'relation', id: selectedRelation.id })
+          }}
           style={propsHeight == null
             ? undefined
             : { height: `${Math.round(propsHeight)}px`, maxHeight: 'none' }}
@@ -8870,9 +9093,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             {tabs.map((tab) => {
               const key = `${tab.kind}:${tab.id}`
               const active = key === activeTabKey
-              const label = tab.kind === 'diagram'
-                ? (model.diagrams.find((item) => item.id === tab.id)?.name ?? tab.id)
-                : (elementById.get(tab.id)?.name ?? tab.id)
+              const label = tab.kind === 'view'
+                ? tableViewLabel(tab.id as TableViewId)
+                : tab.kind === 'diagram'
+                  ? (model.diagrams.find((item) => item.id === tab.id)?.name ?? tab.id)
+                  : (elementById.get(tab.id)?.name ?? tab.id)
               return (
                 <div
                   key={key}
@@ -8882,14 +9107,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   role="tab"
                   aria-selected={active}
                   tabIndex={0}
-                  title={tab.kind === 'diagram' ? t('图 · 点击切换画布') : t('对象 · 点击编辑属性')}
+                  title={tab.kind === 'view' ? t('表格 / 矩阵视图') : tab.kind === 'diagram' ? t('图 · 点击切换画布') : t('对象 · 点击编辑属性')}
                   onClick={() => activateTab(tab)}
                   onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); activateTab(tab) } }}
                   onAuxClick={(event) => { if (event.button === 1) { event.preventDefault(); closeTab(tab) } }}
                 >
-                  {tab.kind === 'diagram'
-                    ? <DiagramIcon code={model.diagrams.find((item) => item.id === tab.id)?.kind ?? ''} size={13} />
-                    : <TypeIcon code={codeOf(elementById.get(tab.id)?.type ?? '')} size={13} />}
+                  {tab.kind === 'view'
+                    ? <img src={svgUrl(tableViewIcon(tab.id as TableViewId))} width={13} height={13} alt="" aria-hidden="true" />
+                    : tab.kind === 'diagram'
+                      ? <DiagramIcon code={model.diagrams.find((item) => item.id === tab.id)?.kind ?? ''} size={13} />
+                      : <TypeIcon code={codeOf(elementById.get(tab.id)?.type ?? '')} size={13} />}
                   <span className="doc-tab-label">{label}</span>
                   <button
                     type="button"
@@ -8910,6 +9137,28 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               {tabs.length} · {Math.round(zoom * 100)}%
             </span>
           </div>
+          {activeViewId ? (
+            <TableView
+              view={activeViewId}
+              elements={model.elements}
+              relationships={model.relationships}
+              containment={containment}
+              projectRootId={projectRootId}
+              selectedId={selectedId}
+              activeDiagramId={activeDiagramId}
+              busy={busy}
+              canEdit={canEdit}
+              typeInfo={typeInfo}
+              onSelectElement={(id) => selectOnTree({ kind: 'element', id })}
+              onRename={(id, name) => { void runCommand('RENAME_ELEMENT', { id, name }) }}
+              onDocumentation={(id, documentation) => { void runCommand('UPDATE_DOCUMENTATION', { id, documentation }) }}
+              onOpenCreate={(ownerId) => openCreate(ownerId)}
+              onCreateQuickElement={(kind, ownerId, typeCode) => { void createTableElement(kind, ownerId, typeCode) }}
+              onCreateRelation={(type, sourceId, targetId) => { void createTableRelation(type, sourceId, targetId) }}
+              onDeleteRelation={(id) => { void runCommand('DELETE_RELATIONSHIP', { id }) }}
+            />
+          ) : (
+          <>
           <div className="diagram-toolbar">
             <div className="dt-head">
               <span className="dt-kind">
@@ -9244,6 +9493,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                         pointerEvents="stroke"
                         data-export="omit"
                         style={{ cursor: horizontal ? 'row-resize' : 'col-resize' }}
+                        onContextMenu={(event) => {
+                          // 选中态下这些线柄盖在主命中线之上；不给它们右键，
+                          // 用户右键已选中的连线时就弹不出「树上高亮」。
+                          event.preventDefault()
+                          event.stopPropagation()
+                          openMenu(event, { kind: 'relation', id: relation.id })
+                        }}
                         onPointerDown={(event) => {
                           event.stopPropagation()
                           event.currentTarget.setPointerCapture(event.pointerId)
@@ -9388,6 +9644,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 </svg>
               </button>
             )
+          )}
+          </>
           )}
         </main>
       </div>
@@ -9622,6 +9880,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             <>
               <button type="button" onClick={() => openCreate(menuElement!.id)}>{t('新建子元素…')}</button>
               <button type="button" onClick={() => openDiagramDialog(menuElement!.id)}>{t('在此新建图…')}</button>
+              <div className="menu-section">{t('表格与矩阵')}</div>
+              {TABLE_VIEWS.map((item) => (
+                <button type="button" key={item.id} onClick={() => openTableView(item.id)}>{t(item.label)}</button>
+              ))}
               {isDiagramType(menuElement!) && (
                 <button
                   type="button"
@@ -9774,6 +10036,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             <>
               <button type="button" onClick={() => openCreate(null)}>{t('在项目根下新建元素…')}</button>
               <button type="button" onClick={() => openDiagramDialog(null)}>{t('在项目根下新建图…')}</button>
+              <div className="menu-section">{t('表格与矩阵')}</div>
+              {TABLE_VIEWS.map((item) => (
+                <button type="button" key={item.id} onClick={() => openTableView(item.id)}>{t(item.label)}</button>
+              ))}
             </>
           )}
         </div>
@@ -9827,7 +10093,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 autoFocus
                 value={searchQuery}
                 spellCheck={false}
-                placeholder={t('搜索元素、图、关系：名称 / 文档 / 标签 / 属性值…')}
+                placeholder={t('按名称搜索元素、图、关系…')}
                 aria-label={t('全局搜索')}
                 onChange={(event) => setSearchQuery(event.target.value)}
                 onKeyDown={(event) => {
@@ -10145,29 +10411,60 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               <p className="hint">{t('按元模型规则，该父类型不允许再包含子元素。')}</p>
             ) : (
               <>
-                <label className="field">
-                  <span className="field-head">
+                <div className="choose-element">
+                  <div className="ce-head">
                     <TypeIcon code={createType || 'PACKAGE'} size={15} />
                     {t('元素类型（按规范过滤）')}
-                  </span>
-                  <select
-                    value={createType}
-                    onChange={(event) => {
-                      const info = typeInfo.get(event.target.value)
-                      setCreateType(event.target.value)
-                      if (info) {
-                        setCreateStereotype(info.stereotype)
-                        setCreateName(t('新建{label} {count}', { label: pick(info.label, info.labelEn), count: model.elements.length + 1 }))
-                      }
-                    }}
-                  >
-                    {createOptions.map((option) => (
-                      <option key={option.code} value={option.code}>
-                        {t('«{stereotype}» {label}（{uml}）', { stereotype: option.stereotype, label: pick(option.label, option.labelEn), uml: option.uml })}
-                      </option>
+                    <input
+                      className="ce-search"
+                      value={createQuery}
+                      placeholder={t('搜索元素种类…')}
+                      aria-label={t('搜索元素种类')}
+                      onChange={(event) => setCreateQuery(event.target.value)}
+                    />
+                  </div>
+                  <div className="ce-groups" role="listbox" aria-label={t('元素种类')}>
+                    {createGroups.map((group) => (
+                      <section className="ce-group" key={group.name}>
+                        <h3>{t(group.name)}</h3>
+                        <div className="ce-items">
+                          {group.items.map((option) => (
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={option.code === createType}
+                              key={option.code}
+                              className={`ce-item${option.code === createType ? ' selected' : ''}`}
+                              title={`${option.uml} · ${option.labelEn ?? option.label}`}
+                              onClick={() => {
+                                setCreateType(option.code)
+                                setCreateStereotype(option.stereotype)
+                                setCreateName(t('新建{label} {count}', {
+                                  label: pick(option.label, option.labelEn),
+                                  count: model.elements.length + 1,
+                                }))
+                              }}
+                            >
+                              <TypeIcon code={option.code} size={16} />
+                              <span>{pick(option.label, option.labelEn)}</span>
+                              <small>{option.uml}</small>
+                            </button>
+                          ))}
+                        </div>
+                      </section>
                     ))}
-                  </select>
-                </label>
+                    {createGroups.length === 0 && <p className="hint">{t('没有匹配的元素种类。')}</p>}
+                  </div>
+                  {createType && (
+                    <p className="ce-current">
+                      {t('已选择：«{stereotype}» {label}（{uml}）', {
+                        stereotype: typeInfo.get(createType)?.stereotype ?? '',
+                        label: typeInfo.get(createType) ? pick(typeInfo.get(createType)!.label, typeInfo.get(createType)!.labelEn) : createType,
+                        uml: typeInfo.get(createType)?.uml ?? createType,
+                      })}
+                    </p>
+                  )}
+                </div>
                 <label className="field">
                   <span>{t('名称（同命名空间内唯一，不区分大小写）')}</span>
                   <input value={createName} onChange={(event) => setCreateName(event.target.value)} />

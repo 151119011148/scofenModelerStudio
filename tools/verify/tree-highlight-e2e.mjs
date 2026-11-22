@@ -224,6 +224,54 @@ if (relRowExists) {
   await page.screenshot('04-relation-highlight')
 }
 
+console.log('[5b] 画布已选中连线 / 属性栏正文右键 → 树上高亮')
+const hitLine = `[...document.querySelectorAll('.canvas svg polyline')].find(n=>
+  n.getAttribute('stroke-opacity')==='0' && n.getAttribute('stroke-width')==='12')`
+await page.evaluate(ctxExpr(hitLine))
+check('未选中时连线右键含树上高亮', await waitFor(page,
+  `!!document.querySelector('.context-menu') && document.querySelector('.context-menu').innerText.includes('树上高亮')`))
+await page.evaluate(clickMenuItem('查看关系属性'))
+check('关系属性面板已打开', await waitFor(page, `!!document.querySelector('.rel-endpoints')`, 30, 200))
+// 选中后 14px 段拖拽手柄会盖住 12px 命中线：右键手柄也必须出菜单。
+const handleLine = `[...document.querySelectorAll('.canvas svg polyline')].find(n=>
+  n.getAttribute('stroke-opacity')==='0' && n.getAttribute('stroke-width')==='14')`
+await page.evaluate(ctxExpr(handleLine))
+check('已选中连线的线柄右键含树上高亮', await waitFor(page,
+  `!!document.querySelector('.context-menu') && document.querySelector('.context-menu').innerText.includes('树上高亮')`))
+await page.evaluate(`document.body.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true}))`)
+await sleep(200)
+// 属性栏正文（非对象头、非输入框）右键
+await page.evaluate(`(()=>{const el=document.querySelector('.rel-tab-head')||document.querySelector('.rel-tab-group')||document.querySelector('.props-dock');
+  const r=el.getBoundingClientRect();
+  el.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,
+    clientX:Math.round(r.x+r.width/2),clientY:Math.round(r.y+r.height/2)}));return 1})()`)
+check('属性栏正文右键含树上高亮', await waitFor(page,
+  `!!document.querySelector('.context-menu') && document.querySelector('.context-menu').innerText.includes('树上高亮')`))
+await page.evaluate(clickMenuItem('树上高亮'))
+check('属性栏右键后关系树行选中', await waitFor(page, treeRowSelected('data-relation-id', IDS.rel)))
+await page.screenshot('05-diagram-relation-menu')
+
+console.log('[6] 左栏筛选：滚动后按名称输入仍回到顶部命中')
+await page.evaluate(`(()=>{const b=document.querySelector('.browser');
+  if(b){b.scrollTop=b.scrollHeight;b.dispatchEvent(new Event('scroll',{bubbles:true}))}return 1})()`)
+await sleep(500)
+const scrolledBefore = await page.evaluate(`document.querySelector('.browser')?.scrollTop ?? 0`)
+await page.evaluate(`(()=>{const i=document.querySelector('.browser-filter input');i.focus();i.select();return 1})()`)
+for (const ch of '整车') {
+  await page.call('Input.insertText', { text: ch })
+  await sleep(250)
+}
+await sleep(600)
+const filterProbe = await page.evaluate(`(()=>{const b=document.querySelector('.browser');
+  const rows=[...document.querySelectorAll('.tree-row')];
+  return {value:document.querySelector('.browser-filter input')?.value,top:b?.scrollTop,
+    rows:rows.length,hasHit:rows.some(r=>/整车/.test(r.textContent))}})()`)
+check('滚动后按名称筛选仍能命中且树回到顶部',
+  scrolledBefore > 0 && filterProbe.value === '整车' && filterProbe.rows > 0
+    && filterProbe.top === 0 && filterProbe.hasHit,
+  JSON.stringify({ scrolledBefore, filterProbe }))
+await page.evaluate(`(()=>{const b=document.querySelector('.browser-filter .clear-filter');b?.click();return 1})()`)
+
 console.log('────────────')
 console.log(`通过 ${passed} / ${passed + failed}`)
 page.close()
