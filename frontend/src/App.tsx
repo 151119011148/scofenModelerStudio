@@ -65,6 +65,7 @@ import {
 } from './sequenceLayout'
 import type { SeqActivation, SeqFragment, SeqMessage, SeqMessageToolDef } from './sequenceLayout'
 import { autoLayout, isLayoutImmutable } from './layout'
+import type { LayoutDirection, LayoutNameOrder } from './layout'
 import type { LayoutChoice } from './layout'
 import { DiagramIcon, FAMILIES, RelationIcon, TypeIcon, familyOfType } from './icons'
 import { svgUrl } from './iconAssets'
@@ -668,6 +669,8 @@ const TreeRow = memo(function TreeRow(props: TreeRowProps) {
         : <TypeIcon code={data.codeOf(element.type)} size={16} title={info} />}
       <span className="tree-label">{element.name}</span>
       {isRoot ? (
+        // 华望成品：根节点与子层 Package 同一套组件渲染，行末只留细小的类型名。
+        // 文案保留供无障碍与脚本识别，视觉上不再用醒目的黄底徽章。
         <span className="root-tag" title={t('项目根节点，不可删除')}>{t('项目根')}</span>
       ) : data.extensionRootIds.has(element.id) ? (
         <span
@@ -1010,10 +1013,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [createDialog, setCreateDialog] = useState<CreateDialogState | null>(null)
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null)
   const [diagramDialog, setDiagramDialog] = useState<DiagramDialogState | null>(null)
+  // 新建图卡片墙（华望 NewGraph）：分组标签 + 搜索；与下方 select 共用 diagramDialog.kind。
+  const [newGraphGroup, setNewGraphGroup] = useState('all')
+  const [newGraphQuery, setNewGraphQuery] = useState('')
   const [relationDialog, setRelationDialog] = useState<RelationshipDialogState | null>(null)
   // 自动排布：打开时记住范围，策略单独存（关窗重开不必再选一遍）。
   const [layoutDialog, setLayoutDialog] = useState<LayoutScope | null>(null)
   const [layoutStrategy, setLayoutStrategy] = useState<LayoutChoice>('auto')
+  // 华望「类图布局」的方向与名称次序选项；auto/none 保持原有打分选向与重心排序。
+  const [layoutDirection, setLayoutDirection] = useState<LayoutDirection>('auto')
+  const [layoutNameOrder, setLayoutNameOrder] = useState<LayoutNameOrder>('none')
   const [createType, setCreateType] = useState('')
   /** 华望式「新建元素」弹窗的关键字过滤（中文名 / 英文名 / code）。 */
   const [createQuery, setCreateQuery] = useState('')
@@ -1136,11 +1145,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
     try {
       return {
-        left: clamp(localStorage.getItem('scofen.modeler.dock.left'), 268, DOCK_LEFT_MIN, DOCK_LEFT_MAX),
+        // 华望 InitSiderWidth=244：首次进入的左栏默认宽度；拖拽过的用户仍走 localStorage。
+        left: clamp(localStorage.getItem('scofen.modeler.dock.left'), 244, DOCK_LEFT_MIN, DOCK_LEFT_MAX),
         tool: clamp(localStorage.getItem('scofen.modeler.dock.tool'), 198, DOCK_TOOL_MIN, DOCK_TOOL_MAX),
       }
     } catch {
-      return { left: 268, tool: 198 }
+      return { left: 244, tool: 198 }
     }
   })
   /** 正在拖拽的分隔条（null 表示未拖拽）。 */
@@ -3589,6 +3599,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           return notation ? { w: notation.width, h: notation.height } : undefined
         },
         strategy,
+        direction: layoutDirection,
+        nameOrder: layoutNameOrder,
       })
       // 排布没覆盖到全部元素就整图放弃：写一半只会把图面弄得更乱。
       if (result.placements.length !== elements.length) {
@@ -4005,6 +4017,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       name: edit?.name ?? t('新建图 {count}', { count: model.diagrams.length + 1 }),
       editId: edit?.id ?? null,
     })
+    setNewGraphGroup('all')
+    setNewGraphQuery('')
     setMenu(null)
   }
 
@@ -10335,6 +10349,28 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 <option value="grouped">{t('分组：按父子归属成块，适合结构图')}</option>
               </select>
             </label>
+            <label className="field">
+              <span>{t('方向（华望类图布局）')}</span>
+              <select
+                value={layoutDirection}
+                onChange={(event) => setLayoutDirection(event.target.value as LayoutDirection)}
+              >
+                <option value="auto">{t('自动：按图面比例挑一个方向')}</option>
+                <option value="down">{t('向下：层自上而下，层间距 50')}</option>
+                <option value="right">{t('向右：层自左而右，层间距 50')}</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>{t('层内次序')}</span>
+              <select
+                value={layoutNameOrder}
+                onChange={(event) => setLayoutNameOrder(event.target.value as LayoutNameOrder)}
+              >
+                <option value="none">{t('默认：减少交叉并让同父聚簇')}</option>
+                <option value="asc">{t('名称正序')}</option>
+                <option value="desc">{t('名称倒序')}</option>
+              </select>
+            </label>
             <p className="hint">
               {t('只改写记法坐标：元素、关系与归属不变。整批一次写入，撤销一步即可回到排布前；序列图等由图形自身规则排布的图不参与。')}
             </p>
@@ -10519,7 +10555,62 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               {t('新建图')}
             </h2>
             <p className="modal-sub">{t('所属：{name}', { name: diagramDialog.ownerName })}</p>
-            <label className="field">
+            {/* 华望 NewGraph：分组标签 + 搜索 + 缩略图卡片墙，点击卡片直接选类型。 */}
+            <div className="new-graph">
+              <div className="ng-labels">
+                {(['all', 'spec', 'custom'] as const).map((group) => {
+                  if (group === 'custom' && (customization?.diagramTypes.length ?? 0) === 0) {
+                    return null
+                  }
+                  const label = group === 'all' ? t('全部图表') : group === 'spec' ? t('规范图') : t('自定义图')
+                  return (
+                    <button
+                      type="button"
+                      key={group}
+                      className={`ng-label${newGraphGroup === group ? ' selected' : ''}`}
+                      onClick={() => setNewGraphGroup(group)}
+                    >{label}</button>
+                  )
+                })}
+                <input
+                  className="ng-search"
+                  value={newGraphQuery}
+                  placeholder={t('搜索想要创建的图')}
+                  onChange={(event) => setNewGraphQuery(event.target.value)}
+                />
+              </div>
+              <div className="ng-grid">
+                {allSpecs
+                  .filter((option) => newGraphGroup === 'all'
+                    || (newGraphGroup === 'spec' ? specs.some((spec) => spec.code === option.code)
+                      : specs.every((spec) => spec.code !== option.code)))
+                  .filter((option) => {
+                    const q = newGraphQuery.trim().toLowerCase()
+                    return !q || `${pick(option.label, option.labelEn)} ${option.code} ${option.labelEn ?? ''}`
+                      .toLowerCase().includes(q)
+                  })
+                  .map((option) => (
+                    <button
+                      type="button"
+                      key={option.code}
+                      className={`ng-card${diagramDialog.kind === option.code ? ' selected' : ''}`}
+                      title={option.labelEn ? `${option.label} · ${option.labelEn}` : option.label}
+                      onClick={() => setDiagramDialog({ ...diagramDialog, kind: option.code })}
+                    >
+                      <span className="ng-thumb">
+                        <DiagramIcon
+                          code={customization?.diagramTypes.find((item) => item.id === option.code)?.baseKind ?? option.code}
+                          size={52}
+                        />
+                      </span>
+                      <span className="ng-name">{pick(option.label, option.labelEn)}</span>
+                      <span className="ng-en">{option.labelEn ?? option.code}</span>
+                    </button>
+                  ))}
+              </div>
+            </div>
+            {/* select 保留为同状态的兼容入口：脚本按 optgroup 选取自定义图类型，卡片与它双向同步。 */}
+            <label className="field ng-compat-field">
               <span>{t('图类型')}</span>
               <select
                 value={diagramDialog.kind}

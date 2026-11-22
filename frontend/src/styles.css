@@ -1463,22 +1463,26 @@ body.row-resizing * { cursor: row-resize !important; }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* 华望成品：项目根节点与子层 Package 用同一套组件渲染，没有专属加粗或黄底徽章；
+   行末只是细小的类型名（此处保留「项目根」文案供识别）。选中态仍走统一蓝底白字。 */
 .root-tag {
+  font-family: var(--mono);
   font-size: 10px;
-  color: #a16207;
-  background: #fdf4dc;
-  border: 1px solid #f0dcaa;
-  border-radius: 4px;
-  padding: 0 5px;
+  color: var(--text-3);
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
   flex: none;
 }
-.tree-row.root-node { font-weight: 600; }
+.tree-row.root-node { font-weight: 400; }
 
 /* 通用扩展包标记：区别于用户自己建的模型，说明这是系统随项目提供的公共内容 */
 .root-tag.extension-tag {
   color: #475569;
   background: #eef2f7;
   border-color: #d7dee8;
+  padding: 0 5px;
 }
 
 /* 图节点作为拖放目标：元素拖到「图」上即加入该图 */
@@ -3384,3 +3388,102 @@ button.primary.danger { background: var(--surface); border-color: var(--danger);
 .ce-item span { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ce-item small { margin-left: auto; color: var(--text-3); font-size: 10px; font-family: var(--mono); }
 .ce-current { margin: 0; color: var(--text-3); font-size: 11px; }
+
+/* ── 新建图卡片墙（华望 NewGraph.vue）：分组标签 / 搜索 / 缩略图卡片 ── */
+.new-graph { display: flex; flex-direction: column; gap: 8px; }
+.ng-labels { display: flex; align-items: center; gap: 6px; }
+.ng-label {
+  flex: none;
+  min-width: 64px;
+  height: 24px;
+  line-height: 22px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 0;
+  background: #eff0f1;
+  color: #5f6c88;
+  font-size: 12px;
+}
+.ng-label:hover:not(:disabled) { background: #e7edff; color: var(--accent); border-color: transparent; }
+.ng-label.selected { background: var(--frame-title-bg); color: #fff; }
+.ng-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 24px;
+  border: 1px solid #e4e4e4;
+  border-radius: 0;
+  padding: 0 7px;
+  background: linear-gradient(180deg, #e5f6ff 0%, #c8e3f3 100%);
+  color: var(--text);
+}
+.ng-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 120px);
+  grid-row-gap: 10px;
+  justify-content: space-around;
+  max-height: 300px;
+  overflow: auto;
+  padding: 2px;
+  border: 1px solid #ebecee;
+  background: #fff;
+}
+.ng-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 112px;
+  padding: 6px 4px;
+  border: 1px solid #ebecee;
+  border-radius: 0;
+  background: #fff;
+  color: var(--text);
+}
+.ng-card:hover:not(:disabled) { border-color: #91caff; background: #f7fbff; color: var(--text); }
+.ng-card.selected { border-color: var(--frame-title-bg); background: #f0f6ff; box-shadow: inset 0 0 0 1px var(--frame-title-bg); }
+.ng-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 96px;
+  height: 66px;
+  background: #f4f8ff;
+  border: 1px solid #e6eef8;
+}
+.ng-name { font-size: 12px; font-weight: 600; color: #000; max-width: 104px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ng-en { font-size: 10px; color: #5f6c88; max-width: 104px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ng-compat-field { margin-top: 2px; }
+.ng-compat-field > span { color: var(--text-3); font-size: 11px; }
+.ng-compat-field select { height: 24px; font-size: 11px; }
+
+/* ────────────────────────────────────────────────────────────────
+   页面菜单布局对齐华望 v4.6.0.1 骨架：
+   标题栏 28px + 菜单行 24px + 工具条 36px + 状态栏 30px，左栏 244px。
+   顶栏保持深蓝渐变（visual-theme 断言），菜单栏仍透明不遮挡。
+   ──────────────────────────────────────────────────────────────── */
+.topbar .menubar { height: 24px; padding: 0 10px; }
+.topbar .mb-btn {
+  min-width: 66px;
+  padding: 2px 12px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 20px;
+}
+.topbar .mb-btn.open { font-weight: 550; }
+.topbar .mb-drop { min-width: 210px; border-radius: 0; box-shadow: 0 6px 18px rgba(28, 36, 48, .14); }
+.topbar .mb-entry { min-height: 24px; padding: 2px 10px; font-size: 12px; border-radius: 0; }
+.topbar .mb-sep { margin: 3px 6px; }
+
+/* 工具条 36px：浅蓝底、方角按钮，华望 header-content 口径。 */
+.topbar .toolbar { height: 36px; padding: 0 12px; background: #ecf4ff; }
+.topbar .tbi { height: 26px; border-radius: 0; }
+.topbar .tbi.wide { height: 26px; }
+
+/* 左栏 244px（华望 InitSiderWidth）；用户拖拽后的 CSS 变量仍优先。 */
+.workspace { grid-template-columns: var(--dock-left, 244px) var(--dock-tool, 198px) minmax(0, 1fr); }
+.workspace.toolbox-collapsed { grid-template-columns: var(--dock-left, 244px) 46px minmax(0, 1fr); }
+
+/* 底部状态栏 30px：华望 footer 高度与浅蓝底。 */
+.statusbar { height: 30px; background: var(--md-color-sub2, #e7edff); border-top: 1px solid #d0d0d0; }
+
+:root { --md-color-sub2: #e7edff; }

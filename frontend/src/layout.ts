@@ -21,6 +21,10 @@ import { isPartitionType, SWIMLANE_HEADER } from './notation'
 export type LayoutStrategy = 'layered' | 'grouped' | 'hubbed' | 'swimlane'
 export type LayoutChoice = LayoutStrategy | 'auto'
 export type LayoutAxis = 'right' | 'down'
+/** 华望 elk.layered 的显式方向：auto 仍由打分选，其余锁定一个方向。 */
+export type LayoutDirection = 'auto' | LayoutAxis
+/** 华望「类图布局」菜单里的按名称次序选项。 */
+export type LayoutNameOrder = 'none' | 'asc' | 'desc'
 
 export interface Placement {
   elementId: string
@@ -42,6 +46,10 @@ export interface LayoutInput {
   /** 现有记法的尺寸；缺省用 nodeSize。 */
   sizeOf?: (elementId: string) => { w: number; h: number } | undefined
   strategy?: LayoutChoice
+  /** 华望方向：指定后只算该方向的候选；缺省 auto 保持原有打分选向。 */
+  direction?: LayoutDirection
+  /** 华望名称次序：指定后层内按名称排序，不再按中位数重心。 */
+  nameOrder?: LayoutNameOrder
 }
 
 export interface LayoutResult {
@@ -145,21 +153,33 @@ export function autoLayout(input: LayoutInput): LayoutResult {
   // 每个尺寸都排两遍：纯中位数序（交叉最少）与聚簇序（同父抱团、簇间留隙），
   // 谁更美由打分说了算——语义清晰不该靠牺牲交叉数换，也不该反过来。
   const baseRanks = wantLayered ? rankNodes(graph) : []
-  const ranksPlain = wantLayered ? orderRanks(graph, baseRanks) : []
-  const ranksCluster = wantLayered ? orderRanks(graph, baseRanks, true) : []
+  // 华望「类图布局（按名称正序 / 倒序）」：层内直接按名称排，不走中位数重心 / 聚簇。
+  const nameOrder = input.nameOrder ?? 'none'
+  const byName = (order: 'asc' | 'desc') => baseRanks.map((group) =>
+    [...group].sort((a, b) => {
+      const left = graph.byId.get(a)?.name ?? a
+      const right = graph.byId.get(b)?.name ?? b
+      return (order === 'asc' ? cmp(left, right) : cmp(right, left)) || cmp(a, b)
+    }))
+  const ranksPlain = wantLayered
+    ? (nameOrder === 'none' ? orderRanks(graph, baseRanks) : byName(nameOrder))
+    : []
+  const ranksCluster = wantLayered && nameOrder === 'none' ? orderRanks(graph, baseRanks, true) : []
   const CLUSTER_GAP = 26
-  const AXES: LayoutAxis[] = ['right', 'down']
+  // 华望方向显式化：指定向右 / 向下时只算该方向，auto 仍由打分在两个方向里选。
+  const AXES: LayoutAxis[] = input.direction === 'right' ? ['right']
+    : input.direction === 'down' ? ['down'] : ['right', 'down']
   const layered = wantLayered
     ? LAYOUT_SIZES.flatMap((size) => AXES.flatMap((axis) => [
       layoutLayered(graph, ranksPlain, axis, input.bounds, size),
-      layoutLayered(graph, ranksCluster, axis, input.bounds, size, CLUSTER_GAP),
+      ...(ranksCluster.length > 0
+        ? [layoutLayered(graph, ranksCluster, axis, input.bounds, size, CLUSTER_GAP)]
+        : []),
     ]))
     : []
   const hubbed = wantHubbed
-    ? hubCrossLimits(graph, input.bounds).flatMap((cross) => [
-      layoutHubbed(graph, 'right', input.bounds, cross),
-      layoutHubbed(graph, 'down', input.bounds, cross),
-    ])
+    ? hubCrossLimits(graph, input.bounds).flatMap((cross) => AXES.map((axis) =>
+      layoutHubbed(graph, axis, input.bounds, cross)))
     : []
   const candidates: LayoutResult[] = choice === 'grouped'
     ? [layoutGrouped(graph, input.bounds)]
