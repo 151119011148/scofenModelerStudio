@@ -3080,52 +3080,76 @@ body.col-resizing * { cursor: col-resize !important; }
 /* 项目根节点使用华望 Project 成品图标，与普通元素的 TypeIcon 保持同一视觉尺寸。 */
 .tree-icon-img { width: 16px; height: 16px; object-fit: contain; flex: none; }
 
-/* 选中图形右缘的「+」快捷操作：白底细边，悬停时淡蓝填充。 */
+/* 图形右上角「+」：华望 Canvasiconaddh.svg 黑圆白十字 9×9；透明 rect 只扩大点击热区。 */
 .node-quick-add { cursor: pointer; }
-.node-quick-add circle { transition: fill .12s ease, stroke .12s ease; }
-.node-quick-add:hover circle { fill: #e6f4ff; }
-.quick-add-plus { font-size: 15px; font-weight: 600; pointer-events: none; }
+.node-quick-add rect { pointer-events: all; }
+.node-quick-add image { pointer-events: none; }
+.node-quick-add:hover image { opacity: .8; }
 
-/* 「+」弹出的关系类型菜单：位置跟随点击点，滚动容纳长列表。 */
+/* 华望 v4.6.0.1 ContextMenu：白底灰边三层阴影、28px 行高、14px 图标、方角、蓝底白字选中。 */
 .quick-menu {
   position: fixed;
-  z-index: 41;
-  width: 232px;
-  max-height: 340px;
+  z-index: 200100;
+  min-width: 176px;
+  max-width: 264px;
+  max-height: 430px;
   overflow: auto;
-  background: var(--surface);
-  border: 1px solid var(--line-2);
-  border-radius: 8px;
-  box-shadow: 0 12px 32px rgba(28, 36, 48, .16);
-  padding: 6px;
+  background-color: #fff;
+  border: 1px solid #d0d0d0;
+  border-radius: 0;
+  box-shadow: 0 9px 28px 8px rgba(0,0,0,.05), 0 6px 16px 0 rgba(0,0,0,.08), 0 3px 6px -4px rgba(0,0,0,.12);
+  padding: 3px 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  color: rgba(0,0,0,.85);
 }
 .quick-menu .menu-title {
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 8px 6px;
+  padding: 5px 8px 6px;
+  margin-bottom: 2px;
   font-size: 12px;
-  color: var(--text-3);
-  border-bottom: 1px solid var(--line-1);
-  margin-bottom: 4px;
+  color: rgba(0,0,0,.65);
+  border-bottom: .5px solid #e0e0e0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .quick-menu button {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  line-height: 28px;
+  font-size: 12px;
+  color: rgba(0,0,0,.85);
   border: none;
+  border-radius: 0;
   background: transparent;
   text-align: left;
-  padding: 6px 9px;
-  font-size: 13px;
-  color: var(--text-2);
-  border-radius: 5px;
+  white-space: nowrap;
 }
-.quick-menu button:hover { background: var(--accent-soft); color: var(--accent); }
-.quick-menu-empty { padding: 10px; text-align: center; font-size: 12px; color: var(--text-3); }
+.quick-menu button:hover:not(:disabled) {
+  background-color: #1890ff;
+  color: #fff;
+}
+.quick-menu .menu-section {
+  padding: 4px 8px 2px;
+  margin-top: 3px;
+  border-top: .5px solid #e0e0e0;
+  color: rgba(0,0,0,.45);
+  font-size: 11px;
+  font-weight: 600;
+}
+.quick-menu-empty {
+  padding: 10px;
+  text-align: center;
+  font-size: 12px;
+  color: rgba(0,0,0,.45);
+}
 
 /* ────────────────────────────────────────────────────────────────
    华望 v4.6.0.1 风格对齐（成品包 theme 变量）：
@@ -3208,13 +3232,13 @@ button.primary.danger { background: var(--surface); border-color: var(--danger);
 }
 .doc-tab.element.active { color: #125e58; }
 
-/* 右键菜单 / 快捷菜单：方角、24px 行高、12px 字。 */
-.context-menu, .quick-menu {
+/* 右键菜单：方角、24px 行高、12px 字（「+」浮层另按华望 ContextMenu 单独定义）。 */
+.context-menu {
   border-radius: 0;
   padding: 3px 0;
   box-shadow: 0 6px 18px rgba(28, 36, 48, .14);
 }
-.context-menu button, .quick-menu button {
+.context-menu button {
   min-height: 24px;
   padding: 0 10px;
   line-height: 24px;
@@ -3222,7 +3246,7 @@ button.primary.danger { background: var(--surface); border-color: var(--danger);
   color: #5f6c88;
   border-radius: 0;
 }
-.context-menu button:hover:not(:disabled), .quick-menu button:hover:not(:disabled) {
+.context-menu button:hover:not(:disabled) {
   background: var(--row-alt-bg);
   color: var(--accent);
 }
@@ -3502,3 +3526,15 @@ button.primary.danger { background: var(--surface); border-color: var(--danger);
 /* 左栏降到 244px 后，四个页签若可被 flex 压缩会把中文挤成竖排；固定不收缩 + 收紧内边距。 */
 .tree-head-tab { flex: none; white-space: nowrap; padding: 5px 6px 4px; }
 .tree-head { overflow: hidden; }
+
+/* 用户/角色保存反馈就地显示，错误不必再从左下角状态栏找。 */
+.admin-feedback {
+  margin: 0 0 8px;
+  padding: 5px 8px;
+  border: 1px solid;
+  border-radius: 0;
+  font-size: 12px;
+  line-height: 18px;
+}
+.admin-feedback.error { color: #b42318; border-color: #f3c2c2; background: #fdf3f2; }
+.admin-feedback.ok { color: #237a3c; border-color: #a9d7b8; background: #eff9f1; }

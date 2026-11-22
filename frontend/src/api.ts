@@ -75,13 +75,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   })
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { message?: string }
+    const body = (await response.json().catch(() => ({}))) as { message?: string; error?: string }
     // 登录接口自己的 401 是「账号密码错」，不能当成会话过期处理。
     if (response.status === 401 && !path.includes('api/auth/login')) {
       clearSession()
       onUnauthorized?.()
     }
-    throw new Error(body.message ?? `HTTP ${response.status}`)
+    // 后端统一错误体含 message；error 作兜底，避免只显示「HTTP 400」让人以为功能无响应。
+    throw new Error(body.message ?? body.error ?? `HTTP ${response.status}`)
   }
   if (response.status === 204) return undefined as T
   return (await response.json()) as T

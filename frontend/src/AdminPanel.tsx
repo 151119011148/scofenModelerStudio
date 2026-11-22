@@ -55,6 +55,9 @@ export default function AdminPanel({ onClose, onMessage }: Props) {
   const [userDraft, setUserDraft] = useState<UserDraft | null>(null)
   const [roleDraft, setRoleDraft] = useState<RoleDraft | null>(null)
   const [busy, setBusy] = useState(false)
+  // 保存结果直接显示在表单内，避免错误只落到左下角状态栏、让人以为点保存没反应。
+  const [userFeedback, setUserFeedback] = useState<{ kind: 'error' | 'ok'; text: string } | null>(null)
+  const [roleFeedback, setRoleFeedback] = useState<{ kind: 'error' | 'ok'; text: string } | null>(null)
 
   const reload = useCallback(async () => {
     try {
@@ -78,6 +81,7 @@ export default function AdminPanel({ onClose, onMessage }: Props) {
   async function submitUser() {
     if (!userDraft) return
     setBusy(true)
+    setUserFeedback(null)
     try {
       await saveAdminUser({
         username: userDraft.username.trim(),
@@ -90,7 +94,9 @@ export default function AdminPanel({ onClose, onMessage }: Props) {
       setUserDraft(null)
       await reload()
     } catch (error) {
-      onMessage('保存用户失败：{error}', { error: error instanceof Error ? error.message : String(error) })
+      const message = error instanceof Error ? error.message : String(error)
+      setUserFeedback({ kind: 'error', text: message })
+      onMessage('保存用户失败：{error}', { error: message })
     } finally {
       setBusy(false)
     }
@@ -112,6 +118,7 @@ export default function AdminPanel({ onClose, onMessage }: Props) {
   async function submitRole() {
     if (!roleDraft) return
     setBusy(true)
+    setRoleFeedback(null)
     try {
       await saveAdminRole({
         code: roleDraft.code.trim(),
@@ -123,7 +130,9 @@ export default function AdminPanel({ onClose, onMessage }: Props) {
       setRoleDraft(null)
       await reload()
     } catch (error) {
-      onMessage('保存角色失败：{error}', { error: error instanceof Error ? error.message : String(error) })
+      const message = error instanceof Error ? error.message : String(error)
+      setRoleFeedback({ kind: 'error', text: message })
+      onMessage('保存角色失败：{error}', { error: message })
     } finally {
       setBusy(false)
     }
@@ -143,10 +152,13 @@ export default function AdminPanel({ onClose, onMessage }: Props) {
       <section className="admin-section">
         <div className="admin-section-head">
           <h3>{t('用户')}</h3>
-          <button type="button" className="prop-link" onClick={() => setUserDraft(emptyUser())}>
+          <button type="button" className="prop-link" onClick={() => { setUserFeedback(null); setUserDraft(emptyUser()) }}>
             {t('新建用户')}
           </button>
         </div>
+        {userFeedback && (
+          <p className={`admin-feedback ${userFeedback.kind}`} role="alert">{userFeedback.text}</p>
+        )}
         {userDraft && (
           <div className="admin-form">
             <label>
@@ -222,13 +234,16 @@ export default function AdminPanel({ onClose, onMessage }: Props) {
                 <td>{user.roles.join('、')}</td>
                 <td>{user.enabled ? t('是') : t('否')}</td>
                 <td className="admin-row-actions">
-                  <button type="button" className="prop-link" onClick={() => setUserDraft({
-                    username: user.username,
-                    displayName: user.displayName,
-                    password: '',
-                    enabled: user.enabled,
-                    roles: [...user.roles],
-                  })}>{t('编辑')}</button>
+                  <button type="button" className="prop-link" onClick={() => {
+                    setUserFeedback(null)
+                    setUserDraft({
+                      username: user.username,
+                      displayName: user.displayName,
+                      password: '',
+                      enabled: user.enabled,
+                      roles: [...user.roles],
+                    })
+                  }}>{t('编辑')}</button>
                   {!user.builtin && (
                     <button type="button" className="prop-link danger" disabled={busy}
                       onClick={() => void removeUser(user.username)}>{t('删除')}</button>
@@ -243,10 +258,13 @@ export default function AdminPanel({ onClose, onMessage }: Props) {
       <section className="admin-section">
         <div className="admin-section-head">
           <h3>{t('角色')}</h3>
-          <button type="button" className="prop-link" onClick={() => setRoleDraft(emptyRole())}>
+          <button type="button" className="prop-link" onClick={() => { setRoleFeedback(null); setRoleDraft(emptyRole()) }}>
             {t('新建角色')}
           </button>
         </div>
+        {roleFeedback && (
+          <p className={`admin-feedback ${roleFeedback.kind}`} role="alert">{roleFeedback.text}</p>
+        )}
         {roleDraft && (
           <div className="admin-form">
             <label>
@@ -311,12 +329,15 @@ export default function AdminPanel({ onClose, onMessage }: Props) {
                 <td>{role.name}</td>
                 <td>{role.permissions.length}</td>
                 <td className="admin-row-actions">
-                  <button type="button" className="prop-link" onClick={() => setRoleDraft({
-                    code: role.code,
-                    name: role.name,
-                    description: role.description,
-                    permissions: [...role.permissions],
-                  })}>{t('编辑')}</button>
+                  <button type="button" className="prop-link" onClick={() => {
+                    setRoleFeedback(null)
+                    setRoleDraft({
+                      code: role.code,
+                      name: role.name,
+                      description: role.description,
+                      permissions: [...role.permissions],
+                    })
+                  }}>{t('编辑')}</button>
                 </td>
               </tr>
             ))}

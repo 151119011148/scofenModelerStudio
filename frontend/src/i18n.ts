@@ -587,6 +587,13 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
   /* ── 引用型属性与树上高亮 ── */
   '树上高亮': { zh: '树上高亮', en: 'Highlight in tree' },
   '查看关系属性': { zh: '查看关系属性', en: 'View relationship properties' },
+  '添加子元素': { zh: '添加子元素', en: 'Add child element' },
+  '为「{name}」添加子元素': { zh: '为「{name}」添加子元素', en: 'Add child element to “{name}”' },
+  '快捷创建关系…': { zh: '快捷创建关系…', en: 'Quick create relationship…' },
+  '该图形不允许再包含子元素': { zh: '该图形不允许再包含子元素', en: 'This element cannot contain child elements' },
+  '元素类型尚未加载，请稍后重试': { zh: '元素类型尚未加载，请稍后重试', en: 'Element types are still loading. Please retry.' },
+  '「{name}」不是命名空间元素，不能包含子元素': { zh: '「{name}」不是命名空间元素，不能包含子元素', en: '“{name}” is not a namespace element and cannot contain children' },
+  '已在「{owner}」下新建「{label}」': { zh: '已在「{owner}」下新建「{label}」', en: 'Created “{label}” under “{owner}”' },
   '快捷创建关系': { zh: '快捷创建关系', en: 'Quick create relationship' },
   '以「{name}」为起点': { zh: '以「{name}」为起点', en: 'Start from “{name}”' },
   '当前图未开放关系类型': { zh: '当前图未开放关系类型', en: 'No relationship types allowed in this diagram' },

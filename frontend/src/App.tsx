@@ -1051,8 +1051,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   // 连线工具：选中关系组件后在画布上依次点击起点、终点创建关系。
   const [relationTool, setRelationTool] = useState<string | null>(null)
   const [relationSource, setRelationSource] = useState<string | null>(null)
-  /** 画布「+」快捷菜单：以选中图形为起点，直接选一种关系再点终点。 */
-  const [quickMenu, setQuickMenu] = useState<{ x: number; y: number; sourceId: string } | null>(null)
+  /** 图形右上角「+」浮层：child=华望式添加子元素；relation=以该图形为起点建关系（右键入口）。 */
+  const [quickMenu, setQuickMenu] = useState<{ x: number; y: number; targetId: string; mode: 'child' | 'relation' } | null>(null)
   /** 连线创建防重入：一次点击到命令落地之间，快速双击会建出多条同源同目标的关系。 */
   const relationCreatingRef = useRef(false)
   /** 工具箱建元素防重入：快速双击会在第一条命令落地前再发一条，树里就多出重复元素。 */
@@ -3719,16 +3719,20 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return links
   }, [visibleElements, positions])
 
-  const createOptions = useMemo<ElementTypeInfo[]>(() => {
-    if (!containment || !createDialog) {
+  /**
+   * 华望 propertyMenu 的语义：给定宿主元素，取元模型允许包含的子元素类型。
+   * 新建对话框与画布「+」菜单共用同一份服务端 containment 规则，避免两处候选漂移。
+   */
+  const childOptionsFor = useCallback((ownerId: string | null): ElementTypeInfo[] => {
+    if (!containment) {
       return []
     }
-    if (createDialog.ownerId === null) {
+    if (ownerId === null) {
       return containment.rootTypes
         .map((code) => typeInfo.get(code))
         .filter((item): item is ElementTypeInfo => item !== undefined)
     }
-    const parent = model.elements.find((element) => element.id === createDialog.ownerId)
+    const parent = model.elements.find((element) => element.id === ownerId)
     if (!parent) {
       return []
     }
@@ -3736,7 +3740,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       (item) => item.parent.toLowerCase() === parent.type.toLowerCase(),
     )
     return rule?.children ?? []
-  }, [containment, createDialog, model.elements, typeInfo])
+  }, [containment, model.elements, typeInfo])
+
+  const createOptions = useMemo<ElementTypeInfo[]>(
+    () => (createDialog ? childOptionsFor(createDialog.ownerId) : []),
+    [createDialog, childOptionsFor],
+  )
 
   /**
    * 华望式新建元素弹窗的四段分组：服务端仍决定「能建什么」，前端只按类型语义
@@ -3765,6 +3774,30 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       items: options.filter((item) => bucketOf(item) === index),
     })).filter((group) => group.items.length > 0)
   }, [createOptions, createQuery])
+
+  /** 「+」浮层的子元素候选：与新建对话框同源的 containment 规则，按华望四段分组（无搜索框）。 */
+  const quickChildGroups = useMemo(() => {
+    if (!quickMenu || quickMenu.mode !== 'child') {
+      return []
+    }
+    const options = childOptionsFor(quickMenu.targetId)
+    const bucketOf = (item: ElementTypeInfo): number => {
+      const code = `${item.code} ${item.uml} ${item.stereotype}`.toLowerCase()
+      if (/fme|fault|failure|hazard|risk|reliab|safety|安全|可靠|故障|风险/.test(code)) return 1
+      if (/requirement|需求|functionalrequirement|performancerequirement|interfacerequirement/.test(code)
+        && !/^requirement$/i.test(item.uml)) return 3
+      if (/^(package|block|requirement|activity|usecase|actor|component|interface|class|diagramtype|tagdefinition|profile|metaclass|stereotype)$/i.test(item.uml)) return 0
+      if (/block|part|port|connector|item|flow|state|activity|action|operation|property|module|模块|部件|端口/.test(code)) return 2
+      return 0
+    }
+    const names = ['常用元素', '安全和可靠性', '其他模块', '其他需求']
+    const namesEn = ['Common Elements', 'Security and Reliability', 'Other Blocks', 'Other Requirements']
+    return names.map((name, index) => ({
+      name,
+      nameEn: namesEn[index],
+      items: options.filter((item) => bucketOf(item) === index),
+    })).filter((group) => group.items.length > 0)
+  }, [quickMenu, childOptionsFor])
 
   const canJoinDiagram = activeSpec?.allowedTypes.includes(createType) ?? false
 
@@ -3969,11 +4002,19 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     })
   }
 
-  /** 选中图形右缘的「+」：以该图形为起点，列当前图允许的关系。 */
-  const openQuickMenu = (event: ReactMouseEvent, sourceId: string) => {
+  /** 图形右上角「+」：华望式「添加子元素」，宿主即该图形。 */
+  const openQuickMenu = (event: ReactMouseEvent, ownerId: string) => {
     event.preventDefault()
     event.stopPropagation()
-    setQuickMenu({ x: event.clientX, y: event.clientY, sourceId })
+    setQuickMenu({ x: event.clientX, y: event.clientY, targetId: ownerId, mode: 'child' })
+  }
+
+  /** 图形右键「快捷创建关系」：复用同一浮层，列当前图允许的关系类型。 */
+  const openRelationQuickMenu = (event: ReactMouseEvent, sourceId: string) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setMenu(null)
+    setQuickMenu({ x: event.clientX, y: event.clientY, targetId: sourceId, mode: 'relation' })
   }
 
   // 空白处的「新建」一律落到项目根 Package 下，保证模型树始终只有一个根。
@@ -4072,6 +4113,51 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     })
     if (ok) {
       selectOnTree({ kind: 'element', id })
+    }
+  }
+
+  /**
+   * 华望式「+」：以选中图形为宿主直接建子元素，并落到当前图其右侧。
+   * 与工具箱拖放走同一条 CREATE_ELEMENT 命令，坐标一条下发，不补 MOVE_NOTATION。
+   */
+  const createQuickChild = async (typeCode: string) => {
+    if (!quickMenu || quickMenu.mode !== 'child' || elementCreatingRef.current) {
+      return
+    }
+    const ownerId = quickMenu.targetId
+    const ownerName = elementById.get(ownerId)?.name ?? ownerId
+    setQuickMenu(null)
+    const info = typeInfo.get(typeCode)
+    if (!info) {
+      say('元素类型尚未加载，请稍后重试')
+      return
+    }
+    if (namespaceHostId(ownerId) !== ownerId) {
+      say('「{name}」不是命名空间元素，不能包含子元素', { name: ownerName })
+      return
+    }
+    elementCreatingRef.current = true
+    try {
+      const ownerPos = positions.find((entry) => entry.element.id === ownerId)
+      const size = nodeSizeFor(typeCode)
+      const x = Math.round(clamp((ownerPos?.x ?? 40) + (ownerPos?.w ?? 160) + 36, 0, canvas.maxX))
+      const y = Math.round(clamp((ownerPos?.y ?? 40) + Math.max(0, ((ownerPos?.h ?? 80) - size.height) / 2), 0, canvas.maxY))
+      const label = pick(info.label, info.labelEn) ?? typeCode
+      const id = `e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+      const ok = await runCommand('CREATE_ELEMENT', {
+        id,
+        type: info.uml ?? typeCode,
+        name: t('新建{label} {count}', { label, count: model.elements.length + 1 }),
+        ownerId,
+        stereotypes: info.stereotype ? [info.stereotype] : [],
+        ...(activeDiagramId ? { diagramId: activeDiagramId, x, y } : {}),
+      })
+      if (ok) {
+        selectOnTree({ kind: 'element', id })
+        say('已在「{owner}」下新建「{label}」', { owner: ownerName, label })
+      }
+    } finally {
+      elementCreatingRef.current = false
     }
   }
 
@@ -7010,15 +7096,17 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             onPointerDown={(event) => event.stopPropagation()}
             onClick={(event) => openQuickMenu(event, element.id)}
           >
-            <title>{t('快捷创建关系')}</title>
-            <circle cx={bx + bw + 14} cy={by + bh / 2} r={11} fill="#ffffff" stroke="#1890ff" strokeWidth={1.4} />
-            <text
-              x={bx + bw + 14}
-              y={by + bh / 2 + 5}
-              textAnchor="middle"
-              className="quick-add-plus"
-              fill="#1890ff"
-            >+</text>
+            <title>{t('添加子元素')}</title>
+            {/* 华望 v4.6.0.1：图形右上角外侧 9×9 黑圆白十字；透明 rect 只放大点击热区，不改视觉。 */}
+            <rect x={bx + bw - 3} y={by + 7} width={15} height={15} fill="transparent" />
+            <image
+              href={svgUrl('Canvasiconaddh')}
+              x={bx + bw}
+              y={by + 10}
+              width={9}
+              height={9}
+              pointerEvents="none"
+            />
           </g>
         )}
         {glyphKind && (
@@ -9927,6 +10015,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 type="button"
                 onClick={() => { selectOnTree({ kind: 'element', id: menuElement!.id }); setMenu(null) }}
               >{t('树上高亮')}</button>
+              {menuInDiagram && (
+                <button
+                  type="button"
+                  onClick={(event) => openRelationQuickMenu(event, menuElement!.id)}
+                >{t('快捷创建关系…')}</button>
+              )}
               {isProjectRoot(menuElement) ? (
                 <button type="button" className="disabled-hint" disabled title={t('项目根节点不可删除')}>
                   {t('项目根节点 · 不可删除')}
@@ -10059,41 +10153,64 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         </div>
       )}
 
-      {/* 画布「+」快捷菜单：选中图形 → 选关系 → 该图形即起点，再点终点即可建成 */}
-      {quickMenu && (
-        <div
-          className="quick-menu"
-          style={{
-            left: Math.min(quickMenu.x, window.innerWidth - 248),
-            top: Math.min(quickMenu.y, window.innerHeight - 340),
-          }}
-          onPointerDown={(event) => event.stopPropagation()}
-        >
-          <div className="menu-title">
-            <span>
-              {t('以「{name}」为起点', {
-                name: elementById.get(quickMenu.sourceId)?.name ?? quickMenu.sourceId,
-              })}
-            </span>
+      {/* 图形右上角「+」浮层：child=华望式子元素 ContextMenu；relation=右键发起的关系类型菜单 */}
+      {quickMenu && (() => {
+        const target = elementById.get(quickMenu.targetId)
+        const targetName = target?.name ?? quickMenu.targetId
+        return (
+          <div
+            className="quick-menu"
+            style={{
+              left: Math.min(quickMenu.x, window.innerWidth - 232),
+              top: Math.min(quickMenu.y, window.innerHeight - 430),
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            onContextMenu={(event) => event.preventDefault()}
+          >
+            <div className="menu-title">
+              {target && <TypeIcon code={codeOf(target.type)} size={16} />}
+              <span>{quickMenu.mode === 'child'
+                ? t('为「{name}」添加子元素', { name: targetName })
+                : t('以「{name}」为起点', { name: targetName })}</span>
+            </div>
+            {quickMenu.mode === 'child' ? (
+              quickChildGroups.length === 0 ? (
+                <div className="quick-menu-empty">{t('该图形不允许再包含子元素')}</div>
+              ) : quickChildGroups.flatMap((group) => [
+                <div className="menu-section" key={`${group.name}-head`}>{t(group.name)}</div>,
+                ...group.items.map((item) => (
+                  <button
+                    type="button"
+                    key={item.code}
+                    title={`${item.uml} · ${item.labelEn ?? item.label}`}
+                    onClick={() => void createQuickChild(item.code)}
+                  >
+                    <TypeIcon code={item.code} size={14} />
+                    <span>{pick(item.label, item.labelEn)}</span>
+                  </button>
+                )),
+              ])
+            ) : (
+              relationEntries.length === 0 ? (
+                <div className="quick-menu-empty">{t('当前图未开放关系类型')}</div>
+              ) : relationEntries.map((rel) => (
+                <button
+                  type="button"
+                  key={rel.code}
+                  onClick={() => {
+                    activateRelationTool(rel.code)
+                    setRelationSource(quickMenu.targetId)
+                    setQuickMenu(null)
+                  }}
+                >
+                  <RelationIcon code={rel.code} size={14} />
+                  <span>{pick(rel.label, rel.labelEn)}</span>
+                </button>
+              ))
+            )}
           </div>
-          {relationEntries.length === 0 ? (
-            <div className="quick-menu-empty">{t('当前图未开放关系类型')}</div>
-          ) : relationEntries.map((rel) => (
-            <button
-              type="button"
-              key={rel.code}
-              onClick={() => {
-                activateRelationTool(rel.code)
-                setRelationSource(quickMenu.sourceId)
-                setQuickMenu(null)
-              }}
-            >
-              <RelationIcon code={rel.code} size={14} />
-              <span>{pick(rel.label, rel.labelEn)}</span>
-            </button>
-          ))}
-        </div>
-      )}
+        )
+      })()}
 
       {/* Ctrl/⌘+K 全局搜索：名称 / 文档 / 标签 / 属性值打分，↑↓ 选择、Enter 跳转 */}
       {searchOpen && (

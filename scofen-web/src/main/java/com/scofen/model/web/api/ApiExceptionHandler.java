@@ -6,6 +6,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Map;
 
@@ -33,5 +34,17 @@ public class ApiExceptionHandler {
         return ResponseEntity.badRequest().body(Map.of(
                 "error", "illegal_state",
                 "message", ex.getMessage()));
+    }
+
+    /**
+     * ResponseStatusException（用户管理/角色管理等接口的参数校验）默认由 Spring 转成空体或隐藏 message 的错误页，
+     * 前端只能看到「HTTP 400」而不知道哪里错了。这里统一带出 reason，匹配 PermissionInterceptor 的错误格式。
+     */
+    @ExceptionHandler(ResponseStatusException.class)
+    public ResponseEntity<Map<String, Object>> status(ResponseStatusException ex) {
+        String reason = ex.getReason() == null ? ex.getStatusCode().toString() : ex.getReason();
+        return ResponseEntity.status(ex.getStatusCode()).body(Map.of(
+                "error", "request_rejected",
+                "message", reason));
     }
 }
