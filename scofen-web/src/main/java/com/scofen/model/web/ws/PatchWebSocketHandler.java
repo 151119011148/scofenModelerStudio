@@ -2,45 +2,52 @@ package com.scofen.model.web.ws;
 
 import com.scofen.model.core.Patch;
 import com.scofen.model.web.auth.AuthService;
+import com.scofen.model.web.project.ProjectAccess;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.TextMessage;
 import org.springframework.web.socket.WebSocketSession;
 import org.springframework.web.socket.handler.TextWebSocketHandler;
+import org.springframework.web.socket.handler.ConcurrentWebSocketSessionDecorator;
 
 import java.io.IOException;
 import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Set;
+import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.Collectors;
 
-/** 单写者 + 只读跟随：所有在线会话收到同一条权威 Patch，不做多写者协同。 */
+/** Project-scoped revision notifications. A reconnect reloads the authoritative snapshot. */
 public class PatchWebSocketHandler extends TextWebSocketHandler {
 
-    private final Set<WebSocketSession> sessions = ConcurrentHashMap.newKeySet();
+    private record Subscription(WebSocketSession session, String project, String token) {}
+    private final Map<String, Subscription> sessions = new ConcurrentHashMap<>();
     private final AtomicLong broadcastCount = new AtomicLong();
     /** 单元测试可直接 new 无参版本（不做鉴权）；Spring 装配时注入 AuthService。 */
     private final AuthService auth;
+    private final ProjectAccess access;
 
     public PatchWebSocketHandler() {
-        this(null);
+        this(null, null);
     }
 
-    public PatchWebSocketHandler(AuthService auth) {
+    public PatchWebSocketHandler(AuthService auth, ProjectAccess access) {
         this.auth = auth;
+        this.access = access;
     }
 
     @Override
     public void afterConnectionEstablished(WebSocketSession session) throws Exception {
-        // 浏览器 WebSocket 不能自定义请求头，登录态通过握手 URL 的 ?token= 传递。
-        if (auth != null && !auth.validToken(queryParam(session.getUri(), "token"))) {
+        String project = ProjectAccess.projectId(queryParam(session.getUri(), "project"));
+        String token = queryParam(session.getUri(), "token");
+        if (auth != null && !access.grant(project, auth.parseOrNull(token)).canView()) {
             session.close(new CloseStatus(1008, "unauthorized"));
             return;
         }
-        sessions.add(session);
-        session.sendMessage(new TextMessage("{\"type\":\"connected\"}"));
+        WebSocketSession channel = new ConcurrentWebSocketSessionDecorator(session, 5000, 256 * 1024);
+        sessions.put(session.getId(), new Subscription(channel, project, token));
+        channel.sendMessage(new TextMessage("{\"type\":\"connected\"}"));
     }
 
     private static String queryParam(URI uri, String name) {
@@ -58,21 +65,35 @@ public class PatchWebSocketHandler extends TextWebSocketHandler {
 
     @Override
     public void afterConnectionClosed(WebSocketSession session, CloseStatus status) {
-        sessions.remove(session);
+        sessions.remove(session.getId());
     }
 
-    public void broadcast(Patch patch) {
+    public void broadcast(String project, Patch patch) {
         broadcastCount.incrementAndGet();
-        TextMessage message = new TextMessage(render(patch));
-        for (WebSocketSession session : sessions) {
+        send(project, new TextMessage(render(patch)));
+    }
+
+    public void projectRecordsChanged(String project) {
+        send(project, new TextMessage("{\"type\":\"project-records\"}"));
+    }
+
+    private void send(String project, TextMessage message) {
+        for (Subscription subscription : sessions.values()) {
+            if (!subscription.project().equals(project)) continue;
+            WebSocketSession session = subscription.session();
             if (!session.isOpen()) {
-                sessions.remove(session);
+                sessions.remove(session.getId());
                 continue;
             }
             try {
-                session.sendMessage(message);
-            } catch (IOException ex) {
-                sessions.remove(session);
+                if (auth != null && !access.grant(project, auth.parseOrNull(subscription.token())).canView()) {
+                    sessions.remove(session.getId());
+                    session.close(new CloseStatus(1008, "project access revoked"));
+                } else {
+                    session.sendMessage(message);
+                }
+            } catch (IOException | IllegalStateException ex) {
+                sessions.remove(session.getId());
             }
         }
     }

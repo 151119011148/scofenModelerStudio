@@ -56,6 +56,7 @@ public final class InMemoryModelRepository {
     public void load(ModelSnapshot snapshot) {
         synchronized (lock) {
             this.revision = snapshot.revision();
+            this.sequence = snapshot.revision();
             this.elements.clear();
             snapshot.elements().forEach(element -> elements.put(element.id(), element));
             this.relationships.clear();
@@ -126,6 +127,23 @@ public final class InMemoryModelRepository {
             Command inverse;
 
             switch (cmd.type()) {
+                case CommandExecutor.APPLY_SNAPSHOT -> {
+                    ModelSnapshot expected = (ModelSnapshot) cmd.payload().get("before");
+                    ModelSnapshot next = (ModelSnapshot) cmd.payload().get("after");
+                    ModelSnapshot current = snapshot();
+                    if (!expected.elements().equals(current.elements())
+                            || !expected.relationships().equals(current.relationships())
+                            || !expected.diagrams().equals(current.diagrams())
+                            || !expected.notations().equals(current.notations())) {
+                        throw new ValidationException("模型在此操作之后已变更，无法直接撤销或重做整批修改");
+                    }
+                    replaceObjects("element", elements, next.elements(), ModelElement::id, changes);
+                    replaceObjects("relationship", relationships, next.relationships(), Relationship::id, changes);
+                    replaceObjects("diagram", diagrams, next.diagrams(), Diagram::id, changes);
+                    replaceObjects("notation", notations, next.notations(), Notation::id, changes);
+                    changes.forEach(change -> affected.add(change.id()));
+                    inverse = CommandExecutor.snapshotCommand(revision, "snapshot:inverse", next, current);
+                }
                 case "CREATE_ELEMENT" -> {
                     String id = cmd.str("id");
                     if (elements.containsKey(id)) {
@@ -183,6 +201,15 @@ public final class InMemoryModelRepository {
                     affected.add(id);
                     inverse = Command.of("UPDATE_DOCUMENTATION", revision, id + ":inverse",
                             Map.of("id", id, "documentation", orEmpty(before.documentation())));
+                }
+                case "MOVE_REQUIREMENT" -> {
+                    ModelElement before = requireElement(cmd.str("id"));
+                    ModelElement after = before.withOwnerId(cmd.str("ownerId"));
+                    elements.put(after.id(), after);
+                    changes.add(new Change("update", "element", after.id(), before, after));
+                    affected.add(after.id());
+                    inverse = Command.of("MOVE_REQUIREMENT", revision, after.id() + ":owner:inverse",
+                            Map.of("id", after.id(), "ownerId", before.ownerId()));
                 }
                 case "UPDATE_PROPERTY" -> {
                     String id = cmd.str("id");
@@ -886,6 +913,23 @@ public final class InMemoryModelRepository {
             return new Patch(sequence, revision, List.copyOf(affected), List.copyOf(changes),
                     inverse, "ok", cmd.clientCmdId());
         }
+    }
+
+    private static <T> void replaceObjects(String kind, Map<String, T> current, List<T> objects,
+            java.util.function.Function<T, String> identify, List<Change> changes) {
+        Map<String, T> next = new LinkedHashMap<>();
+        objects.forEach(object -> next.put(identify.apply(object), object));
+        current.forEach((id, value) -> {
+            T replacement = next.get(id);
+            if (!java.util.Objects.equals(value, replacement)) {
+                changes.add(new Change(replacement == null ? "remove" : "update", kind, id, value, replacement));
+            }
+        });
+        next.forEach((id, value) -> {
+            if (!current.containsKey(id)) changes.add(new Change("add", kind, id, null, value));
+        });
+        current.clear();
+        current.putAll(next);
     }
 
     private ModelElement requireElement(String id) {

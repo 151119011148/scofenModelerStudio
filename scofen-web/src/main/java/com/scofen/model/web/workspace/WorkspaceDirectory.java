@@ -136,21 +136,25 @@ public final class WorkspaceDirectory {
         }
         Project found = findProject(id)
                 .orElseThrow(() -> new IllegalArgumentException("项目不存在：" + id));
+        if (store.enabled()) {
+            store.delete(id);
+        }
         CopyOnWriteArrayList<Project> list = projects.get(found.spaceCode());
         if (list != null) {
             list.removeIf(item -> item.id().equals(id));
-        }
-        if (store.enabled()) {
-            store.delete(id);
         }
         return found;
     }
 
     public Project addProject(String spaceCode, String name, String description) {
-        CopyOnWriteArrayList<Project> list = projects.get(spaceCode);
-        if (list == null) {
+        return addProject(spaceCode, name, description, PERSONAL.equals(spaceCode) ? "我" : "系统工程组");
+    }
+
+    public synchronized Project addProject(String spaceCode, String name, String description, String owner) {
+        if (spaces.stream().noneMatch(space -> space.code().equals(spaceCode))) {
             throw new IllegalArgumentException("未知空间：" + spaceCode);
         }
+        CopyOnWriteArrayList<Project> list = projects.computeIfAbsent(spaceCode, key -> new CopyOnWriteArrayList<>());
         String trimmed = name == null ? "" : name.trim();
         if (trimmed.isEmpty() || trimmed.length() > 80) {
             throw new IllegalArgumentException("项目名称不得为空且不超过 80 字");
@@ -159,7 +163,6 @@ public final class WorkspaceDirectory {
             throw new IllegalArgumentException("该空间下已存在同名项目");
         }
         String id = "project-" + UUID.randomUUID().toString().substring(0, 8);
-        String owner = PERSONAL.equals(spaceCode) ? "我" : "系统工程组";
         ProjectDirectoryStore.ProjectRow row = new ProjectDirectoryStore.ProjectRow(
                 id, trimmed, description == null ? "" : description.trim(),
                 owner, spaceCode, "可打开", true);

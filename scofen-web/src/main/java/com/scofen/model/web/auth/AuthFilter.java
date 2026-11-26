@@ -29,9 +29,7 @@ public class AuthFilter extends OncePerRequestFilter {
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response,
                                     FilterChain chain) throws ServletException, IOException {
         String path = request.getRequestURI().substring(request.getContextPath().length());
-        if (!path.startsWith("/api/")
-                || path.equals("/api/auth/login")
-                || path.equals("/api/health")) {
+        if (!path.startsWith("/api/") || path.equals("/api/auth/login")) {
             chain.doFilter(request, response);
             return;
         }
@@ -41,6 +39,10 @@ public class AuthFilter extends OncePerRequestFilter {
                 ? authService.parseOrNull(raw.substring(7).trim())
                 : null;
         if (principal == null) {
+            if (path.equals("/api/health")) {
+                chain.doFilter(request, response);
+                return;
+            }
             response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             response.setContentType("application/json;charset=UTF-8");
             byte[] body = "{\"error\":\"unauthorized\",\"message\":\"登录已失效，请重新登录\"}"

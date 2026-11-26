@@ -91,6 +91,18 @@ public final class MysqlSchema {
 
     private static volatile boolean ready = false;
 
+    private static final String PROJECT_RECORD_TABLE = """
+            CREATE TABLE IF NOT EXISTS scofen_project_record (
+                project_id VARCHAR(64) NOT NULL,
+                kind       VARCHAR(32) NOT NULL,
+                record_id  VARCHAR(128) NOT NULL,
+                payload    JSON NOT NULL,
+                PRIMARY KEY (project_id, kind, record_id),
+                CONSTRAINT fk_scofen_record_project FOREIGN KEY (project_id)
+                    REFERENCES scofen_project (id) ON DELETE CASCADE
+            ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_0900_ai_ci
+            """;
+
     private MysqlSchema() {
     }
 
@@ -100,7 +112,7 @@ public final class MysqlSchema {
             return;
         }
         for (String ddl : new String[]{PROJECT_TABLE, SNAPSHOT_TABLE, USER_TABLE, ROLE_TABLE,
-                USER_ROLE_TABLE, ROLE_PERMISSION_TABLE}) {
+                USER_ROLE_TABLE, ROLE_PERMISSION_TABLE, PROJECT_RECORD_TABLE}) {
             jdbc.execute(ddl);
         }
         ready = true;

@@ -5,6 +5,7 @@ import type {
   ValidationReport,
 } from './types'
 import { getLocale } from './i18n'
+import type { Baseline, ObjectTarget } from './projectWorkflow'
 
 /**
  * 模型交付报告生成器（B4）。
@@ -30,6 +31,7 @@ export interface ReportInput {
   labels: ReportLabels
   generatedAt: Date
   persistence?: string
+  baseline?: { record: Baseline; url: (target: ObjectTarget) => string }
 }
 
 /** HTML 文本转义：模型里的名称 / 文档 / 标签值都是用户数据，插入前必须转义。 */
@@ -233,6 +235,10 @@ export function buildModelReportHtml(input: ReportInput): string {
   const traceRels = model.relationships.filter((relation) => traceCode(relation.type) !== null)
 
   const title = L('模型交付报告', 'Model Delivery Report')
+  const baseline = input.baseline
+  const reference = (item: ObjectTarget, text: string) => baseline
+    ? `<a href="${esc(baseline.url(item))}" target="_blank" rel="noopener noreferrer">${esc(text)}</a>`
+    : esc(text)
   const sections: { id: string; no: string; zh: string; en: string }[] = [
     { id: 'overview', no: '1', zh: '概览', en: 'Overview' },
     { id: 'validation', no: '2', zh: '校验摘要', en: 'Validation' },
@@ -241,6 +247,7 @@ export function buildModelReportHtml(input: ReportInput): string {
     { id: 'catalog', no: '5', zh: '元素目录', en: 'Element Catalog' },
     { id: 'diagrams', no: '6', zh: '图清单', en: 'Diagrams' },
   ]
+  if (baseline) sections.push({ id: 'review-history', no: '7', zh: '评审与验证记录', en: 'Review and test records' })
 
   const toc = sections.map((s) => `<a href="#${s.id}">${s.no}. ${esc(L(s.zh, s.en))}</a>`).join('')
 
@@ -310,18 +317,20 @@ export function buildModelReportHtml(input: ReportInput): string {
         ? `<span class="badge part">${esc(L('部分', 'Partial'))}</span>`
         : `<span class="badge no">${esc(L('缺口', 'Gap'))}</span>`
     const satRefs = row.satisfiedBy.length
-      ? `<div class="refs">${row.satisfiedBy.map((ref) => `<span class="ref sat">${esc(ref.name)}</span>`).join('')}</div>`
+      ? `<div class="refs">${row.satisfiedBy.map((ref) => `<span class="ref sat">${reference({ id: ref.id, type: 'element' }, ref.name)}</span>`).join('')}</div>`
       : `<span class="muted">—</span>`
     const verRefs = row.verifiedBy.length
-      ? `<div class="refs">${row.verifiedBy.map((ref) => `<span class="ref ver">${esc(ref.name)}</span>`).join('')}</div>`
+      ? `<div class="refs">${row.verifiedBy.map((ref) => `<span class="ref ver">${reference({ id: ref.id, type: 'element' }, ref.name)}</span>`).join('')}</div>`
       : `<span class="muted">—</span>`
     return `<tr>
-      <td class="name">${esc(row.name)} <span class="mono">${esc(row.id)}</span></td>
+      <td class="name">${reference({ id: row.id, type: 'element' }, row.name)} <span class="mono">${esc(row.id)}</span></td>
       <td>${row.satisfied ? `<span class="badge ok">${esc(L('是', 'Yes'))}</span>` : `<span class="badge no">${esc(L('否', 'No'))}</span>`}</td>
       <td>${row.verified ? `<span class="badge ok">${esc(L('是', 'Yes'))}</span>` : `<span class="badge no">${esc(L('否', 'No'))}</span>`}</td>
       <td>${satRefs}</td>
       <td>${verRefs}</td>
       <td>${status}</td>
+      ${baseline ? `<td>${esc(validation?.results?.[row.id] === 'pass' ? L('通过', 'Pass')
+        : validation?.results?.[row.id] === 'fail' ? L('未通过', 'Fail') : L('无结果', 'Missing'))}</td>` : ''}
     </tr>`
   }).join('')
   const coverageSection = `<section>${secHead('coverage', '3', '需求覆盖矩阵', 'Requirement Coverage', L(`共 ${summary.total} 条需求`, `${summary.total} requirements`))}
@@ -337,7 +346,7 @@ export function buildModelReportHtml(input: ReportInput): string {
     </div>
     ${coverage.length === 0
       ? `<div class="empty">${esc(L('模型中没有需求元素。', 'No requirement elements in the model.'))}</div>`
-      : `<table><thead><tr><th>${esc(L('需求', 'Requirement'))}</th><th>${esc(L('满足', 'Satisfied'))}</th><th>${esc(L('验证', 'Verified'))}</th><th>${esc(L('满足来源', 'Satisfied by'))}</th><th>${esc(L('验证来源', 'Verified by'))}</th><th>${esc(L('状态', 'Status'))}</th></tr></thead><tbody>${coverageRows}</tbody></table>`}
+      : `<table><thead><tr><th>${esc(L('需求', 'Requirement'))}</th><th>${esc(L('满足', 'Satisfied'))}</th><th>${esc(L('验证', 'Verified'))}</th><th>${esc(L('满足来源', 'Satisfied by'))}</th><th>${esc(L('验证来源', 'Verified by'))}</th><th>${esc(L('状态', 'Status'))}</th>${baseline ? `<th>${esc(L('测试结果', 'Test result'))}</th>` : ''}</tr></thead><tbody>${coverageRows}</tbody></table>`}
   </section>`
 
   // ── 4 追溯关系 ──
@@ -397,6 +406,17 @@ export function buildModelReportHtml(input: ReportInput): string {
       : `<table><thead><tr><th>${esc(L('图名', 'Diagram'))}</th><th>${esc(L('类型', 'Kind'))}</th><th class="num">${esc(L('元素数', 'Elements'))}</th><th class="num">${esc(L('关系数', 'Relationships'))}</th><th>${esc(L('所有者', 'Owner'))}</th></tr></thead><tbody>${diagramRows}</tbody></table>`}
   </section>`
 
+  const reviewSection = baseline ? `<section>${secHead('review-history', '7', '评审与验证记录', 'Review and test records', baseline.record.info.name)}
+    <p>${esc(baseline.record.info.notes)}</p>
+    <p>${esc(L('已登记测试', 'Recorded tests'))} ${summary.tested ?? 0}/${summary.total} · ${esc(L('通过', 'Passed'))} ${summary.passed ?? 0}/${summary.total}</p>
+    <h3>${esc(L('测试证据', 'Test evidence'))}</h3>
+    ${baseline.record.evidence.length ? `<ul>${baseline.record.evidence.map(item => `<li>${reference({ id: item.requirementId, type: 'element' }, nameOf(item.requirementId))} · ${reference({ id: item.testId, type: 'element' }, nameOf(item.testId))} · ${esc(item.result)} · ${esc(item.source)} · ${esc(item.actor)}</li>`).join('')}</ul>` : `<p>${esc(L('暂无测试证据', 'No test evidence'))}</p>`}
+    <h3>${esc(L('评审结论', 'Review outcomes'))}</h3>
+    ${baseline.record.reviews.length ? `<ul>${baseline.record.reviews.map(item => `<li>${reference(item.target, item.target.label ?? item.target.id)} · ${esc(item.status === 'resolved' ? L('已解决', 'Resolved') : L('待处理', 'Open'))} · rev ${item.revision}<ul>${item.messages.map(message => `<li>${esc(message.authorName)} · ${esc(message.text)}</li>`).join('')}</ul></li>`).join('')}</ul>` : `<p>${esc(L('暂无评审批注', 'No review comments'))}</p>`}
+    <h3>${esc(L('变更摘要', 'Change summary'))} · ${baseline.record.changes.length}</h3>
+    ${baseline.record.changes.length ? `<ul>${baseline.record.changes.map(change => `<li>${change.action === 'remove' ? esc(change.label) : reference(change, change.label)} · ${esc(change.action)} · ${esc(change.field)}${change.field ? ` · ${esc(JSON.stringify(change.before))} → ${esc(JSON.stringify(change.after))}` : ''}</li>`).join('')}</ul>` : `<p>${esc(L('暂无对比变更', 'No comparison changes'))}</p>`}
+  </section>` : ''
+
   return `<!doctype html>
 <html lang="${zh ? 'zh-CN' : 'en'}">
 <head>
@@ -412,7 +432,8 @@ export function buildModelReportHtml(input: ReportInput): string {
     <h1>${esc(title)}</h1>
     <div class="project">${esc(projectName)}</div>
     <div class="meta">
-      <span><b>${esc(L('生成时间', 'Generated'))}：</b>${esc(formatTime(generatedAt, zh))}</span>
+      <span><b>${esc(baseline ? L('发布时间', 'Published') : L('生成时间', 'Generated'))}：</b>${esc(formatTime(generatedAt, zh))}</span>
+      ${baseline ? `<span><b>${esc(L('基线', 'Baseline'))}：</b>${esc(baseline.record.info.name)} · ${esc(baseline.record.info.author)}</span>` : ''}
       <span><b>${esc(L('模型版本', 'Revision'))}：</b>rev ${esc(model.revision)}</span>
       <span><b>${esc(L('元素', 'Elements'))}：</b>${elements.length}</span>
       <span><b>${esc(L('关系', 'Relationships'))}：</b>${model.relationships.length}</span>
@@ -426,8 +447,9 @@ export function buildModelReportHtml(input: ReportInput): string {
   ${traceSection}
   ${catalogSection}
   ${diagramSection}
+  ${reviewSection}
   <footer>
-    <span>${esc(L('本报告由模型快照实时生成；校验与覆盖数据来自服务端权威接口 /api/validation。', 'Generated live from the model snapshot; validation & coverage from the authoritative /api/validation endpoint.'))}</span>
+    <span>${esc(baseline ? L('本报告基于已发布的基线快照。', 'Generated from the published baseline snapshot.') : L('本报告由模型快照实时生成；校验与覆盖数据来自服务端权威接口 /api/validation。', 'Generated live from the model snapshot; validation & coverage from the authoritative /api/validation endpoint.'))}</span>
     <span>Scofen Modeler Studio · rev ${esc(model.revision)} · ${esc(formatTime(generatedAt, zh))}</span>
   </footer>
 </div>

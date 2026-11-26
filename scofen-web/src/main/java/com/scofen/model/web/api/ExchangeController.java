@@ -1,5 +1,10 @@
 package com.scofen.model.web.api;
 
+import com.scofen.model.web.auth.AuthController;
+import com.scofen.model.web.auth.AuthService.Principal;
+import com.scofen.model.web.project.ProjectAccess;
+import org.springframework.web.bind.annotation.RequestAttribute;
+
 import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.core.Patch;
@@ -122,9 +127,14 @@ public class ExchangeController {
 
     @PostMapping("/xmi")
     @RequiresPermission(Permission.MODEL_IMPORT)
-    public Patch importXmi(@RequestBody ImportRequest request,
+    public Patch importXmiHttp(@RequestBody ImportRequest request,
                             @RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId,
-                            @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
+                            @RequestHeader(value = ProjectAccess.HEADER, defaultValue = "") String projectId,
+                            @RequestAttribute(AuthController.PRINCIPAL_ATTRIBUTE) Principal principal) {
+        return importXmi(request, ProjectAccess.session(principal, sessionId), projectId);
+    }
+
+    public Patch importXmi(ImportRequest request, String sessionId, String projectId) {
         if (request == null || request.semantic() == null || request.semantic().isBlank()) {
             throw new IllegalStateException("缺少 XMI 语义内容");
         }
@@ -154,7 +164,7 @@ public class ExchangeController {
         Map<String, Object> payload = importPayload(imported, currentSnapshot);
         // 幂等键必须唯一：同一毫秒内连续两次导入用时间戳会撞键，
         // 第二条命令会被幂等缓存直接返回、根本不会落库。
-        Command command = Command.of("IMPORT_MODEL", current.revision(),
+        Command command = Command.of("IMPORT_MODEL", currentSnapshot.revision(),
                 "import-xmi-" + java.util.UUID.randomUUID(), payload);
         return current.execute(sessionId, command);
     }

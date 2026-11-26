@@ -4,6 +4,8 @@ import com.scofen.model.core.PersistenceService;
 import com.scofen.model.core.SnapshotCodec;
 import com.scofen.model.metamodel.ModelSnapshot;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.support.JdbcTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.util.List;
 import java.util.Optional;
@@ -27,11 +29,13 @@ public class MysqlPersistenceService implements PersistenceService {
     private final JdbcTemplate jdbc;
     private final String projectId;
     private final int retention;
+    private final TransactionTemplate transaction;
 
     public MysqlPersistenceService(JdbcTemplate jdbcTemplate, String projectId, int retention) {
         this.jdbc = jdbcTemplate;
         this.projectId = projectId == null ? "" : projectId;
         this.retention = Math.max(1, retention);
+        this.transaction = new TransactionTemplate(new JdbcTransactionManager(jdbcTemplate.getDataSource()));
     }
 
     @Override
@@ -75,6 +79,10 @@ public class MysqlPersistenceService implements PersistenceService {
     public void save(ModelSnapshot snapshot) {
         ensureSchema();
         String json = SnapshotCodec.toJson(snapshot);
+        transaction.executeWithoutResult(status -> writeSnapshot(snapshot, json));
+    }
+
+    private void writeSnapshot(ModelSnapshot snapshot, String json) {
         // 项目行可能尚未建立（目录尚未落库），用 GREATEST 保证 revision 单调不回退。
         // name 留空：项目名称由目录存储负责，这里不覆盖。
         jdbc.update("INSERT INTO scofen_project (id, name, revision) VALUES (?, '', ?) "

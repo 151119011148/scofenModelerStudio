@@ -62,6 +62,10 @@ public record ModelElement(
         return new ModelElement(id, type, name, stereotypes, ownerId, documentation, taggedValues, value, properties);
     }
 
+    public ModelElement withOwnerId(String value) {
+        return new ModelElement(id, type, name, stereotypes, value, documentation, taggedValues, xmiId, properties);
+    }
+
     /** 通用属性写入：核心字段落到专用成员，其余进扩展属性包；value 为 null 表示清空。 */
     public ModelElement withProperty(String key, Object value) {
         return switch (key) {
@@ -86,7 +90,7 @@ public record ModelElement(
     /** 读取当前属性值，供 UPDATE_PROPERTY 生成逆命令使用。 */
     public Object property(String key) {
         return switch (key) {
-            case "id" -> id;
+            case "id" -> ElementType.fromAny(type).orElse(null) == ElementType.REQUIREMENT ? properties.get("id") : id;
             case "name" -> name;
             case "documentation" -> documentation;
             case "stereotypes" -> stereotypes;

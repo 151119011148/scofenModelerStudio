@@ -1,3 +1,5 @@
+import type { ProjectGrant } from './projectWorkflow'
+
 export interface ModelElement {
   id: string
   type: string
@@ -299,6 +301,7 @@ export interface WorkspaceProject {
   status: string
   current: boolean
   editable: boolean
+  grant?: ProjectGrant
   /** 是否允许删除；主示例项目是目录回退目标，服务端标记为不可删。 */
   deletable?: boolean
   /** 是否已在服务端建立内存态模型运行时。 */
@@ -370,7 +373,8 @@ export interface ValidationReport {
   issues: ValidationIssue[]
   counts: { error: number; warning: number; info: number }
   coverage: RequirementCoverage[]
-  coverageSummary: { total: number; satisfied: number; verified: number; fullyCovered: number }
+  coverageSummary: { total: number; satisfied: number; verified: number; fullyCovered: number; tested?: number; passed?: number }
+  results?: Record<string, 'pass' | 'fail' | 'missing'>
 }
 
 export interface CommandRequest {

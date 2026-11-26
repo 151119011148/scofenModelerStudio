@@ -19,8 +19,20 @@ public final class UndoStack {
 
     /** 一次成功的正向写入：压入撤销栈，并清空该会话的重做栈（新动作使 redo 失效）。 */
     public void push(String sessionId, Command forward, Command inverse) {
-        undoStacks.computeIfAbsent(sessionId, key -> new ArrayDeque<>()).push(new UndoEntry(forward, inverse));
+        pushUndo(sessionId, new UndoEntry(forward, inverse));
         redoStacks.remove(sessionId);
+    }
+
+    public void pushUndo(String sessionId, UndoEntry entry) {
+        undoStacks.computeIfAbsent(sessionId, key -> new ArrayDeque<>()).push(entry);
+    }
+
+    public Optional<UndoEntry> peekUndo(String sessionId) {
+        return Optional.ofNullable(undoStacks.get(sessionId)).map(Deque::peek);
+    }
+
+    public Optional<UndoEntry> peekRedo(String sessionId) {
+        return Optional.ofNullable(redoStacks.get(sessionId)).map(Deque::peek);
     }
 
     /** 弹出一条待撤销条目（含正向与逆命令）。 */

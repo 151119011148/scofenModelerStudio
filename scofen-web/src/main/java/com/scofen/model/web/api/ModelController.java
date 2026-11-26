@@ -4,9 +4,7 @@ import com.scofen.model.core.Command;
 import com.scofen.model.core.CommandExecutor;
 import com.scofen.model.core.Patch;
 import com.scofen.model.core.ProjectRoot;
-import com.scofen.model.core.RequirementCoverage;
 import com.scofen.model.core.ValidationEngine;
-import com.scofen.model.core.ValidationIssue;
 import com.scofen.model.metamodel.ContainmentRules;
 import com.scofen.model.metamodel.DiagramKind;
 import com.scofen.model.metamodel.ElementType;
@@ -21,14 +19,22 @@ import com.scofen.model.web.persistence.PersistenceServiceFactory;
 import com.scofen.model.web.rbac.Permission;
 import com.scofen.model.web.rbac.RequiresPermission;
 import com.scofen.model.web.project.ProjectRegistry;
+import com.scofen.model.web.project.ProjectAccess;
+import com.scofen.model.web.project.ProjectAnalysis;
+import com.scofen.model.web.project.ProjectWorkflow;
+import com.scofen.model.web.auth.AuthController;
+import com.scofen.model.web.auth.AuthService.Principal;
 import com.scofen.model.web.ws.PatchBroker;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.HttpStatus;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -49,6 +55,8 @@ public class ModelController {
     private final PersistenceServiceFactory persistenceFactory;
     /** 单元测试可直接构造本类；Spring 运行时注入多项目路由。 */
     private ProjectRegistry projects;
+    private ProjectAccess access;
+    private ProjectWorkflow workflow;
 
     public ModelController(CommandExecutor executor, PatchBroker broker,
                            PersistenceServiceFactory persistenceFactory) {
@@ -62,6 +70,12 @@ public class ModelController {
         this.projects = projects;
     }
 
+    @Autowired
+    void setProjectWorkflow(ProjectAccess access, ProjectWorkflow workflow) {
+        this.access = access;
+        this.workflow = workflow;
+    }
+
     private CommandExecutor forProject(String projectId) {
         return projects == null ? executor : projects.resolve(projectId);
     }
@@ -71,9 +85,17 @@ public class ModelController {
     }
 
     @GetMapping("/health")
-    public Map<String, Object> health(
+    public Map<String, Object> healthHttp(
             @RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId,
-            @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
+            @RequestHeader(value = ProjectAccess.HEADER, defaultValue = "") String projectId,
+            @RequestAttribute(value = AuthController.PRINCIPAL_ATTRIBUTE, required = false) Principal principal) {
+        if (access == null || !access.grant(ProjectAccess.projectId(projectId), principal).canView()) {
+            return Map.of("status", "UP", "product", PRODUCT_NAME);
+        }
+        return health(ProjectAccess.session(principal, sessionId), projectId);
+    }
+
+    public Map<String, Object> health(String sessionId, String projectId) {
         CommandExecutor current = forProject(projectId);
         return Map.of(
                 "status", "UP",
@@ -111,43 +133,8 @@ public class ModelController {
     @RequiresPermission(Permission.MODEL_VIEW)
     public Map<String, Object> validation(
             @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
-        CommandExecutor current = forProject(projectId);
-        List<ValidationIssue> issues = current.validateFull();
-        List<RequirementCoverage> coverage = current.requirementCoverage();
-        int error = 0;
-        int warning = 0;
-        int info = 0;
-        for (ValidationIssue issue : issues) {
-            switch (issue.severity()) {
-                case ValidationIssue.ERROR -> error++;
-                case ValidationIssue.WARNING -> warning++;
-                default -> info++;
-            }
-        }
-        int satisfied = 0;
-        int verified = 0;
-        int fullyCovered = 0;
-        for (RequirementCoverage item : coverage) {
-            if (item.satisfied()) {
-                satisfied++;
-            }
-            if (item.verified()) {
-                verified++;
-            }
-            if (item.satisfied() && item.verified()) {
-                fullyCovered++;
-            }
-        }
-        return Map.of(
-                "revision", current.revision(),
-                "issues", issues,
-                "counts", Map.of("error", error, "warning", warning, "info", info),
-                "coverage", coverage,
-                "coverageSummary", Map.of(
-                        "total", coverage.size(),
-                        "satisfied", satisfied,
-                        "verified", verified,
-                        "fullyCovered", fullyCovered));
+        return ProjectAnalysis.coverage(forProject(projectId).snapshot(),
+                workflow == null ? List.of() : workflow.evidence(ProjectAccess.projectId(projectId)));
     }
 
     @GetMapping("/metamodel/diagrams")
@@ -394,9 +381,19 @@ public class ModelController {
 
     @PostMapping("/commands")
     @RequiresPermission(Permission.MODEL_EDIT)
-    public Patch commands(@RequestBody CommandRequest request,
+    public Patch commandsHttp(@RequestBody CommandRequest request,
                           @RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId,
-                          @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
+                          @RequestHeader(value = ProjectAccess.HEADER, defaultValue = "") String projectId,
+                          @RequestAttribute(AuthController.PRINCIPAL_ATTRIBUTE) Principal principal) {
+        String command = java.util.Objects.toString(request.type(), "");
+        if (command.startsWith("RESTORE_") || command.equals("IMPORT_MODEL")
+                || (command.startsWith("DELETE_") && !principal.hasPermission(Permission.MODEL_DELETE.code()))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "当前角色不能执行此命令");
+        }
+        return commands(request, ProjectAccess.session(principal, sessionId), projectId);
+    }
+
+    public Patch commands(CommandRequest request, String sessionId, String projectId) {
         String clientCmdId = request.clientCmdId() == null || request.clientCmdId().isBlank()
                 ? UUID.randomUUID().toString()
                 : request.clientCmdId();
@@ -413,8 +410,13 @@ public class ModelController {
 
     @PostMapping("/commands/undo")
     @RequiresPermission(Permission.MODEL_EDIT)
-    public Patch undo(@RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId,
-                      @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
+    public Patch undoHttp(@RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId,
+                      @RequestHeader(value = ProjectAccess.HEADER, defaultValue = "") String projectId,
+                      @RequestAttribute(AuthController.PRINCIPAL_ATTRIBUTE) Principal principal) {
+        return undo(ProjectAccess.session(principal, sessionId), projectId);
+    }
+
+    public Patch undo(String sessionId, String projectId) {
         return forProject(projectId).undo(sessionId);
     }
 
@@ -424,8 +426,13 @@ public class ModelController {
 
     @PostMapping("/commands/redo")
     @RequiresPermission(Permission.MODEL_EDIT)
-    public Patch redo(@RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId,
-                      @RequestHeader(value = "X-Scofen-Project", defaultValue = "") String projectId) {
+    public Patch redoHttp(@RequestHeader(value = "X-Scofen-Session", defaultValue = "default") String sessionId,
+                      @RequestHeader(value = ProjectAccess.HEADER, defaultValue = "") String projectId,
+                      @RequestAttribute(AuthController.PRINCIPAL_ATTRIBUTE) Principal principal) {
+        return redo(ProjectAccess.session(principal, sessionId), projectId);
+    }
+
+    public Patch redo(String sessionId, String projectId) {
         return forProject(projectId).redo(sessionId);
     }
 

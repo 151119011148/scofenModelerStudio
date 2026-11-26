@@ -24,6 +24,7 @@ import {
   logout,
   patchSocketUrl,
   postCommand,
+  projectApi,
   redo,
   setProjectId,
   setUnauthorizedHandler,
@@ -77,6 +78,11 @@ import { buildModelReportHtml } from './report'
 import TableView from './TableView'
 import { TABLE_VIEWS, tableViewIcon, tableViewLabel } from './TableView'
 import type { TableViewId } from './TableView'
+import { ProjectPanel, type ProjectSection } from './ProjectPanel'
+import { RequirementImportPanel } from './RequirementImportPanel'
+import { readObjectLink } from './projectWorkflow'
+import type { ObjectLink, ObjectTarget, ProjectOverview } from './projectWorkflow'
+import './projectWorkflow.css'
 import TaggedValuesEditor from './TaggedValuesEditor'
 import TypedTagsEditor from './TypedTagsEditor'
 import CustomizationPanel from './CustomizationPanel'
@@ -934,11 +940,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   // 权限：与服务端同一套权限码。界面按权限收敛入口，服务端另有门控兜底——
   // 两边都读令牌里的 perms 声明，不会出现「界面藏了但接口还能调」。
   const permissions = new Set(session.user.permissions ?? [])
-  const canEdit = permissions.has('model.edit')
-  const canExport = permissions.has('model.export')
-  const canImport = permissions.has('model.import')
   const canCreateProject = permissions.has('project.create')
-  const canDeleteProject = permissions.has('project.delete')
   const canManageUsers = permissions.has('user.manage')
   const [health, setHealth] = useState<Health | null>(null)
   const [model, setModel] = useState<ModelSnapshot>(EMPTY_MODEL)
@@ -1109,6 +1111,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   })
   const [openSpaces, setOpenSpaces] = useState<Set<string>>(() => new Set(['personal', 'team']))
   const [activeProjectId, setActiveProjectId] = useState(() => getProjectId())
+  const [pendingObjectLink, setPendingObjectLink] = useState<ObjectLink | null>(() => readObjectLink() ?? null)
+  const [projectPanel, setProjectPanel] = useState<{ section: ProjectSection; link?: ObjectLink } | null>(null)
+  const [requirementImportOpen, setRequirementImportOpen] = useState(false)
+  const [projectOverview, setProjectOverview] = useState<{ project: string; value: ProjectOverview } | null>(null)
+  const overview = projectOverview?.project === activeProjectId ? projectOverview.value : null
+  const activeGrant = overview?.grant ?? workspace?.spaces.flatMap(space => space.projects).find(project => project.id === activeProjectId)?.grant
+  const noAccessibleProjects = workspace?.currentProjectId === ''
+  const canEdit = activeGrant?.canEdit === true
+  const canExport = activeGrant?.canExport === true
+  const canImport = activeGrant?.canImport === true
   const [projectPickerOpen, setProjectPickerOpen] = useState(false)
   const [spaceDrawerOpen, setSpaceDrawerOpen] = useState(false)
   const [newProjectDialog, setNewProjectDialog] = useState(false)
@@ -1284,8 +1296,26 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       // 空间目录不认项目头，先单独取：模型接口 404 时（本地重启后记住的项目 id 已失效）
       // 它也得落到 state，否则选择器是空的，用户连「换一个项目」这条路都走不通。
       const nextWorkspace = await getWorkspaces().catch(() => null)
+      if (getProjectId() !== projectAtStart) return false
       if (nextWorkspace) {
         setWorkspace(nextWorkspace)
+        if (nextWorkspace.currentProjectId !== projectAtStart) {
+          setModel(EMPTY_MODEL)
+          setProjectOverview(null)
+          setProjectPanel(null)
+          setRequirementImportOpen(false)
+          setPendingObjectLink(null)
+          if (!nextWorkspace.currentProjectId) {
+            setHealth(null)
+            setConnectionError(null)
+            say('暂无可访问的项目，请联系项目负责人添加成员')
+            return true
+          }
+          setProjectId(nextWorkspace.currentProjectId)
+          setActiveProjectId(nextWorkspace.currentProjectId)
+          say('原项目不可访问，已切换到有权限的项目')
+          return false
+        }
       }
       const [nextHealth, nextModel] = await Promise.all([
         getHealth(),
@@ -1325,6 +1355,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       return false
     }
   }, [])
+
+  const refreshProjectOverview = useCallback(async () => {
+    const project = getProjectId()
+    const data = await projectApi(project).overview().catch(() => null)
+    if (getProjectId() === project) setProjectOverview(data ? { project, value: data } : null)
+  }, [])
+
+  useEffect(() => {
+    void refreshProjectOverview()
+  }, [activeProjectId, refreshProjectOverview])
 
   /** 轻量刷新请求序号：丢弃过期响应，避免旧健康信息覆盖新值。 */
   const lightReqRef = useRef(0)
@@ -1419,7 +1459,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   useEffect(() => {
     const handle = window.setTimeout(() => { void loadValidation() }, 350)
     return () => window.clearTimeout(handle)
-  }, [model.revision, loadValidation])
+  }, [activeProjectId, model.revision, loadValidation])
 
   useEffect(() => {
     try {
@@ -1637,6 +1677,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }, [connectionError, retryCount, bootstrap])
 
   useEffect(() => {
+    if (noAccessibleProjects) return
     let socket: WebSocket | null = null
     let timer = 0
     let stopped = false
@@ -1650,6 +1691,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       socket.onmessage = (event: MessageEvent<string>) => {
         try {
           const payload = JSON.parse(event.data) as { type?: string; revision?: number }
+          if (stopped || getProjectId() !== activeProjectId) return
+          if (payload.type === 'connected') {
+            void refresh()
+            void refreshProjectOverview()
+          }
+          if (payload.type === 'project-records') {
+            void refreshProjectOverview()
+            void refreshLight()
+            void loadValidation()
+          }
           if (payload.type === 'patch') {
             // 自己命令的回声：增量应用已把 revision 推进到位，再拉一次全量纯属浪费。
             const revision = typeof payload.revision === 'number' ? payload.revision : 0
@@ -1674,10 +1725,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         }
       }
       socket.onerror = () => socket?.close()
-      socket.onclose = () => {
+      socket.onclose = (event) => {
         if (stopped) {
           return
         }
+        if (event.code === 1008) void refresh()
         // 断线不会自愈：只有重连后才收得到别的会话广播的 Patch。
         timer = window.setTimeout(open, Math.min(1000 * 2 ** attempt++, 15_000))
       }
@@ -1693,7 +1745,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       }
       socket?.close()
     }
-  }, [refresh, activeProjectId, session.token])
+  }, [refresh, refreshProjectOverview, refreshLight, loadValidation, activeProjectId, session.token, noAccessibleProjects])
 
   useEffect(() => {
     if (!menu) {
@@ -4161,21 +4213,6 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
   }
 
-  /** 矩阵单元格的快捷建关系：矩阵视图打开时通常没有当前图，diagramId 传空由服务端按模型层处理。 */
-  const createTableRelation = async (type: string, sourceId: string, targetId: string) => {
-    const id = `rel-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
-    const ok = await runCommand('CREATE_RELATIONSHIP', {
-      id,
-      type,
-      sourceId,
-      targetId,
-      ...(activeDiagramId ? { diagramId: activeDiagramId } : {}),
-    })
-    if (ok) {
-      say('已在矩阵单元格创建 «{type}» 关系', { type })
-    }
-  }
-
   const submitDiagram = async () => {
     if (!diagramDialog || !diagramDialog.kind || !diagramDialog.name.trim()) {
       say('请填写图名称并选择类型')
@@ -6255,6 +6292,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
     setProjectId(project.id)
     setActiveProjectId(project.id)
+    setProjectPanel(null)
+    setRequirementImportOpen(false)
+    setPendingObjectLink(null)
     setSelectedId(null)
     setSelectedDiagramId(null)
     setMenu(null)
@@ -6707,6 +6747,33 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     if (withTab) {
       openTab({ kind: 'diagram', id: diagramId })
     }
+  }
+
+  const locateProjectObject = (target: ObjectTarget) => {
+    if (target.type === 'diagram' && model.diagrams.some(item => item.id === target.id)) {
+      activateTreeDiagram(target.id, true)
+    } else if (target.type === 'relationship' && model.relationships.some(item => item.id === target.id)) {
+      selectTreeRelation(target.id)
+    } else if (target.type === 'element' && model.elements.some(item => item.id === target.id)) {
+      selectOnTree({ kind: 'element', id: target.id })
+    }
+  }
+
+  useEffect(() => {
+    if (!pendingObjectLink || pendingObjectLink.project !== activeProjectId || modelProjectRef.current !== activeProjectId) return
+    if (pendingObjectLink.target && !pendingObjectLink.baseline) locateProjectObject(pendingObjectLink.target)
+    setProjectPanel({ section: pendingObjectLink.baseline ? 'baseline' : 'review', link: pendingObjectLink })
+    setPendingObjectLink(null)
+  }, [pendingObjectLink, activeProjectId, model])
+
+  const selectedProjectTarget: ObjectTarget | undefined = selectedRelationId ? { type: 'relationship', id: selectedRelationId }
+    : selectedDiagramId ? { type: 'diagram', id: selectedDiagramId }
+      : selectedId ? { type: 'element', id: selectedId }
+        : activeDiagramId && !activeViewId ? { type: 'diagram', id: activeDiagramId } : undefined
+
+  const refreshProjectWorkflow = async (modelChanged = false) => {
+    if (modelChanged) await refresh()
+    await Promise.all([refreshProjectOverview(), loadValidation()])
   }
 
   /**
@@ -7584,7 +7651,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     {
       label: '文件',
       entries: [
-        { label: '新建项目…', run: () => setNewProjectDialog(true) },
+        { label: '新建项目…', run: () => setNewProjectDialog(true), disabled: !canCreateProject },
         { label: '工作空间面板', run: () => setSpaceDrawerOpen(true) },
         'separator',
         { label: '新建元素…', run: () => openCreate(null) },
@@ -7592,6 +7659,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         { label: '新建需求表', run: () => openTableView('requirement-table') },
         { label: '新建通用表', run: () => openTableView('generic-table') },
         { label: '新建通用矩阵', run: () => openTableView('generic-matrix') },
+        { label: '新建需求满足矩阵', run: () => openTableView('satisfy-matrix') },
+        { label: '新建需求验证矩阵', run: () => openTableView('verify-matrix') },
+        { label: '导入需求 Excel / CSV…', run: () => setRequirementImportOpen(true), disabled: !canImport },
         { label: '新建关系…', run: openRelationDialog, disabled: !canEdit || !activeDiagramObj },
         'separator',
         { label: '导入 XMI…', run: openImportDialog, disabled: !canImport },
@@ -7599,8 +7669,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         { label: '导出布局侧车…', run: () => void runExport('sidecar'), disabled: !canExport },
         { label: '导出项目快照…', run: () => void runExport('native'), disabled: !canExport },
         'separator',
-        { label: '导出当前图为 SVG', run: exportSvg, disabled: !activeDiagramObj },
-        { label: '导出当前图为 PNG', run: () => void exportPng(), disabled: !activeDiagramObj },
+        { label: '导出当前图为 SVG', run: exportSvg, disabled: !canExport || !activeDiagramObj },
+        { label: '导出当前图为 PNG', run: () => void exportPng(), disabled: !canExport || !activeDiagramObj },
         'separator',
         { label: '生成模型报告…', run: () => void openReport() },
         'separator',
@@ -7850,6 +7920,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             </div>
           ))}
           <span className="mb-fill" />
+          <button type="button" className="project-menu-button" disabled={!activeGrant?.canView}
+            onClick={() => { setProjectPanel({ section: 'review' }); void refreshProjectOverview() }}>项目工作区</button>
           <LocaleSwitch compact />
           <div className="user-chip">
             <span className="user-avatar" aria-hidden="true">{session.user.username.slice(0, 1).toUpperCase()}</span>
@@ -7947,7 +8019,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                             ? <span className="pp-current">{t('已打开')}</span>
                             : <span className="pp-open">{t('打开')}</span>}
                         </button>
-                        {canDeleteProject && project.deletable !== false && (
+                        {project.deletable && (
                           <button
                             type="button"
                             className="pp-project-del"
@@ -8084,7 +8156,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                           </span>
                           {project.current && <span className="space-current-dot" title={t('当前编辑项目')} />}
                         </button>
-                        {canDeleteProject && project.deletable !== false && (
+                        {project.deletable && (
                           <button
                             type="button"
                             className="space-project-del"
@@ -9241,23 +9313,33 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           </div>
           {activeViewId ? (
             <TableView
+              key={`${activeProjectId}/${activeViewId}`}
               view={activeViewId}
-              elements={model.elements}
+              elements={projectElements}
               relationships={model.relationships}
+              relations={relationCatalog}
               containment={containment}
+              validation={validationReport?.revision === model.revision ? validationReport : null}
               projectRootId={projectRootId}
               selectedId={selectedId}
-              activeDiagramId={activeDiagramId}
               busy={busy}
               canEdit={canEdit}
+              canImport={canImport}
+              canExport={canExport}
+              canDelete={canEdit && permissions.has('model.delete')}
               typeInfo={typeInfo}
+              savedViews={overview?.views ?? []}
+              onSaveView={async view => { const saved = await projectApi(activeProjectId).saveView(view); await refreshProjectOverview(); return saved }}
+              onDeleteView={async id => { await projectApi(activeProjectId).deleteView(id); await refreshProjectOverview() }}
+              onImport={() => setRequirementImportOpen(true)}
               onSelectElement={(id) => selectOnTree({ kind: 'element', id })}
+              onSelectRelation={selectTreeRelation}
               onRename={(id, name) => { void runCommand('RENAME_ELEMENT', { id, name }) }}
               onDocumentation={(id, documentation) => { void runCommand('UPDATE_DOCUMENTATION', { id, documentation }) }}
+              onProperty={(id, key, value) => { void runCommand('UPDATE_PROPERTY', { id, key, value }) }}
               onOpenCreate={(ownerId) => openCreate(ownerId)}
               onCreateQuickElement={(kind, ownerId, typeCode) => { void createTableElement(kind, ownerId, typeCode) }}
-              onCreateRelation={(type, sourceId, targetId) => { void createTableRelation(type, sourceId, targetId) }}
-              onDeleteRelation={(id) => { void runCommand('DELETE_RELATIONSHIP', { id }) }}
+              onMatrix={async links => { await projectApi(activeProjectId).matrix(model.revision, links); await refresh() }}
             />
           ) : (
           <>
@@ -10314,6 +10396,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           </div>
         </div>
       )}
+
+      {projectPanel && <ProjectPanel key={`${activeProjectId}/${projectPanel.link?.baseline ?? ''}`}
+        project={activeProjectId} name={selectedProject?.name ?? projectRoot?.name ?? ''} model={model}
+        target={projectPanel.link?.target ?? selectedProjectTarget} link={projectPanel.link} section={projectPanel.section}
+        overview={overview} validation={validationReport} onRefresh={refreshProjectWorkflow}
+        onClose={() => setProjectPanel(null)} onLocate={target => { locateProjectObject(target); setProjectPanel(null) }} />}
+      {requirementImportOpen && canImport && projectRootId && <RequirementImportPanel key={activeProjectId}
+        project={activeProjectId} revision={model.revision} rootId={projectRootId}
+        packages={projectElements.filter(element => element.type.toLowerCase() === 'package')}
+        onClose={() => setRequirementImportOpen(false)} onCommitted={refresh} />}
 
       {/* 属性编辑弹框：行尾「⋯」打开，控件由元属性的值类型决定 */}
       {propDialogSpec && propDialogSpec.editable && canEdit && (

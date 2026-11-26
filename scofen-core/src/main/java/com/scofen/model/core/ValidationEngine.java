@@ -104,6 +104,22 @@ public final class ValidationEngine {
                         .orElseThrow(() -> new ValidationException("Unknown element: " + cmd.str("id")));
                 assertNameIsUnique(repository, current.ownerId(), cmd.str("name"), current.id());
             }
+            case "MOVE_REQUIREMENT" -> {
+                ModelElement requirement = repository.findElement(cmd.str("id"))
+                        .filter(element -> ElementType.fromAny(element.type()).orElse(null) == ElementType.REQUIREMENT)
+                        .orElseThrow(() -> new ValidationException("找不到需求"));
+                String owner = cmd.str("ownerId");
+                require(owner, "ownerId");
+                assertContainment(repository, owner, ElementType.REQUIREMENT);
+                Set<String> visited = new LinkedHashSet<>();
+                for (String cursor = owner; cursor != null;) {
+                    if (!visited.add(cursor) || requirement.id().equals(cursor)) {
+                        throw new ValidationException("需求层级存在循环");
+                    }
+                    cursor = repository.findElement(cursor).map(ModelElement::ownerId).orElse(null);
+                }
+                assertNameIsUnique(repository, owner, requirement.name(), requirement.id());
+            }
             case "UPDATE_DOCUMENTATION" -> {
                 require(cmd.str("id"), "id");
                 if (!repository.elementExists(cmd.str("id"))) {

@@ -34,8 +34,7 @@ import java.util.concurrent.ConcurrentHashMap;
  * 主示例项目沿用 Spring 的单例 CommandExecutor（带种子数据），其它项目在
  * 首次打开时懒初始化：唯一项目根 Package + 九张空图，随后即可正常编辑。</p>
  *
- * <p>所有项目共用同一个 PatchBroker，因此跨项目的 WS 广播只会让跟随者
- * 重新拉取自己项目的快照，不会造成数据串写。M0 不落库，重启后回到基线。</p>
+ * <p>每个运行时绑定项目专属的广播出口。</p>
  */
 @Component
 public class ProjectRegistry {
@@ -103,7 +102,7 @@ public class ProjectRegistry {
         InMemoryModelRepository repository = new InMemoryModelRepository();
         // 播种期间先摘掉持久化，避免每条种子命令都写一份整包快照。
         CommandExecutor executor = new CommandExecutor(
-                repository, new ValidationEngine(), broker, new UndoStack(), new NoopPersistenceService());
+                repository, new ValidationEngine(), broker.forProject(projectId), new UndoStack(), new NoopPersistenceService());
 
         // 落库模式：优先回载已有快照，重启后模型不丢。
         if (persistence.isEnabled()) {

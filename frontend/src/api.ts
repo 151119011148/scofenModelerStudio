@@ -17,6 +17,9 @@ import type {
   ValidationReport,
   WorkspaceDirectoryInfo,
 } from './types'
+import { readObjectLink, requestId } from './projectWorkflow'
+import type { Baseline, BaselineInfo, Difference, Evidence, ImportInput, ImportPreview, MatrixLink, ObjectTarget,
+  ProjectOverview, Review, SavedView, TraceResult } from './projectWorkflow'
 
 // Vite 构建时注入的 base（默认 `/`，子路径部署时为 `/scofen/modelerStudio/`）。
 // 保持 API 与页面在同一前缀下，Nginx 只需剥掉一层前缀即可反代。
@@ -28,7 +31,8 @@ const PROJECT_KEY = 'scofen.modeler.project'
 export const DEFAULT_PROJECT_ID = 'project-vehicle'
 
 /** 当前打开的项目。所有 /api 请求都带这个头，服务端据此路由到独立模型运行时。 */
-let activeProjectId = localStorage.getItem(PROJECT_KEY) ?? DEFAULT_PROJECT_ID
+let activeProjectId = readObjectLink()?.project ?? localStorage.getItem(PROJECT_KEY) ?? DEFAULT_PROJECT_ID
+const WEB_SESSION = requestId()
 export const getProjectId = () => activeProjectId
 export function setProjectId(id: string) {
   activeProjectId = id || DEFAULT_PROJECT_ID
@@ -68,8 +72,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(path, {
     ...init,
     headers: {
-      'Content-Type': 'application/json',
+      ...(init?.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
       'X-Scofen-Project': activeProjectId,
+      'X-Scofen-Session': WEB_SESSION,
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
@@ -84,8 +89,8 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     // 后端统一错误体含 message；error 作兜底，避免只显示「HTTP 400」让人以为功能无响应。
     throw new Error(body.message ?? body.error ?? `HTTP ${response.status}`)
   }
-  if (response.status === 204) return undefined as T
-  return (await response.json()) as T
+  const text = await response.text()
+  return text ? JSON.parse(text) as T : undefined as T
 }
 
 export const login = (username: string, password: string) =>
@@ -105,7 +110,7 @@ export function patchSocketUrl(): string {
 }
 
 export const getHealth = () =>
-  request<Health>(`${BASE}api/health`, { headers: { 'X-Scofen-Session': 'web-ui' } })
+  request<Health>(`${BASE}api/health`)
 export const getModel = () => request<ModelSnapshot>(`${BASE}api/model`)
 /** 全量校验报告：结构问题 + 需求覆盖矩阵，服务端权威计算。 */
 export const getValidation = () => request<ValidationReport>(`${BASE}api/validation`)
@@ -121,10 +126,43 @@ export const getExtensionPackages = () =>
   request<ExtensionCatalog>(`${BASE}api/metamodel/extension`)
 export const getStyleCatalog = () => request<StyleCatalog>(`${BASE}api/metamodel/styles`)
 export const getWorkspaces = () => request<WorkspaceDirectoryInfo>(`${BASE}api/workspaces`)
+
+export function projectApi(project: string) {
+  const call = <T>(path: string, init?: RequestInit) => request<T>(`${BASE}api/project/${path}`, {
+    ...init, headers: { 'X-Scofen-Project': project },
+  })
+  const send = <T>(path: string, method: string, data: object) => call<T>(path, { method, body: JSON.stringify(data) })
+  return {
+    overview: () => call<ProjectOverview>('overview'),
+    changeMember: (username: string, role: string | null) => send<void>('members', 'PUT', { username, role }),
+    saveView: (view: SavedView) => send<SavedView>('views', 'PUT', view),
+    deleteView: (id: string) => call<void>(`views/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    upload: (file: File) => {
+      const data = new FormData()
+      data.append('file', file)
+      return call<{ headers: string[]; rows: string[][] }>('import/file', { method: 'POST', body: data })
+    },
+    preview: (input: ImportInput) => send<ImportPreview>('import/preview', 'POST', input),
+    commit: (input: ImportInput) => send<ImportPreview>('import/commit', 'POST', input),
+    matrix: (revision: number, links: MatrixLink[]) => send<{ revision: number }>('matrix', 'POST', { revision, links, requestId: requestId() }),
+    trace: (id: string, depth: number, direction: string, types: string[]) => call<TraceResult>(`trace?${new URLSearchParams({
+      id, direction, depth: String(depth), ...(types.length ? { types: types.join(',') } : {}),
+    })}`),
+    review: (target: ObjectTarget, text: string, revision: number) => send<Review>('reviews', 'POST', { ...target, text, revision }),
+    reply: (id: string, operation: string, text: string) => send<Review>(`reviews/${encodeURIComponent(id)}`, 'POST', { operation, text }),
+    recordEvidence: (evidence: Evidence) => send<Evidence>('evidence', 'PUT', evidence),
+    publish: (name: string, notes: string, revision: number) => send<BaselineInfo>('baselines', 'POST', { name, notes, revision }),
+    baseline: (id: string) => call<Baseline>(`baselines/${encodeURIComponent(id)}`),
+    diff: (id: string, from: string) => call<Difference[]>(`baselines/${encodeURIComponent(id)}/diff?${new URLSearchParams({ from })}`),
+    restore: (id: string, revision: number) => send<{ revision: number }>(`baselines/${encodeURIComponent(id)}/restore`, 'POST', {
+      revision, requestId: requestId(),
+    }),
+  }
+}
 export const createProject = (payload: { spaceCode: string; name: string; description: string }) =>
   request<{ id: string; name: string; spaceCode: string }>(`${BASE}api/workspaces/projects`, {
     method: 'POST',
-    headers: { 'X-Scofen-Session': 'web-ui' },
+    headers: { 'X-Scofen-Session': WEB_SESSION },
     body: JSON.stringify(payload),
   })
 
@@ -132,26 +170,26 @@ export const createProject = (payload: { spaceCode: string; name: string; descri
 export const deleteProject = (id: string) =>
   request<{ id: string; name: string; spaceCode: string }>(
     `${BASE}api/workspaces/projects/${encodeURIComponent(id)}`,
-    { method: 'DELETE', headers: { 'X-Scofen-Session': 'web-ui' } },
+    { method: 'DELETE', headers: { 'X-Scofen-Session': WEB_SESSION } },
   )
 
 export const postCommand = (command: CommandRequest) =>
   request<Patch>(`${BASE}api/commands`, {
     method: 'POST',
-    headers: { 'X-Scofen-Session': 'web-ui' },
+    headers: { 'X-Scofen-Session': WEB_SESSION },
     body: JSON.stringify(command),
   })
 
 export const undo = () =>
   request<Patch>(`${BASE}api/commands/undo`, {
     method: 'POST',
-    headers: { 'X-Scofen-Session': 'web-ui' },
+    headers: { 'X-Scofen-Session': WEB_SESSION },
   })
 
 export const redo = () =>
   request<Patch>(`${BASE}api/commands/redo`, {
     method: 'POST',
-    headers: { 'X-Scofen-Session': 'web-ui' },
+    headers: { 'X-Scofen-Session': WEB_SESSION },
   })
 
 /* ---------------- 用户与角色管理（需要 user.manage / role.manage） ---------------- */
@@ -231,7 +269,7 @@ export const exportNative = () => downloadText(`${BASE}api/exchange/scofen.json`
 export const importXmi = (payload: { semantic: string; sidecar?: string }) =>
   request<Patch>(`${BASE}api/exchange/xmi`, {
     method: 'POST',
-    headers: { 'X-Scofen-Session': 'web-ui' },
+    headers: { 'X-Scofen-Session': WEB_SESSION },
     body: JSON.stringify(payload),
   })
 

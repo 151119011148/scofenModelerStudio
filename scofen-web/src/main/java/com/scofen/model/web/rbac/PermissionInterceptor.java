@@ -2,11 +2,14 @@ package com.scofen.model.web.rbac;
 
 import com.scofen.model.web.auth.AuthController;
 import com.scofen.model.web.auth.AuthService;
+import com.scofen.model.web.project.ProjectAccess;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.servlet.HandlerMapping;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -23,10 +26,14 @@ import java.util.List;
 @Component
 public class PermissionInterceptor implements HandlerInterceptor {
 
-    private final AuthService authService;
+    private ProjectAccess projectAccess;
 
     public PermissionInterceptor(AuthService authService) {
-        this.authService = authService;
+    }
+
+    @Autowired
+    void setProjectAccess(ProjectAccess projectAccess) {
+        this.projectAccess = projectAccess;
     }
 
     @Override
@@ -60,7 +67,24 @@ public class PermissionInterceptor implements HandlerInterceptor {
                     "当前角色缺少权限：" + String.join("、", missing));
             return false;
         }
+        String path = java.util.Objects.toString(request.getAttribute(HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE), "");
+        if (projectAccess != null && projectEndpoint(path)) {
+            var grant = projectAccess.grant(ProjectAccess.projectId(request.getHeader(ProjectAccess.HEADER)), principal);
+            if (!grant.canView() || java.util.Arrays.stream(requirement.value()).anyMatch(permission -> switch (permission) {
+                case MODEL_EDIT, MODEL_DELETE -> !grant.canEdit();
+                case MODEL_IMPORT -> !grant.canImport();
+                case MODEL_EXPORT -> !grant.canExport();
+                default -> false;
+            })) {
+                write(response, HttpServletResponse.SC_FORBIDDEN, "forbidden", "当前账号没有此项目的访问权限");
+                return false;
+            }
+        }
         return true;
+    }
+
+    private static boolean projectEndpoint(String path) {
+        return path.matches("/api/(model|validation|metamodel/customization|commands|export|exchange|project)(/.*)?");
     }
 
     private void write(HttpServletResponse response, int status, String error, String message)

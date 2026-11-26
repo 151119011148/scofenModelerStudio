@@ -16,6 +16,7 @@ import com.scofen.model.metamodel.ExtensionLibrary;
 import com.scofen.model.metamodel.PropertyCatalog;
 import com.scofen.model.web.auth.AuthService;
 import com.scofen.model.web.persistence.PersistenceServiceFactory;
+import com.scofen.model.web.project.ProjectAccess;
 import com.scofen.model.web.workspace.WorkspaceDirectory;
 import com.scofen.model.web.ws.PatchBroker;
 import com.scofen.model.web.ws.PatchWebSocketHandler;
@@ -37,8 +38,8 @@ public class RepositoryConfiguration {
     }
 
     @Bean
-    public PatchWebSocketHandler patchWebSocketHandler(AuthService authService) {
-        return new PatchWebSocketHandler(authService);
+    public PatchWebSocketHandler patchWebSocketHandler(AuthService authService, ProjectAccess projectAccess) {
+        return new PatchWebSocketHandler(authService, projectAccess);
     }
 
     @Bean

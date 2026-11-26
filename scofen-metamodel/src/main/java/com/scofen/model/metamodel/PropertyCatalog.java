@@ -909,6 +909,7 @@ public final class PropertyCatalog {
         mc(UmlMetaclass.SYSML_REQUIREMENT,
                 s("id", "需求 ID", STR, STD),
                 s("text", "需求文本", TXT, STD),
+                e("requirementStatus", "需求状态", STD, "draft", "in_review", "approved"),
                 s("derivedFrom", "派生自", REFS, EXP),
                 s("refinedBy", "被细化", REFS, EXP),
                 s("satisfiedBy", "被满足", REFS, EXP),
