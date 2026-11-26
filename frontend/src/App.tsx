@@ -103,13 +103,6 @@ const EMPTY_MODEL: ModelSnapshot = {
 }
 
 const FALLBACK_CANVAS = { maxX: 10000, maxY: 10000, width: 640, height: 420 }
-/**
- * 华望式动态纸面：白色图纸从原点铺开，随内容向右下扩展、外扩 300 留白，
- * 最小 1000×1000（华望 ViewModel.ts 的 minWidth/paddingRight 口径）。
- * 纸面只是视觉层（pointer-events 关闭），平移夹紧与适应窗口仍按内容包围盒算。
- */
-const PAPER_MARGIN = 300
-const PAPER_MIN = 1000
 const FALLBACK_NODE = { width: 168, height: 84 }
 const ROOT_KEY = '__root__'
 
@@ -155,18 +148,6 @@ const FRAME_MARGIN = 28
 const FRAME_HEADER_H = 40
 const FRAME_NOTCH = 16
 type FrameBox = { left: number; top: number; right: number; bottom: number }
-/** 图框开启时把内容包围盒外扩成含首页标签的包围盒：否则适应窗口会裁掉顶部图种 / 图名标签。 */
-function expandBoxForFrame(box: FrameBox, frameOpen: boolean): FrameBox {
-  if (!frameOpen) {
-    return box
-  }
-  return {
-    left: box.left - FRAME_MARGIN,
-    top: box.top - FRAME_MARGIN - FRAME_HEADER_H,
-    right: box.right + FRAME_MARGIN,
-    bottom: box.bottom + FRAME_MARGIN,
-  }
-}
 /**
  * 没有打开任何图时，画布把整个模型铺开成一张总览。一个元素约 6 个 SVG 节点，
  * 5159 个（含标准库）就是 2.8 万节点，左侧任意一次折叠/选中都要为它重排一轮布局
@@ -670,9 +651,7 @@ const TreeRow = memo(function TreeRow(props: TreeRowProps) {
         label={isOpen ? t('折叠') : t('展开')}
         onToggle={() => actions.toggleExpanded(element.id)}
       />
-      {isRoot
-        ? <img className="tree-icon-img" src={svgUrl('Project')} width={16} height={16} alt="" title={info} />
-        : <TypeIcon code={data.codeOf(element.type)} size={16} title={info} />}
+      <TypeIcon code={isRoot ? 'Model' : data.codeOf(element.type)} size={16} title={info} />
       <span className="tree-label">{element.name}</span>
       {isRoot ? (
         // 华望成品：根节点与子层 Package 同一套组件渲染，行末只留细小的类型名。
@@ -844,7 +823,6 @@ function clamp(value: number, min: number, max: number): number {
 function clampPanTo(
   x: number,
   y: number,
-  level: number,
   box: { left: number; top: number; right: number; bottom: number },
   viewWidth: number,
   viewHeight: number,
@@ -1186,6 +1164,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   /** 画布缩放与平移：viewBox 只取其中一块视口，pointer 坐标由 getScreenCTM 自动换算。 */
   const [zoom, setZoom] = useState(1)
   const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [viewportSize, setViewportSize] = useState<{ width: number; height: number } | null>(null)
   const [panDrag, setPanDrag] = useState<{
     startX: number
     startY: number
@@ -1259,6 +1238,18 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   setProjectId(activeProjectId)
 
   const svgRef = useRef<SVGSVGElement | null>(null)
+  useEffect(() => {
+    const svg = svgRef.current
+    if (!svg) return
+    const measure = ({ width, height }: { width: number; height: number }) => {
+      if (width <= 0 || height <= 0) return
+      setViewportSize(previous => previous?.width === width && previous.height === height ? previous : { width, height })
+    }
+    measure(svg.getBoundingClientRect())
+    const observer = new ResizeObserver(([entry]) => measure(entry.contentRect))
+    observer.observe(svg)
+    return () => observer.disconnect()
+  }, [activeViewId])
   const workspaceRef = useRef<HTMLDivElement | null>(null)
   /** 左栏容器：属性面板上下拖拽时以它为高度基准（底边固定）。 */
   const leftDockRef = useRef<HTMLDivElement | null>(null)
@@ -1781,6 +1772,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     [containment],
   )
   const canvas = containment?.canvas ?? FALLBACK_CANVAS
+  const viewportWidth = viewportSize?.width ?? canvas.width
+  const viewportHeight = viewportSize?.height ?? canvas.height
   const nodeSize = containment?.node ?? FALLBACK_NODE
 
   const activeDiagramObj = useMemo(
@@ -2565,25 +2558,6 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       </button>
     )
   }
-
-  /** 画布视口在 clampPan 一节定义（要按内容包围盒夹紧，得等 positions 算完）。 */
-  const applyZoom = useCallback((next: number) => {
-    if (!Number.isFinite(next)) {
-      return
-    }
-    const level = clamp(Number(next.toFixed(3)), ZOOM_MIN, ZOOM_MAX)
-    // ＋/− 与「重置 100%」以视口中心为锚点：原来只动缩放、viewBox 左上角钉在原处，
-    // 放大时正在看的图会被推出视口，还得再平移找回来。
-    const center = {
-      x: pan.x + canvas.width / (2 * zoom),
-      y: pan.y + canvas.height / (2 * zoom),
-    }
-    setZoom(level)
-    setPan({
-      x: center.x - canvas.width / (2 * level),
-      y: center.y - canvas.height / (2 * level),
-    })
-  }, [pan, zoom, canvas])
 
   // ── 文档标签：图标签切画布，对象标签只切属性窗口的编辑对象 ──
   const activeTabKey = activeViewId
@@ -3561,27 +3535,103 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }, [positions, seqLayout])
 
   /**
+   * SysML 标准图框几何：矩形边框包住内容包围盒，左上角首页标签（home plate）按
+   * 「图种 [宿主 [图名]]」显示（与 Cameo / M-Design 一致），可在样式面板改标题、
+   * 边框色、标签色与字号。空图退回名义画布内的默认框，随 SVG 一起导出。
+   */
+  const diagramFrame = useMemo(() => {
+    // 序列图的 sd 图框本身就是图框（UML 只画一层），再套一层通用框会变成双层嵌套。
+    if (!frameEnabled || !activeDiagramObj || seqLayout?.frame) {
+      return null
+    }
+    const margin = FRAME_MARGIN
+    const headerH = FRAME_HEADER_H
+    const notch = FRAME_NOTCH
+    // 空图也留出与内容图一致的四周留白：回退盒本身再内缩一个 margin，
+    // 展开成图框后才是 (margin, margin, canvas - 2*margin)，否则图框会正好铺满
+    // 整个视口、底边压在画布边缘被裁掉。
+    const nominal = {
+      left: margin * 2, top: margin * 2 + headerH,
+      right: canvas.width - margin * 2, bottom: canvas.height - margin * 2,
+    }
+    // 画布货架不应缩水：往空图里拖入第一个图形时，内容包围盒会比初始画布小得多，
+    // 若直接用 contentBox，图框会瞬间从整张画布缩成一个小框（华望的 ViewModel
+    // 边界只会增长）。这里与初始画布取并集，保证图框至少保持初始尺寸，只增不减。
+    const box = contentBox
+      ? {
+        left: Math.min(contentBox.left, nominal.left),
+        top: Math.min(contentBox.top, nominal.top),
+        right: Math.max(contentBox.right, nominal.right),
+        bottom: Math.max(contentBox.bottom, nominal.bottom),
+      }
+      : nominal
+    const x = Math.round(box.left - margin)
+    const y = Math.round(box.top - margin - headerH)
+    const w = Math.round(box.right - box.left + margin * 2)
+    const h = Math.round(box.bottom - box.top + margin * 2 + headerH)
+    const kindColor = colorOr(frameStyle, 'frameKindColor', FRAME_KIND_COLORS[activeDiagramKind] ?? '#1890ff')
+    const border = colorOr(frameStyle, 'frameBorder', '#1c2430')
+    const borderW = numberValue(frameStyle, 'frameBorderWidth', 1)
+    const titleColor = colorOr(frameStyle, 'frameText', '#1c2430')
+    const nameSize = Math.min(18, numberValue(frameStyle, 'frameFontSize', 12.5))
+    const kindSize = Math.max(8, nameSize - 2)
+    const kindLabel = activeSpec ? pick(activeSpec.label, activeSpec.labelEn) : activeDiagramKind
+    const kindLine = `${activeDiagramKind}  ${kindLabel}`
+    const host = activeDiagramObj.ownerId && activeDiagramObj.ownerId !== 'model-root'
+      ? model.elements.find((element) => element.id === activeDiagramObj.ownerId)?.name
+      : null
+    const defaultTitle = host
+      ? `${kindLabel} [${host} [${activeDiagramObj.name}]]`
+      : `${kindLabel} [${activeDiagramObj.name}]`
+    // 自定义图类型可以给图框标题模板（{图种} / {宿主} / {图名}），优先于规范三段式，
+    // 但仍低于样式面板里手改的标题（图框样式是最后一公里）。
+    const customTemplate = activeDiagramObj.customTypeId
+      ? customization?.diagramTypes.find((item) => item.id === activeDiagramObj.customTypeId)?.frameTitle?.trim()
+      : ''
+    const templated = customTemplate
+      ? customTemplate
+        .replace(/\{图种\}/g, kindLabel)
+        .replace(/\{宿主\}/g, host ?? '')
+        .replace(/\{图名\}/g, activeDiagramObj.name)
+      : ''
+    const name = frameStyle.frameTitle?.trim()
+      ? frameStyle.frameTitle
+      : templated || defaultTitle
+    const headerW = Math.round(Math.max(
+      160,
+      estimateTextWidth(kindLine, kindSize) + 24 + notch,
+      estimateTextWidth(name, nameSize) + 24 + notch,
+    ))
+    return { x, y, w: Math.max(w, headerW), h, headerH, headerW, notch, kindColor, kindLine, name, border, borderW, titleColor, kindSize, nameSize }
+  }, [frameEnabled, activeDiagramObj, activeDiagramKind, activeSpec, contentBox, canvas.width, canvas.height, frameStyle, model.elements, locale, seqLayout, customization])
+
+  const drawingBounds: FrameBox | null = useMemo(() => diagramFrame ? {
+    left: diagramFrame.x, top: diagramFrame.y,
+    right: diagramFrame.x + diagramFrame.w, bottom: diagramFrame.y + diagramFrame.h,
+  } : contentBox, [diagramFrame, contentBox])
+
+  /**
    * 适应窗口：把当前图的内容包围盒整体缩进视口。
    * 原来只是「回到 100% 并归零平移」，自动排布把图铺到几千单位宽之后那样等于什么都没做。
    */
   const fitCanvas = useCallback(() => {
-    if (!contentBox) {
+    if (!drawingBounds) {
       setZoom(1)
       setPan({ x: 0, y: 0 })
       return
     }
-    const box = expandBoxForFrame(contentBox, frameEnabled && !!activeDiagramObj)
+    const box = drawingBounds
     const left = box.left
     const top = box.top
     const width = box.right - left + FIT_PADDING * 2
     const height = box.bottom - top + FIT_PADDING * 2
-    const next = clamp(Math.min(canvas.width / width, canvas.height / height), ZOOM_MIN, 1)
-    setZoom(Number(next.toFixed(3)))
+    const next = Number(clamp(Math.min(viewportWidth / width, viewportHeight / height), ZOOM_MIN, 1).toFixed(3))
+    setZoom(next)
     setPan({
-      x: Math.round(left - FIT_PADDING - (canvas.width / next - width) / 2),
-      y: Math.round(top - FIT_PADDING - (canvas.height / next - height) / 2),
+      x: left - FIT_PADDING - (viewportWidth / next - width) / 2,
+      y: top - FIT_PADDING - (viewportHeight / next - height) / 2,
     })
-  }, [contentBox, canvas.width, canvas.height, frameEnabled, activeDiagramObj])
+  }, [drawingBounds, viewportWidth, viewportHeight])
 
   // 排布写完坐标才缩放：模型是异步刷回来的，先立个牌子，等新记法渲染出来再适应窗口。
   const fitAfterLayout = useRef(false)
@@ -3593,23 +3643,18 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     fitCanvas()
   }, [model.notations, fitCanvas])
 
-  /**
-   * 序列图的消息是逐行往下堆的，消息一多图面就比默认画布高，打开时底部会被裁掉
-   * （示例图七条消息、创建出来的表头与销毁 X 全在视口外）。第一次打开这张图时若内容
-   * 超出视口就自动适应窗口一次；按图 id 记牌子，之后用户自己缩放 / 平移不会再被拉回。
-   */
-  const autoFitSeqDiagram = useRef<string | null>(null)
+  // 首次打开超出视口的图时适应窗口。之后的侧栏调整和视口操作由用户控制。
+  const openedDiagrams = useRef(new Set<string>())
   useEffect(() => {
-    if (!activeDiagramId || !seqLayout || autoFitSeqDiagram.current === activeDiagramId) {
-      return
+    if (!activeDiagramId || activeViewId || !viewportSize || !drawingBounds || modelProjectRef.current !== activeProjectId) return
+    const key = `${activeProjectId}/${activeDiagramId}`
+    if (openedDiagrams.current.has(key)) return
+    openedDiagrams.current.add(key)
+    const { left, top, right, bottom } = drawingBounds
+    if (left < 0 || top < 0 || right > viewportSize.width || bottom > viewportSize.height) {
+      fitCanvas()
     }
-    const box = seqLayout.box
-    if (box.bottom <= canvas.height && box.right <= canvas.width) {
-      return
-    }
-    autoFitSeqDiagram.current = activeDiagramId
-    fitCanvas()
-  }, [activeDiagramId, seqLayout, fitCanvas, canvas.width, canvas.height])
+  }, [activeProjectId, activeDiagramId, activeViewId, viewportSize, drawingBounds, fitCanvas])
 
   /**
    * 自动排布：只改写记法坐标，元素、关系与图归属一律不碰。
@@ -5063,10 +5108,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     openTab({ kind: 'diagram', id: diagram.id })
     const notation = model.notations.find((item) => item.diagramId === diagram.id && item.elementId === elementId)
     if (notation) {
-      setPan(clampPan(
-        notation.x + notation.width / 2 - canvas.width / (2 * zoom),
-        notation.y + notation.height / 2 - canvas.height / (2 * zoom),
-      ))
+      openedDiagrams.current.add(`${activeProjectId}/${diagram.id}`)
+      setPan({
+        x: notation.x + notation.width / 2 - viewportWidth / (2 * zoom),
+        y: notation.y + notation.height / 2 - viewportHeight / (2 * zoom),
+      })
     }
   }
 
@@ -5148,77 +5194,6 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }, [validationReport, coverageFilter])
 
   const coverageSummary = validationReport?.coverageSummary ?? { total: 0, satisfied: 0, verified: 0, fullyCovered: 0 }
-
-  /**
-   * SysML 标准图框几何：矩形边框包住内容包围盒，左上角首页标签（home plate）按
-   * 「图种 [宿主 [图名]]」显示（与 Cameo / M-Design 一致），可在样式面板改标题、
-   * 边框色、标签色与字号。空图退回名义画布内的默认框，随 SVG 一起导出。
-   */
-  const diagramFrame = useMemo(() => {
-    // 序列图的 sd 图框本身就是图框（UML 只画一层），再套一层通用框会变成双层嵌套。
-    if (!frameEnabled || !activeDiagramObj || seqLayout?.frame) {
-      return null
-    }
-    const margin = FRAME_MARGIN
-    const headerH = FRAME_HEADER_H
-    const notch = FRAME_NOTCH
-    // 空图也留出与内容图一致的四周留白：回退盒本身再内缩一个 margin，
-    // 展开成图框后才是 (margin, margin, canvas - 2*margin)，否则图框会正好铺满
-    // 整个视口、底边压在画布边缘被裁掉。
-    const nominal = {
-      left: margin * 2, top: margin * 2 + headerH,
-      right: canvas.width - margin * 2, bottom: canvas.height - margin * 2,
-    }
-    // 画布货架不应缩水：往空图里拖入第一个图形时，内容包围盒会比初始画布小得多，
-    // 若直接用 contentBox，图框会瞬间从整张画布缩成一个小框（华望的 ViewModel
-    // 边界只会增长）。这里与初始画布取并集，保证图框至少保持初始尺寸，只增不减。
-    const box = contentBox
-      ? {
-        left: Math.min(contentBox.left, nominal.left),
-        top: Math.min(contentBox.top, nominal.top),
-        right: Math.max(contentBox.right, nominal.right),
-        bottom: Math.max(contentBox.bottom, nominal.bottom),
-      }
-      : nominal
-    const x = Math.round(box.left - margin)
-    const y = Math.round(box.top - margin - headerH)
-    const w = Math.round(box.right - box.left + margin * 2)
-    const h = Math.round(box.bottom - box.top + margin * 2 + headerH)
-    const kindColor = colorOr(frameStyle, 'frameKindColor', FRAME_KIND_COLORS[activeDiagramKind] ?? '#1890ff')
-    const border = colorOr(frameStyle, 'frameBorder', '#5a6b7f')
-    const borderW = numberValue(frameStyle, 'frameBorderWidth', 1.4)
-    const titleColor = colorOr(frameStyle, 'frameText', '#1c2430')
-    const nameSize = Math.min(18, numberValue(frameStyle, 'frameFontSize', 12.5))
-    const kindSize = Math.max(8, nameSize - 2)
-    const kindLabel = activeSpec ? pick(activeSpec.label, activeSpec.labelEn) : activeDiagramKind
-    const kindLine = `${activeDiagramKind}  ${kindLabel}`
-    const host = activeDiagramObj.ownerId && activeDiagramObj.ownerId !== 'model-root'
-      ? model.elements.find((element) => element.id === activeDiagramObj.ownerId)?.name
-      : null
-    const defaultTitle = host
-      ? `${kindLabel} [${host} [${activeDiagramObj.name}]]`
-      : `${kindLabel} [${activeDiagramObj.name}]`
-    // 自定义图类型可以给图框标题模板（{图种} / {宿主} / {图名}），优先于规范三段式，
-    // 但仍低于样式面板里手改的标题（图框样式是最后一公里）。
-    const customTemplate = activeDiagramObj.customTypeId
-      ? customization?.diagramTypes.find((item) => item.id === activeDiagramObj.customTypeId)?.frameTitle?.trim()
-      : ''
-    const templated = customTemplate
-      ? customTemplate
-        .replace(/\{图种\}/g, kindLabel)
-        .replace(/\{宿主\}/g, host ?? '')
-        .replace(/\{图名\}/g, activeDiagramObj.name)
-      : ''
-    const name = frameStyle.frameTitle?.trim()
-      ? frameStyle.frameTitle
-      : templated || defaultTitle
-    const headerW = Math.round(Math.max(
-      160,
-      estimateTextWidth(kindLine, kindSize) + 24 + notch,
-      estimateTextWidth(name, nameSize) + 24 + notch,
-    ))
-    return { x, y, w, h, headerH, headerW, notch, kindColor, kindLine, name, border, borderW, titleColor, kindSize, nameSize }
-  }, [frameEnabled, activeDiagramObj, activeDiagramKind, activeSpec, contentBox, canvas.width, canvas.height, frameStyle, model.elements, locale, seqLayout, customization])
 
   /**
    * 导出用的独立 SVG：还原整图画布、铺白底、把运行时 CSS 计算样式内联到每个节点
@@ -5604,36 +5579,34 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return matrix && matrix.a > 0 ? pixels / matrix.a : pixels / zoom
   }, [zoom])
 
-  /** 当前图的内容包围盒；空图退回整张画布，新建图也要能正常平移。序列图用推导出的内容盒（见 contentBox）。 */
-  const panBox = useMemo(
-    () => {
-      const base = contentBox ?? { left: 0, top: 0, right: canvas.maxX, bottom: canvas.maxY }
-      return contentBox ? expandBoxForFrame(base, frameEnabled && !!activeDiagramObj) : base
-    },
-    [contentBox, canvas.maxX, canvas.maxY, frameEnabled, activeDiagramObj],
-  )
-
-  /** 动态纸面尺寸：内容右下角外扩 300，最小 1000×1000；空图就是最小纸面。 */
-  const paper = useMemo(() => ({
-    width: Math.max((contentBox?.right ?? 0) + PAPER_MARGIN, PAPER_MIN),
-    height: Math.max((contentBox?.bottom ?? 0) + PAPER_MARGIN, PAPER_MIN),
-  }), [contentBox])
-
-  const viewWidth = canvas.width / zoom
-  const viewHeight = canvas.height / zoom
+  const viewWidth = viewportWidth / zoom
+  const viewHeight = viewportHeight / zoom
 
   /** 平移落点夹紧：视口始终与内容保留一段可见交集（规则见 clampPanTo）。 */
   const clampPan = useCallback(
     (x: number, y: number, level = zoom) => clampPanTo(
       x,
       y,
-      level,
-      panBox,
-      canvas.width / level,
-      canvas.height / level,
+      drawingBounds ?? { left: 0, top: 0, right: canvas.maxX, bottom: canvas.maxY },
+      viewportWidth / level,
+      viewportHeight / level,
     ),
-    [canvas.width, canvas.height, panBox, zoom],
+    [drawingBounds, canvas.maxX, canvas.maxY, viewportWidth, viewportHeight, zoom],
   )
+
+  const clampedPan = clampPan(pan.x, pan.y)
+  const viewBox = `${clampedPan.x} ${clampedPan.y} ${viewWidth} ${viewHeight}`
+
+  const applyZoom = (next: number) => {
+    if (!Number.isFinite(next)) return
+    const level = clamp(Number(next.toFixed(3)), ZOOM_MIN, ZOOM_MAX)
+    setPan(clampPan(
+      clampedPan.x + viewWidth / 2 - viewportWidth / (2 * level),
+      clampedPan.y + viewHeight / 2 - viewportHeight / (2 * level),
+      level,
+    ))
+    setZoom(level)
+  }
 
   /**
    * 按屏幕像素量平移视口（滚轮 / 触摸板双指）：deltaY 为正就是「往下滚」，
@@ -5641,21 +5614,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
    * 滚动是视口跟着滚动方向走，两条手势的符号本来就不该一样。
    */
   const panByPixels = useCallback((dx: number, dy: number) => {
-    setPan((current) => clampPan(current.x + pixelsToUnits(dx), current.y + pixelsToUnits(dy)))
+    const x = pixelsToUnits(dx)
+    const y = pixelsToUnits(dy)
+    setPan((current) => {
+      const actual = clampPan(current.x, current.y)
+      return clampPan(actual.x + x, actual.y + y)
+    })
   }, [clampPan, pixelsToUnits])
-
-  /**
-   * 画布视口：zoom 收窄取样范围、pan 平移原点，再按内容包围盒夹紧——
-   * 显示出来的永远在范围内，缩放和平移都不怕把图推丢。
-   */
-  const clampedPan = clampPan(pan.x, pan.y)
-  /**
-   * 图框首页标签落在内容包围盒上方，内容靠左上时会有负坐标；视口起点向负方向
-   * 外扩这段溢出，标签才不会被裁掉（外扩量同时加进视口宽高，保持缩放不变形）。
-   */
-  const framePadX = diagramFrame ? Math.max(0, -diagramFrame.x) + 8 : 0
-  const framePadY = diagramFrame ? Math.max(0, -diagramFrame.y) + 8 : 0
-  const viewBox = `${clampedPan.x - framePadX} ${clampedPan.y - framePadY} ${viewWidth + framePadX} ${viewHeight + framePadY}`
 
   /** 小地图点击 / 拖动：把视口中心移到落点对应的模型坐标（仍走夹紧）。 */
   const minimapJump = useCallback((clientX: number, clientY: number) => {
@@ -5676,10 +5641,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
   /** 小地图取样范围：内容包围盒外扩 20 单位；空图退回名义画布。 */
   const minimapViewBox = (() => {
-    const left = (contentBox?.left ?? 0) - 20
-    const top = (contentBox?.top ?? 0) - 20
-    const width = (contentBox ? contentBox.right - contentBox.left : canvas.width) + 40
-    const height = (contentBox ? contentBox.bottom - contentBox.top : canvas.height) + 40
+    const left = (drawingBounds?.left ?? 0) - 20
+    const top = (drawingBounds?.top ?? 0) - 20
+    const width = (drawingBounds ? drawingBounds.right - drawingBounds.left : viewportWidth) + 40
+    const height = (drawingBounds ? drawingBounds.bottom - drawingBounds.top : viewportHeight) + 40
     return `${left} ${top} ${width} ${height}`
   })()
 
@@ -5697,18 +5662,19 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       return
     }
     const anchor = point.matrixTransform(matrix.inverse())
-    const next = clamp(zoom * (deltaY < 0 ? 1.12 : 1 / 1.12), ZOOM_MIN, ZOOM_MAX)
+    if (deltaY === 0) return
+    const next = Number(clamp(zoom * (deltaY < 0 ? 1.12 : 1 / 1.12), ZOOM_MIN, ZOOM_MAX).toFixed(3))
     if (Math.abs(next - zoom) < 0.0001) {
       return
     }
     const ratio = zoom / next
     setPan(clampPan(
-      anchor.x - (anchor.x - pan.x) * ratio,
-      anchor.y - (anchor.y - pan.y) * ratio,
+      anchor.x - (anchor.x - clampedPan.x) * ratio,
+      anchor.y - (anchor.y - clampedPan.y) * ratio,
       next,
     ))
-    setZoom(Number(next.toFixed(3)))
-  }, [zoom, pan, clampPan])
+    setZoom(next)
+  }, [zoom, clampedPan.x, clampedPan.y, clampPan])
 
   // 滚轮监听必须是非 passive 的原生监听：React 的 onWheel 走被动通道，preventDefault 无效。
   useEffect(() => {
@@ -5730,7 +5696,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
     svg.addEventListener('wheel', onWheel, { passive: false })
     return () => svg.removeEventListener('wheel', onWheel)
-  }, [zoomAtCursor, panByPixels])
+  }, [activeViewId, zoomAtCursor, panByPixels])
 
   /**
    * 画布起手：空白左键拖 = 平移；Shift+空白拖 = 框选；中键拖 = 任意位置平移。
@@ -5754,8 +5720,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     setPanDrag({
       startX: event.clientX,
       startY: event.clientY,
-      panX: pan.x,
-      panY: pan.y,
+      panX: clampedPan.x,
+      panY: clampedPan.y,
       onBackground,
       moved: false,
     })
@@ -6210,8 +6176,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const size = nodeSizeFor(typeCode)
     void createElementFromPalette(
       typeCode,
-      canvas.width / 2 - size.width / 2,
-      canvas.height / 2 - size.height / 2,
+      clampedPan.x + viewWidth / 2 - size.width / 2,
+      clampedPan.y + viewHeight / 2 - size.height / 2,
     )
   }
 
@@ -8889,7 +8855,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             <div className="notation-panel">
               {selectedDiagram ? (
                 <>
-                  <div className="kv"><span>{t('画布')}</span><code>{canvas.width} × {canvas.height}</code></div>
+                  <div className="kv"><span>{t('画布')}</span><code>{Math.round(viewportWidth)} × {Math.round(viewportHeight)} px</code></div>
                   <div className="kv"><span>{t('节点默认')}</span><code>{nodeSize.width} × {nodeSize.height}</code></div>
                   <div className="kv"><span>{t('图内元素')}</span><code>{selectedDiagram.elementIds.length}</code></div>
                   <div className="kv"><span>{t('缩放')}</span><code>{Math.round(zoom * 100)}%</code></div>
@@ -9395,9 +9361,6 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 </linearGradient>
               ))}
             </defs>
-            {/* 华望式动态纸面：白纸从原点铺开、随内容扩展（见 paper）。纯视觉层不接指针。 */}
-            <rect className="canvas-paper" x={0} y={0} width={paper.width} height={paper.height}
-              pointerEvents="none" data-paper="true" />
             {diagramFrame ? (
               <g
                 className={`diagram-frame${toolboxTab === 'styles' && !selectedId && !selectedRelationId ? ' frame-focused' : ''}`}
@@ -9508,7 +9471,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             )}
             {seqLayout?.messages.map((message) => renderSeqMessage(message))}
             {positions.length === 0 && (
-              <text x={canvas.width / 2} y={canvas.height / 2} textAnchor="middle" className="empty">
+              <text x={clampedPan.x + viewWidth / 2} y={clampedPan.y + viewHeight / 2}
+                textAnchor="middle" className="empty" pointerEvents="none" data-export="omit">
                 {activeDiagramObj
                   ? t('当前图暂无元素')
                   : t('未打开图 · 项目共 {count} 个元素，规模过大不再铺开总览', { count: projectElements.length })}
@@ -10044,7 +10008,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             {menuDiagram && <DiagramIcon code={menuDiagram.kind} size={16} />}
             {menuRelation && <RelationIcon code={menuRelation.type} size={16} />}
             {menuElement && <TypeIcon code={codeOf(menuElement.type)} size={16} />}
-            {menuTarget?.kind === 'root' && projectRoot && <TypeIcon code={codeOf(projectRoot.type)} size={16} />}
+            {menuTarget?.kind === 'root' && projectRoot && <TypeIcon code="Model" size={16} />}
             {/* 引用型右键目标：标题也指向被引用的目标元素，而不是退化成「项目根」。 */}
             {menuTarget?.kind === 'reference' && (() => {
               const target = elementById.get(menuTarget.id)

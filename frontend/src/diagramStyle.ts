@@ -78,7 +78,7 @@ export const FRAME_STYLE_GROUPS: Array<{ label: string; fields: StyleField[] }> 
     label: '图框',
     fields: [
       { key: 'frameBorder', label: '框线颜色', kind: 'color' },
-      { key: 'frameBorderWidth', label: '框线粗细', kind: 'number', min: 0.5, max: 6, step: 0.5, fallback: 1.4 },
+      { key: 'frameBorderWidth', label: '框线粗细', kind: 'number', min: 0.5, max: 6, step: 0.5, fallback: 1 },
       { key: 'frameKindColor', label: '图种标签色', kind: 'color' },
       { key: 'frameText', label: '图名颜色', kind: 'color' },
       { key: 'frameFontSize', label: '标签字号', kind: 'number', min: 8, max: 24, step: 0.5, fallback: 12.5 },

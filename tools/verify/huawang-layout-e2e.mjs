@@ -116,12 +116,24 @@ console.log('[3] 项目根节点样式（华望：与子层同款，无黄底徽
 const root = await page.evaluate(`(()=>{
  const r=document.querySelector('.tree-row.root-node');if(!r)return null
  const tag=r.querySelector('.root-tag');const cs=getComputedStyle(r);const ts=tag?getComputedStyle(tag):null
- return {weight:cs.fontWeight,tagText:tag?.textContent?.trim()??'',tagBg:ts?.backgroundColor??'',
+ return {icon:r.querySelector('img')?.getAttribute('src')??'',
+         weight:cs.fontWeight,tagText:tag?.textContent?.trim()??'',tagBg:ts?.backgroundColor??'',
          tagColor:ts?.color??'',tagRadius:ts?.borderRadius??''}})()`)
 check('根节点存在且保留「项目根」文案', !!root && root.tagText.includes('项目根'), JSON.stringify(root))
+check('根节点使用带三角标记的模型包图标', root?.icon.endsWith('/Model.svg'), JSON.stringify(root))
 check('根节点不再加粗（华望同子层）', root?.weight === '400', JSON.stringify(root))
 check('根标记无黄底（背景透明）', root?.tagBg === 'rgba(0, 0, 0, 0)', JSON.stringify(root))
 check('根标记为灰字方角', root?.tagRadius === '0px', JSON.stringify(root))
+
+const viewport = await page.evaluate(`(()=>{
+ const svg=document.querySelector('.canvas > svg');if(!svg)return null
+ const size=svg.getBoundingClientRect();const box=svg.viewBox.baseVal;const scale=svg.getScreenCTM()?.a
+ return {width:size.width,height:size.height,viewWidth:box.width,viewHeight:box.height,scale,
+         paper:!!svg.querySelector('[data-paper]'),frames:svg.querySelectorAll('.diagram-frame').length}
+})()`)
+check('绘图区按可见尺寸等比取样', !!viewport && Math.abs(viewport.width - viewport.viewWidth * viewport.scale) < 1
+  && Math.abs(viewport.height - viewport.viewHeight * viewport.scale) < 1, JSON.stringify(viewport))
+check('画布无纸面边框且最多一层标准图框', !!viewport && !viewport.paper && viewport.frames <= 1, JSON.stringify(viewport))
 
 console.log('[4] 新建图卡片墙（华望 NewGraph）')
 const openedDiagram = await page.evaluate(`(()=>{
