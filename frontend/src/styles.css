@@ -856,6 +856,8 @@ body.row-resizing * { cursor: row-resize !important; }
 .prop-empty { font-size: 11.5px; color: var(--text-3); font-style: italic; }
 .prop-value-cards, .prop-value-chips { display: flex; flex-wrap: wrap; gap: 3px; min-width: 0; }
 .prop-value-cards .prop-ref-card { max-width: 100%; background: transparent; border-color: transparent; }
+.prop-value .prop-ref-card:not(.missing) .prop-ref-id { display: none; }
+.prop-ref-card:focus-visible { outline: 1px solid var(--accent); }
 .prop-value-chips .prop-chip { padding-right: 6px; }
 .prop-row.readonly .prop-static {
   width: 100%;
@@ -1852,6 +1854,7 @@ body.row-resizing * { cursor: row-resize !important; }
 .context-menu button:hover:not(:disabled) { background: var(--accent-soft); color: var(--accent); }
 .context-menu button.danger { color: var(--danger); }
 .context-menu button.danger:hover:not(:disabled) { background: #fbecec; color: var(--danger); }
+.context-menu.reference-menu { z-index: 51; }
 
 .modal-overlay {
   position: fixed;
@@ -3344,6 +3347,7 @@ button.primary.danger { background: var(--surface); border-color: var(--danger);
 .v-table tbody tr:nth-child(even) { background: #fafbfe; }
 .v-table tbody tr:hover { background: var(--row-alt-bg); }
 .v-table tbody tr:focus-within { background: var(--item-active-bg); }
+.v-table .tv-reference { cursor: context-menu; }
 .v-table .tv-empty { text-align: center; color: var(--text-3); padding: 20px; }
 .tv-mono { font-family: var(--mono); font-size: 11px; color: var(--text-3); }
 .tv-name { display: inline-flex; align-items: center; gap: 6px; }

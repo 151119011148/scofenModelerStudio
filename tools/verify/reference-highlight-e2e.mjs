@@ -3,6 +3,7 @@
  *   1) 引用卡片右键出现「树上高亮 / 画上高亮 / 移除」三项；
  *   2) 目标元素已入图：点「画上高亮」切到所在图、选中并居中；
  *   3) 目标元素离图：「画上高亮」置灰并给出提示，树上高亮仍可用。
+ *   4) 派生所有者、拥有的元素同样支持定位，并按目标逐项操作。
  *
  * 灌数走 API（Class 引用 Block，Block 在 bdd 图上），可重入：固定 id，已存在则跳过。
  * 运行方式见 tools/verify/README.md：Chrome 必须与本脚本在同一次 Bash 调用内启动。
@@ -11,8 +12,9 @@ import { writeFileSync, mkdirSync } from 'node:fs'
 
 const APP_URL = process.env.APP_URL ?? 'http://127.0.0.1:18080/'
 const PORT = Number(process.env.CDP_PORT ?? 9468)
+const USERNAME = process.env.SCOFEN_USERNAME ?? 'scofen'
 const PASSWORD = process.env.SCOFEN_PASSWORD ?? ''
-const SHOTS = '/tmp/scofen-ref-shots'
+const SHOTS = process.env.SCOFEN_VERIFY_SHOTS ?? '/tmp/scofen-ref-shots'
 
 const IDS = { cls: 'e2e-ref-cls', blk: 'e2e-ref-blk', blk2: 'e2e-ref-blk2', dgm: 'e2e-ref-dgm' }
 const NAMES = { cls: '引用高亮E2E·类', blk: '引用高亮E2E·块', blk2: '引用高亮E2E·离图块', dgm: '引用高亮E2E图' }
@@ -110,7 +112,7 @@ const snapshotExpr = `(async()=>{const r=await fetch('api/model',{headers:${auth
 async function seed() {
   const login = await fetch(`${APP_URL}api/auth/login`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username: 'scofen', password: PASSWORD }),
+    body: JSON.stringify({ username: USERNAME, password: PASSWORD }),
   })
   if (!login.ok) throw new Error('灌数登录失败 HTTP ' + login.status)
   const auth = { Authorization: `Bearer ${(await login.json()).token}`, 'Content-Type': 'application/json', 'X-Scofen-Session': 'web-ui' }
@@ -140,16 +142,17 @@ async function seed() {
       await cmd('UPDATE_PROPERTY', { id: IDS.cls, key, value: target })
     }
   }
+  return rootId
 }
 
 const page = await connect()
-await seed()
+const rootId = await seed()
 await page.goto(APP_URL)
 
 console.log('[1] 登录并选中引用方元素')
 await waitFor(page, `!!document.querySelector('input[name="scofen-admin-username"]')`)
 await page.evaluate(`(()=>{const set=(el,v)=>{const s=Object.getOwnPropertyDescriptor(el.constructor.prototype,'value').set;s.call(el,v);el.dispatchEvent(new Event('input',{bubbles:true}))};
- set(document.querySelector('input[name="scofen-admin-username"]'),'scofen');
+ set(document.querySelector('input[name="scofen-admin-username"]'),${JSON.stringify(USERNAME)});
  set(document.querySelector('input[name="scofen-admin-password"]'),${JSON.stringify(PASSWORD)});
  [...document.querySelectorAll('button')].find(b=>/登录/.test(b.textContent)).click();return 1})()`)
 check('登录成功进入工作台', await waitFor(page, `!!document.querySelector('.props-dock')`, 120, 250))
@@ -253,6 +256,37 @@ check('树上高亮后未切图（活动标签不变）', await page.evaluate(
   `(()=>{const t=document.querySelector('.doc-tab.active .doc-tab-label');
   return !!t && t.textContent.includes(${JSON.stringify(NAMES.dgm)})})()`))
 await page.screenshot('03-off-diagram-disabled')
+
+console.log('[5] 派生所有者与拥有的元素支持逐项定位')
+const cardSelector = (key, id) => `.prop-row[data-prop-key="${key}"] .prop-ref-card[data-reference-id="${id}"]`
+const openReference = async (selector) => {
+  await page.evaluate(`(()=>{
+    const card=document.querySelector(${JSON.stringify(selector)});
+    if(!card) return false;
+    const r=card.getBoundingClientRect();
+    card.dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:r.left,clientY:r.top}));
+    return true;
+  })()`)
+  return waitFor(page, `!!document.querySelector('.context-menu.reference-menu')`)
+}
+const clickTreeHighlight = () => page.evaluate(`[...document.querySelectorAll('.context-menu button')]
+  .find(b=>b.textContent.trim()==='树上高亮')?.click()`)
+await page.evaluate(setInputExpr('.prop-search-row input', 'owner'))
+const ownerSelector = cardSelector('owner', rootId)
+check('派生所有者显示真实对象', await waitFor(page, `!!document.querySelector(${JSON.stringify(ownerSelector)})`))
+check('派生所有者可打开右键菜单', await openReference(ownerSelector))
+check('派生引用菜单只提供定位操作', await page.evaluate(`(() => {
+  const buttons=[...document.querySelectorAll('.context-menu.reference-menu button')].map(b=>b.textContent.trim());
+  return buttons.includes('树上高亮') && buttons.includes('画上高亮') && !buttons.includes('移除');
+})()`))
+await clickTreeHighlight()
+check('所有者在模型树中选中', await waitFor(page, `!!document.querySelector('.tree-row.selected[data-tree-id="${rootId}"]')`))
+await page.evaluate(setInputExpr('.prop-search-row input', 'ownedElement'))
+const childSelector = cardSelector('ownedElement', IDS.blk2)
+check('拥有的元素列表保留每个对象的标识', await waitFor(page, `!!document.querySelector(${JSON.stringify(childSelector)})`))
+check('可以单独右键列表里的第二个目标', await openReference(childSelector))
+await clickTreeHighlight()
+check('树上选中的是实际右键的子元素', await waitFor(page, `!!document.querySelector('.tree-row.selected[data-tree-id="${IDS.blk2}"]')`))
 
 console.log('────────────')
 console.log(`通过 ${passed} / ${passed + failed}`)

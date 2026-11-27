@@ -607,6 +607,7 @@ export const DICTIONARY: Record<string, { zh: string; en: string }> = {
     en: 'Located "{name}" in the model tree',
   },
   '未引用的元素': { zh: '未引用的元素', en: 'Unresolved element' },
+  '引用值已变化，请重新选择': { zh: '引用值已变化，请重新选择', en: 'The reference changed. Select it again.' },
   '引用': { zh: '引用', en: 'Reference' },
   '添加引用': { zh: '添加引用', en: 'Add reference' },
   '移除': { zh: '移除', en: 'Remove' },

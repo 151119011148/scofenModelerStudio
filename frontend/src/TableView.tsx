@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import type { ReactNode } from 'react'
+import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import type { ContainmentSpec, ElementTypeInfo, ModelElement, Relationship, RelationshipTypeInfo, ValidationReport } from './types'
 import type { MatrixLink, SavedView, ViewSettings } from './projectWorkflow'
 import { svgUrl } from './iconAssets'
@@ -45,6 +45,7 @@ export interface TableViewProps {
   onImport: () => void
   onSelectElement: (id: string) => void
   onSelectRelation: (id: string) => void
+  onReferenceContextMenu: (event: ReactMouseEvent, kind: 'element' | 'relation', id: string) => void
   onRename: (id: string, name: string) => void
   onDocumentation: (id: string, doc: string) => void
   onProperty: (id: string, key: string, value: string) => void
@@ -108,7 +109,7 @@ function exportCsv(rows: string[][], filename: string) {
 
 export default function TableView(props: TableViewProps) {
   const { view, elements, relationships, relations, containment, validation, projectRootId, selectedId, busy, canEdit,
-    canExport, canImport, canDelete, typeInfo, savedViews, onSelectElement, onRename, onDocumentation,
+    canExport, canImport, canDelete, typeInfo, savedViews, onSelectElement, onReferenceContextMenu, onRename, onDocumentation,
     onProperty, onOpenCreate, onCreateQuickElement, onMatrix } = props
   const [settings, setSettings] = useState(() => defaultSettings(view))
   const [savedId, setSavedId] = useState('')
@@ -148,7 +149,7 @@ export default function TableView(props: TableViewProps) {
     return grouped
   }, [relationships])
   const relationSpecs = useMemo(() => new Map(relations.map(relation => [norm(relation.code), relation])), [relations])
-  const ownerOf = (element: ModelElement) => byId.get(element.ownerId ?? '')?.name ?? '—'
+  const ownerOf = (element: ModelElement) => byId.get(element.ownerId ?? '')
   const field = (element: ModelElement, key: string) => String(element.properties?.[key] ?? '')
   const businessId = (element: ModelElement) => field(element, 'id') || element.xmiId || element.id
   const statusOf = (element: ModelElement) => field(element, 'requirementStatus') || 'draft'
@@ -247,7 +248,8 @@ export default function TableView(props: TableViewProps) {
           {Object.entries(STATUS_LABELS).map(([id, value]) => <option key={id} value={id}>{value}</option>)}</select>
         case 'satisfy':
         case 'verify': return ((key === 'satisfy' ? refs?.satisfiedBy : refs?.verifiedBy) ?? []).map(ref =>
-          <button type="button" key={ref.id} onClick={() => onSelectElement(ref.id)}>{ref.name}</button>)
+          <button type="button" key={ref.id} onClick={() => onSelectElement(ref.id)}
+            onContextMenu={event => onReferenceContextMenu(event, 'element', ref.id)}>{ref.name}</button>)
         case 'execution': return RESULT_LABELS[executionOf(element.id)]
       }
     }
@@ -285,14 +287,19 @@ export default function TableView(props: TableViewProps) {
         <button type="button" onClick={() => set({ mode: mode === 'tree' ? 'list' : 'tree' })}>{mode === 'tree' ? '当前范围' : '全部范围'}</button>
         <button type="button" disabled={!canEdit || busy} onClick={() => onOpenCreate(scopeId || scopeOwner)}>{t('新建元素')}</button>
         {canExport && <button type="button" disabled={!rows.length} onClick={() => exportCsv([['名称', '类型', '构造型', '所有者', '文档', '标签数'],
-          ...rows.map(element => [element.name, shortType(element.type), element.stereotypes.join(' '), ownerOf(element),
+          ...rows.map(element => [element.name, shortType(element.type), element.stereotypes.join(' '), ownerOf(element)?.name ?? '—',
             element.documentation, String(Object.keys(element.taggedValues ?? {}).length)])], 'generic-table.csv')}>{t('导出 CSV')}</button>}
         <span className="vt-count">{rows.length} 行</span></>)}
       <div className="tv-scroll"><table className="v-table"><thead><tr>{['名称', '类型', '构造型', '所有者', '文档', '标签数'].map(key => <th key={key}>{t(key)}</th>)}</tr></thead>
-        <tbody>{rows.length ? rows.map(element => <tr key={element.id} data-element-id={element.id} onDoubleClick={() => onSelectElement(element.id)}>
-          <td>{nameCell(element)}</td><td>{shortType(element.type)}</td><td>{element.stereotypes.join(' ') || '—'}</td><td>{ownerOf(element)}</td>
-          <td><EditableCell value={element.documentation} disabled={!canEdit || busy} onCommit={value => onDocumentation(element.id, value)} /></td>
-          <td>{Object.keys(element.taggedValues ?? {}).length}</td></tr>) : <tr><td colSpan={6} className="tv-empty">没有符合条件的元素。</td></tr>}</tbody></table></div>
+        <tbody>{rows.length ? rows.map(element => {
+          const owner = ownerOf(element)
+          return <tr key={element.id} data-element-id={element.id} onDoubleClick={() => onSelectElement(element.id)}>
+            <td>{nameCell(element)}</td><td>{shortType(element.type)}</td><td>{element.stereotypes.join(' ') || '—'}</td>
+            <td>{owner ? <span className="tv-reference" tabIndex={0} title={t('右键可树上高亮 / 画上高亮')}
+              onContextMenu={event => onReferenceContextMenu(event, 'element', owner.id)}>{owner.name}</span> : '—'}</td>
+            <td><EditableCell value={element.documentation} disabled={!canEdit || busy} onCommit={value => onDocumentation(element.id, value)} /></td>
+            <td>{Object.keys(element.taggedValues ?? {}).length}</td></tr>
+        }) : <tr><td colSpan={6} className="tv-empty">没有符合条件的元素。</td></tr>}</tbody></table></div>
     </section>
   }
 
@@ -345,9 +352,11 @@ export default function TableView(props: TableViewProps) {
     </>)}
     <div className="tv-scroll matrix-scroll"><table className="v-table matrix-table"><thead><tr>
       <th className="matrix-corner">行 \ 列</th>{columns.map(item => <th key={item.id} className="matrix-col">
-        <button type="button" onClick={() => onSelectElement(item.id)}>{item.name}</button></th>)}</tr></thead>
+        <button type="button" onClick={() => onSelectElement(item.id)}
+          onContextMenu={event => onReferenceContextMenu(event, 'element', item.id)}>{item.name}</button></th>)}</tr></thead>
       <tbody>{!rows.length || !columns.length ? <tr><td colSpan={columns.length + 1} className="tv-empty">当前范围没有符合条件的行或列。</td></tr>
-        : rows.map(row => <tr key={row.id}><th className="matrix-row"><button type="button" onClick={() => onSelectElement(row.id)}>{row.name}</button></th>
+        : rows.map(row => <tr key={row.id}><th className="matrix-row"><button type="button" onClick={() => onSelectElement(row.id)}
+          onContextMenu={event => onReferenceContextMenu(event, 'element', row.id)}>{row.name}</button></th>
           {columns.map(column => {
             const first = swapped ? column.id : row.id
             const second = swapped ? row.id : column.id
@@ -369,7 +378,8 @@ export default function TableView(props: TableViewProps) {
         {canEdit && <button type="button" disabled={busy || matrixBusy || !pending.length} onClick={() => changesFor(pending)}>建立所选空单元关系（{pending.length}）</button>}
         {canDelete && <button type="button" disabled={busy || matrixBusy || !renderedRelationIds.length || renderedRelationIds.length > 500}
           onClick={() => changesFor(renderedRelationIds.map(item => ({ removeId: item.id })))}>删除所选关系（{renderedRelationIds.length}）</button>}</div>
-      <div>{renderedRelationIds.map(item => <span key={item.id}><button type="button" onClick={() => props.onSelectRelation(item.id)}>{item.name || item.type}</button>
+      <div>{renderedRelationIds.map(item => <span key={item.id}><button type="button" onClick={() => props.onSelectRelation(item.id)}
+        onContextMenu={event => onReferenceContextMenu(event, 'relation', item.id)}>{item.name || item.type}</button>
         {canDelete && <button aria-label={'删除 ' + (item.name || item.type)} type="button" disabled={busy || matrixBusy}
           onClick={() => changesFor([{ removeId: item.id }])}>×</button>}</span>)}
         {inferred(latest.source, latest.target) && !linksOf(latest.source, latest.target).length && <span>通过模型属性引用覆盖。</span>}</div>

@@ -124,6 +124,9 @@ const NAMESPACE_HOST_CODES = new Set([
   'EXECUTION_ENVIRONMENT', 'INTERACTION', 'ACTIVITY', 'STATE_MACHINE',
   'PROTOCOL_STATE_MACHINE', 'USE_CASE', 'REQUIREMENT', 'TEST_CASE', 'ACTOR',
 ])
+const DEPENDENCY_METACLASSES = new Set([
+  'DEPENDENCY', 'ABSTRACTION', 'REALIZATION', 'INTERFACE_REALIZATION', 'SUBSTITUTION', 'USAGE', 'MANIFESTATION',
+])
 /** 名称的模糊归一化：忽略大小写、空白与常见分隔符，便于「订单 查询」命中「订单查询…」。 */
 function normalizeName(text: string): string {
   return text.toLowerCase().replace(/[\s·\-_/\\()[\]（）【】「」:：,，.。]+/g, '')
@@ -671,14 +674,17 @@ const TreeRow = memo(function TreeRow(props: TreeRowProps) {
   )
 })
 
+type RevealKind = 'element' | 'diagram' | 'relation'
+type ModelReference = { kind: RevealKind; id: string }
+type ReferenceRemoval = { targetId: string; key: string; index: number; value: string }
+
 type MenuTarget =
   | { kind: 'element'; id: string }
   | { kind: 'diagram'; id: string }
   /** 关系也是模型对象：树上高亮后在关系行显示持久选中态。 */
   | { kind: 'relation'; id: string }
   | { kind: 'root'; id: null }
-  /** 引用型属性的目标元素：菜单提供「树上高亮」与「移除」。 */
-  | { kind: 'reference'; id: string; propKey: string; index: number }
+  | { kind: 'reference'; id: string; objectKind: RevealKind; removal?: ReferenceRemoval }
 
 interface ContextMenuState {
   x: number
@@ -2547,6 +2553,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           source: elementById.get(relation.sourceId)?.name ?? relation.sourceId,
           target: elementById.get(relation.targetId)?.name ?? relation.targetId,
         })}
+        onContextMenu={(event) => openReferenceMenu(event, { kind: 'relation', id: relation.id })}
         onClick={() => {
           setSelectedRelationId(relation.id)
           setSelectedId(null)
@@ -2650,9 +2657,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return target.properties?.[spec.key]
   }
 
-  /** 引用型属性的 id 列表：单值引用取首个，列表型取全部。 */
-  const referenceIds = (spec: PropertySpec): string[] => {
-    const raw = propertyRaw(spec)
+  const propertyItems = (raw: unknown): string[] => {
     if (Array.isArray(raw)) {
       return raw.map((item) => String(item)).filter((item) => item.trim() !== '')
     }
@@ -2661,6 +2666,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
     return []
   }
+
+  const referenceIds = (spec: PropertySpec): string[] => propertyItems(propertyRaw(spec))
 
   /** 字符串列表属性的值：元素名等纯文本数组。 */
   const stringList = (spec: PropertySpec): string[] => {
@@ -2672,14 +2679,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     if (spec.key === 'stereotypes') {
       return (target.stereotypes ?? []).map((item) => String(item)).filter((item) => item.trim() !== '')
     }
-    const raw = propertyRaw(spec)
-    if (Array.isArray(raw)) {
-      return raw.map((item) => String(item)).filter((item) => item.trim() !== '')
-    }
-    if (typeof raw === 'string' && raw.trim() !== '') {
-      return [raw.trim()]
-    }
-    return []
+    return propertyItems(propertyRaw(spec))
   }
 
   /** 属性当前值的文本形式：元素与关系共用，核心字段走各自成员，其余读 properties 包。 */
@@ -2709,15 +2709,67 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return String(raw)
   }
 
-  /** 按子元素类型列出名称，供「拥有的部件 / 端口 / 约束」等派生属性使用。 */
-  const childNamesOfTypes = (types: string[]): string => {
-    if (!selected) {
-      return '—'
+  /** 派生引用保留对象标识，属性表无需从显示名称反查目标。 */
+  const derivedReferences = (key: string): ModelReference[] | undefined => {
+    const elements = (...ids: (string | null | undefined)[]): ModelReference[] =>
+      ids.flatMap((id) => id ? [{ kind: 'element', id }] : [])
+    if (selectedRelation) {
+      switch (key) {
+        case 'source':
+        case 'sourceId': return elements(selectedRelation.sourceId)
+        case 'target':
+        case 'targetId': return elements(selectedRelation.targetId)
+        case 'relatedElement': return elements(...new Set([selectedRelation.sourceId, selectedRelation.targetId]))
+        case 'owner':
+        case 'ownerId':
+        case 'namespace': return elements(selectedRelation.ownerId ?? projectRootId)
+        default: return undefined
+      }
     }
-    const names = (childrenByOwner.get(selected.id) ?? [])
-      .filter((child) => types.includes(codeOf(child.type)))
-      .map((child) => child.name)
-    return names.join(', ') || '—'
+    if (!selected) return undefined
+    const children = childrenByOwner.get(selected.id) ?? extensionChildrenByOwner.get(selected.id) ?? []
+    const childrenOfType = (...types: string[]) =>
+      elements(...children.filter((child) => types.includes(codeOf(child.type))).map((child) => child.id))
+    const owner = selected.ownerId ? elementById.get(selected.ownerId) : undefined
+    switch (key) {
+      case 'owner':
+      case 'ownerId':
+      case 'namespace': return elements(selected.ownerId)
+      case 'ownedElement':
+      case 'ownedMember': return elements(...children.map((child) => child.id))
+      case 'ownedPart': return childrenOfType('PART')
+      case 'ownedReference': return childrenOfType('REFERENCE_PROPERTY')
+      case 'ownedValue': return childrenOfType('VALUE_PROPERTY')
+      case 'ownedPort': return childrenOfType('PORT', 'FLOW_PORT')
+      case 'ownedConnector': return childrenOfType('CONNECTOR')
+      case 'ownedConstraint': return childrenOfType('CONSTRAINT_PROPERTY')
+      case 'ownedParameter': return childrenOfType('CONSTRAINT_PARAMETER')
+      case 'package': {
+        let ancestor = owner
+        const visited = new Set([selected.id])
+        while (ancestor && !visited.has(ancestor.id)) {
+          if (['PACKAGE', 'MODEL', 'MODEL_LIBRARY', 'PROFILE'].includes(codeOf(ancestor.type))) return elements(ancestor.id)
+          visited.add(ancestor.id)
+          ancestor = ancestor.ownerId ? elementById.get(ancestor.ownerId) : undefined
+        }
+        return []
+      }
+      case 'clientDependency':
+        return selectionRelations.outgoing
+          .filter((relation) => relation.type === 'dependency'
+            || DEPENDENCY_METACLASSES.has(relationInfo.get(relation.type)?.metaclass ?? ''))
+          .map((relation) => ({ kind: 'relation', id: relation.id }))
+      case 'superClass':
+        return elements(...selectionRelations.outgoing.filter((relation) => relation.type === 'generalization')
+          .map((relation) => relation.targetId)
+          .filter((id) => {
+            const code = codeOf(elementById.get(id)?.type ?? '')
+            return code === 'CLASS' || propCatalog?.types[code]?.metaclasses.includes('CLASS')
+          }))
+      case 'allocationTarget':
+        return elements(...selectionRelations.outgoing.filter((relation) => relation.type === 'allocate').map((relation) => relation.targetId))
+      default: return undefined
+    }
   }
 
   /** 计算 / 派生属性在客户端按当前快照实时求值，不落库、不可写。 */
@@ -2725,23 +2777,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     if (selectedRelation) {
       const source = model.elements.find((element) => element.id === selectedRelation.sourceId)
       const target = model.elements.find((element) => element.id === selectedRelation.targetId)
-      const endpoint = (element: ModelElement | undefined, id: string) =>
-        element ? `${element.name}（${id}）` : id
       switch (key) {
         case 'id': return selectedRelation.id
         case 'relationshipType': return selectedRelation.type
-        case 'source':
-        case 'sourceId':
-          return endpoint(source, selectedRelation.sourceId)
-        case 'target':
-        case 'targetId':
-          return endpoint(target, selectedRelation.targetId)
-        case 'ownerId':
-          return selectedRelation.ownerId ?? projectRoot?.name ?? t('项目根')
         case 'qualifiedName':
           return `${source?.name ?? '?'} ⇒ ${target?.name ?? '?'}`
-        case 'relatedElement':
-          return [source?.name, target?.name].filter(Boolean).join(', ') || '—'
         case 'xmiId': return '—'
         case 'revision': return String(health?.revision ?? model.revision)
         default: return '—'
@@ -2753,19 +2793,6 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     switch (key) {
       case 'id': return selected.id
       case 'elementType': return selectedTypeCode ?? selected.type
-      case 'ownerId':
-      case 'owner':
-      case 'namespace':
-        return model.elements.find((element) => element.id === selected.ownerId)?.name
-          ?? selected.ownerId ?? '—'
-      case 'ownedElement':
-      case 'ownedMember':
-        return (childrenByOwner.get(selected.id) ?? []).map((child) => child.name).join(', ') || '—'
-      case 'ownedPart': return childNamesOfTypes(['PART'])
-      case 'ownedPort': return childNamesOfTypes(['PORT', 'FLOW_PORT'])
-      case 'ownedConnector': return childNamesOfTypes(['CONNECTOR'])
-      case 'ownedConstraint': return childNamesOfTypes(['CONSTRAINT_PROPERTY'])
-      case 'ownedParameter': return childNamesOfTypes(['CONSTRAINT_PARAMETER'])
       case 'xmiId': return selected.xmiId || '—'
       case 'revision': return String(health?.revision ?? model.revision)
       case 'qualifiedName': {
@@ -2877,48 +2904,57 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     return true
   }
 
-  /**
-   * 引用型属性的目标元素卡片：缩略图（类型图标）+ 名称，右键可「树上高亮」。
-   *
-   * <p>规范里的引用型属性存的是元素 id；界面上只显示名称，id 放在次要位置与
-   * tooltip 里，便于核对与排查。</p>
-   */
-  const renderReferenceCard = (
-    spec: PropertySpec,
-    elementId: string,
-    index: number,
-  ): ReactNode => {
-    const target = elementById.get(elementId)
-    if (!target) {
+  const referenceDetails = ({ kind, id }: ModelReference, size: number) => {
+    if (kind === 'diagram') {
+      const diagram = diagramById.get(id)
+      return diagram && { name: diagram.name, label: diagramLabel(diagram.kind), icon: <DiagramIcon code={diagram.kind} size={size} /> }
+    }
+    if (kind === 'relation') {
+      const relation = relationById.get(id)
+      if (!relation) return undefined
+      const label = relationLabel(relation.type)
+      return { name: relation.name?.trim() || label, label, icon: <RelationIcon code={relation.type} size={size} /> }
+    }
+    const element = elementById.get(id)
+    return element && { name: element.name, label: typeLabel(element.type), icon: <TypeIcon code={codeOf(element.type)} size={size} /> }
+  }
+
+  const openReferenceMenu = (event: ReactMouseEvent, reference: ModelReference, removal?: ReferenceRemoval) => {
+    if (referenceDetails(reference, 14)) {
+      openMenu(event, { kind: 'reference', objectKind: reference.kind, id: reference.id, removal })
+    }
+  }
+
+  const renderModelReference = (reference: ModelReference, key: string | number, removal?: ReferenceRemoval): ReactNode => {
+    const details = referenceDetails(reference, 14)
+    if (!details) {
       return (
-        <span className="prop-ref-card missing" key={`${spec.key}:${index}`}>
+        <span className="prop-ref-card missing" key={key} title={reference.id}>
           <span className="prop-ref-missing">{t('未引用的元素')}</span>
-          <code className="prop-ref-id">{elementId}</code>
+          <code className="prop-ref-id">{reference.id}</code>
         </span>
       )
     }
-    const typeText = typeLabel(target.type)
     return (
       <span
         className="prop-ref-card"
-        key={`${spec.key}:${index}`}
-        title={`${target.name}（${target.id}）· ${typeText}｜${t('右键可树上高亮 / 画上高亮')}`}
-        onContextMenu={(event) => {
-          event.preventDefault()
-          event.stopPropagation()
-          setMenu({
-            x: event.clientX,
-            y: event.clientY,
-            target: { kind: 'reference', id: target.id, propKey: spec.key, index },
-          })
-        }}
+        key={key}
+        tabIndex={0}
+        data-reference-id={reference.id}
+        title={`${details.name}（${reference.id}）· ${details.label}｜${t('右键可树上高亮 / 画上高亮')}`}
+        onContextMenu={(event) => openReferenceMenu(event, reference, removal)}
       >
-        <TypeIcon code={codeOf(target.type)} size={14} />
-        <span className="prop-ref-name">{target.name}</span>
-        <code className="prop-ref-id">{target.id}</code>
+        {details.icon}
+        <span className="prop-ref-name">{details.name}</span>
+        <code className="prop-ref-id">{reference.id}</code>
       </span>
     )
   }
+
+  const renderReferenceCard = (spec: PropertySpec, id: string, index: number, value = id): ReactNode =>
+    renderModelReference({ kind: elementById.has(id) ? 'element' : relationById.has(id) ? 'relation'
+      : diagramById.has(id) ? 'diagram' : 'element', id }, index,
+      canEdit && spec.editable ? { targetId: propTargetId, key: spec.key, index, value } : undefined)
 
   /**
    * 构造型 chip：构造型属性存的是构造型名，按名解析到通用扩展包里的构造型元素，
@@ -2926,15 +2962,16 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
    * 解析不到（用户自造的构造型名）时退回普通文本。
    */
   const renderStereotypeChip = (
-    spec: PropertySpec,
     stereotypeName: string,
     index: number,
+    spec?: PropertySpec,
   ): ReactNode => {
     const target = stereotypeByName.get(stereotypeName.trim().toLowerCase())
     if (!target) {
-      return <span className="prop-chip-text">{stereotypeName}</span>
+      return <span className="prop-chip-text" key={index}>{stereotypeName}</span>
     }
-    return renderReferenceCard(spec, target.id, index)
+    return spec ? renderReferenceCard(spec, target.id, index, stereotypeName)
+      : renderModelReference({ kind: 'element', id: target.id }, index)
   }
 
   /**
@@ -2970,6 +3007,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 type="button"
                 className="prop-ref-option"
                 onClick={() => onPick(element.name)}
+                  onContextMenu={(event) => openReferenceMenu(event, { kind: 'element', id: element.id })}
               >
                 <TypeIcon code={codeOf(element.type)} size={14} />
                 <span className="prop-ref-name">{element.name}</span>
@@ -3054,6 +3092,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 type="button"
                 className="prop-ref-option"
                 onClick={() => onPick(element.id)}
+                onContextMenu={(event) => openReferenceMenu(event, { kind: 'element', id: element.id })}
               >
                 <TypeIcon code={codeOf(element.type)} size={14} />
                 <span className="prop-ref-name">{element.name}</span>
@@ -3127,7 +3166,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               {isReference
                 ? renderReferenceCard(spec, value, index)
                 : spec.key === 'stereotypes'
-                  ? renderStereotypeChip(spec, value, index)
+                  ? renderStereotypeChip(value, index, spec)
                   : <span className="prop-chip-text">{value}</span>}
               <button
                 type="button"
@@ -3353,22 +3392,20 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
    * 属性行的值：只读展示，不再提供行内输入框。
    * 引用型显示元素卡片（右键可树上高亮），数组型显示 chip，其余显示文本。
    */
-  const renderPropertyValue = (spec: PropertySpec, readOnly: boolean): ReactNode => {
-    if (readOnly) {
-      return <code className="prop-static">{derivedText(spec.key)}</code>
-    }
+  const renderPropertyValue = (spec: PropertySpec): ReactNode => {
+    const computed = spec.computed || spec.level === 'DERIVED'
     const isReference = (spec.kind === 'REFERENCE' || spec.kind === 'REFERENCE_LIST')
       && spec.referencesElement !== false
     if (isReference) {
-      const ids = referenceIds(spec)
-      return ids.length === 0
+      const derived = computed ? derivedReferences(spec.key) : undefined
+      const cards = derived
+        ? derived.map((reference, index) => renderModelReference(reference, index))
+        : referenceIds(spec).map((elementId, index) => renderReferenceCard(spec, elementId, index))
+      return cards.length === 0
         ? <span className="prop-empty">—</span>
-        : (
-          <div className="prop-value-cards">
-            {ids.map((elementId, index) => renderReferenceCard(spec, elementId, index))}
-          </div>
-        )
+        : <div className="prop-value-cards">{cards}</div>
     }
+    if (computed) return <code className="prop-static">{derivedText(spec.key)}</code>
     if (spec.kind === 'STRING_LIST' || spec.kind === 'REFERENCE_LIST') {
       const values = spec.kind === 'STRING_LIST' ? stringList(spec) : referenceIds(spec)
       return values.length === 0
@@ -3378,7 +3415,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             {values.map((value, index) => (
               <span className="prop-chip" key={`${value}:${index}`}>
                 {spec.key === 'stereotypes'
-                  ? renderStereotypeChip(spec, value, index)
+                  ? renderStereotypeChip(value, index, spec)
                   : <span className="prop-chip-text">{value}</span>}
               </span>
             ))}
@@ -3418,7 +3455,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           {label}
           {readOnly && <em>{t('只读')}</em>}
         </span>
-        <div className="prop-value">{renderPropertyValue(spec, readOnly)}</div>
+        <div className="prop-value">{renderPropertyValue(spec)}</div>
         {readOnly
           ? <span className="prop-more-slot" aria-hidden="true" />
           : (
@@ -4122,7 +4159,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     event.stopPropagation()
     setMenu({
       x: Math.min(event.clientX, window.innerWidth - 240),
-      y: Math.min(event.clientY, window.innerHeight - 280),
+      y: Math.min(event.clientY, window.innerHeight - (target.kind === 'reference' ? 124 : 280)),
       target,
     })
   }
@@ -4809,6 +4846,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         closeSearch()
         return
       }
+      if (event.key === 'Escape' && menu) {
+        setMenu(null)
+        return
+      }
       if (event.key === 'Escape' && propDialog) {
         setPropDialog(null)
         setRefPicker(null)
@@ -4916,7 +4957,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [handleUndo, handleRedo, relationTool, busy, health, propDialog, moveMessage, selectedRelationId,
+  }, [handleUndo, handleRedo, relationTool, busy, health, menu, propDialog, moveMessage, selectedRelationId,
     marquee, selectedIds, selectedId, selectionSet, canEdit, selected, selectedDiagram, selectedRelation,
     activeDiagramId, positions, copySelection, pasteClipboard,
     duplicateSelection, selectAllInDiagram, searchOpen, openSearch, closeSearch])
@@ -4928,8 +4969,6 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     await runCommand('ADD_TO_DIAGRAM', { diagramId: activeDiagramId, elementId })
     setMenu(null)
   }
-
-  type RevealKind = 'element' | 'diagram' | 'relation'
 
   /**
    * 把模型树展开到目标对象并滚动到可视区，但不改变当前选中与提示。
@@ -4972,9 +5011,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     } else if (kind === 'diagram') {
       const diagram = diagramById.get(targetId)
       let cursor = diagram?.ownerId ? elementById.get(diagram.ownerId) : undefined
-      while (cursor?.ownerId) {
-        chain.push(cursor.ownerId)
-        cursor = elementById.get(cursor.ownerId)
+      while (cursor) {
+        chain.push(cursor.id)
+        cursor = cursor.ownerId ? elementById.get(cursor.ownerId) : undefined
       }
     } else if (extensionElementById.has(targetId)) {
       // 扩展包元素（SysML / UML 元模型）：展开扩展分组与扩展内的祖先链，
@@ -5034,42 +5073,24 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
    * 点选别的节点，不再像旧实现那样 2.4 秒后消失。引用型属性、画布、属性面板、
    * 关系行都走这一个入口，行为与华望一致。</p>
    */
-  const selectOnTree = (target: { kind: RevealKind | 'reference'; id: string }) => {
-    const id = target.id
-    const kind: RevealKind = target.kind === 'diagram' ? 'diagram'
-      : target.kind === 'relation' ? 'relation' : 'element'
+  const selectOnTree = ({ kind, id }: ModelReference) => {
     // 持久选中：三态互斥，保证属性面板与树高亮指向同一对象。
-    if (target.kind === 'diagram') {
+    if (kind === 'diagram') {
       setSelectedDiagramId(id)
       setSelectedId(null)
       setSelectedRelationId(null)
-    } else if (target.kind === 'relation') {
+    } else if (kind === 'relation') {
       setSelectedRelationId(id)
       setSelectedId(null)
       setSelectedDiagramId(null)
     } else {
-      // element / reference 都指向一个元素。
       setSelectedId(id)
       setSelectedDiagramId(null)
       setSelectedRelationId(null)
     }
+    setTreeFilter('')
     revealInTree(id, kind)
-    // 关系行是折叠分组里的虚拟行，其选中态经 memo / context 下发时可能滞后于 state。
-    // 华望等价做法：选中即给目标行打 class。展开后补一次 DOM 同步，保证行立刻呈现选中，
-    // 后续 React 提交若带上正确 state 也只是覆写同一个 class，不会闪烁。
-    if (kind === 'relation') {
-      const attr = 'data-relation-id'
-      window.setTimeout(() => {
-        document.querySelectorAll('.tree-row.selected').forEach((row) => row.classList.remove('selected'))
-        document.querySelector(`[${attr}="${CSS.escape(id)}"]`)?.classList.add('selected')
-      }, 80)
-    }
-    const name = target.kind === 'diagram'
-      ? diagramById.get(id)?.name
-      : target.kind === 'relation'
-        ? (relationById.get(id)?.name?.trim() || relationLabel(relationById.get(id)?.type ?? ''))
-        : elementById.get(id)?.name
-    say('已在模型树中定位「{name}」', { name: name ?? id })
+    say('已在模型树中定位「{name}」', { name: referenceDetails({ kind, id }, 14)?.name ?? id })
   }
 
   /** 兼容旧调用点（属性面板引用 / 画布点选）：按元素树上高亮。 */
@@ -5128,10 +5149,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         ?? model.diagrams.find((item) => item.elementIds.includes(elementId))
     setSelectedId(elementId)
     setSelectedDiagramId(null)
+    setSelectedRelationId(null)
     revealInTree(elementId)
     if (!diagram) {
       return
     }
+    setActiveViewId('')
     setActiveDiagramId(diagram.id)
     openTab({ kind: 'diagram', id: diagram.id })
     const notation = model.notations.find((item) => item.diagramId === diagram.id && item.elementId === elementId)
@@ -5141,6 +5164,41 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         x: notation.x + notation.width / 2 - viewportWidth / (2 * zoom),
         y: notation.y + notation.height / 2 - viewportHeight / (2 * zoom),
       })
+    }
+  }
+
+  const diagramForReference = ({ kind, id }: ModelReference): Diagram | undefined => {
+    if (kind === 'diagram') return diagramById.get(id)
+    const relation = kind === 'relation' ? relationById.get(id) : undefined
+    if (kind === 'relation' && !relation) return undefined
+    const contains = (diagram: Diagram) => relation
+      ? diagram.elementIds.includes(relation.sourceId) && diagram.elementIds.includes(relation.targetId)
+      : diagram.elementIds.includes(id)
+    const current = activeDiagramId ? diagramById.get(activeDiagramId) : undefined
+    return current && contains(current) ? current : model.diagrams.find(contains)
+  }
+
+  const focusReferenceInDiagram = (reference: ModelReference, diagram: Diagram) => {
+    if (reference.kind === 'element') {
+      focusElementInDiagram(reference.id, diagram.id)
+      return
+    }
+    setActiveViewId('')
+    setActiveDiagramId(diagram.id)
+    openTab({ kind: 'diagram', id: diagram.id })
+    selectOnTree(reference)
+    if (reference.kind === 'relation') {
+      const relation = relationById.get(reference.id)
+      if (!relation) return
+      const route = readRoute(relation.properties, diagram.id)
+      const centers = model.notations.filter((item) => item.diagramId === diagram.id
+        && (item.elementId === relation.sourceId || item.elementId === relation.targetId))
+        .map((item) => ({ x: item.x + item.width / 2, y: item.y + item.height / 2 }))
+      const points = route?.length ? route : centers
+      if (points.length === 0) return
+      const center = routeMidpoint(points)
+      openedDiagrams.current.add(`${activeProjectId}/${diagram.id}`)
+      setPan({ x: center.x - viewportWidth / (2 * zoom), y: center.y - viewportHeight / (2 * zoom) })
     }
   }
 
@@ -6930,6 +6988,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     openMenu: (event, target) => treeActionsImpl.current.openMenu(event, target),
   }), [])
   const menuTarget = menu?.target ?? null
+  const selectedDiagramOwnerId = selectedDiagram?.ownerId || projectRootId
   const menuElement =
     menuTarget?.kind === 'element'
       ? model.elements.find((element) => element.id === menuTarget.id) ?? null
@@ -6942,6 +7001,27 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     menuTarget?.kind === 'relation'
       ? model.relationships.find((relation) => relation.id === menuTarget.id) ?? null
       : null
+  const menuReference: ModelReference | null = menuTarget?.kind === 'reference'
+    ? { kind: menuTarget.objectKind, id: menuTarget.id } : null
+  const menuReferenceDetails = menuReference && referenceDetails(menuReference, 16)
+  const menuReferenceDiagram = menuReferenceDetails && menuReference ? diagramForReference(menuReference) : undefined
+  const removeReference = (removal: ReferenceRemoval) => {
+    const spec = propEntry?.properties.find((item) => item.key === removal.key)
+    if (!canEdit || !spec?.editable || removal.targetId !== propTargetId) return
+    const isRelationship = selectedRelation !== null
+    setMenu(null)
+    void runCommandDeferred('UPDATE_PROPERTY', () => {
+      const snapshot = modelRef.current
+      const target = (isRelationship ? snapshot.relationships : snapshot.elements).find((item) => item.id === removal.targetId)
+      const values = propertyItems(spec.key === 'stereotypes' ? target?.stereotypes : target?.properties?.[spec.key])
+      if (values[removal.index] !== removal.value) throw new Error(t('引用值已变化，请重新选择'))
+      const next = values.filter((_, index) => index !== removal.index)
+      return {
+        id: removal.targetId, key: spec.key,
+        ...(spec.kind === 'REFERENCE' || next.length === 0 ? { remove: true } : { value: next }),
+      }
+    })
+  }
   const menuChildCount = menuElement ? descendants(menuElement.id).length : 0
   const menuInDiagram = menuElement
     ? model.diagrams.some((diagram) => diagram.elementIds.includes(menuElement.id))
@@ -8614,7 +8694,12 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                     onBlur={(event) => handleRenameDiagram(selectedDiagram.id, event.target.value)}
                   />
                 </label>
-                <div className="kv"><span>{t('所有者')}</span><code>{selectedDiagram.ownerId || projectRoot?.name || t('项目根')}</code></div>
+                <div className="kv">
+                  <span>{t('所有者')}</span>
+                  {selectedDiagramOwnerId
+                    ? renderModelReference({ kind: 'element', id: selectedDiagramOwnerId }, 'diagram-owner')
+                    : <code>{t('项目根')}</code>}
+                </div>
                 <div className="kv"><span>{t('元素数')}</span><code>{t('{count} 个', { count: selectedDiagram.elementIds.length })}</code></div>
                 <div className="kv"><span>ID</span><code>{selectedDiagram.id}</code></div>
               </>
@@ -8708,6 +8793,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       type="button"
                       className="rel-endpoint"
                       title={t('选中源元素')}
+                      onContextMenu={(event) => openReferenceMenu(event, { kind: 'element', id: selectedRelation.sourceId })}
                       onClick={() => {
                         setSelectedId(selectedRelation.sourceId)
                         setSelectedRelationId(null)
@@ -8723,6 +8809,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       type="button"
                       className="rel-endpoint"
                       title={t('选中目标元素')}
+                      onContextMenu={(event) => openReferenceMenu(event, { kind: 'element', id: selectedRelation.targetId })}
                       onClick={() => {
                         setSelectedId(selectedRelation.targetId)
                         setSelectedRelationId(null)
@@ -8792,7 +8879,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 <>
                   <div className="kv">
                     <span>{t('构造型')}</span>
-                    <code>{(selectedRelation ?? selected)!.stereotypes.map((s) => `«${s}»`).join(' ') || '—'}</code>
+                    <div className="prop-value-cards">
+                      {(selectedRelation ?? selected)!.stereotypes.length > 0
+                        ? (selectedRelation ?? selected)!.stereotypes.map((name, index) => renderStereotypeChip(name, index))
+                        : <code>—</code>}
+                    </div>
                   </div>
                   <div className="kv">
                     <span>{t('语义族')}</span>
@@ -8871,7 +8962,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                     {whereUsed.owner && (
                       <div className="rel-tab-group">
                         <div className="rel-tab-head">{t('所有者')}</div>
-                        <button type="button" className="rel-link-row" onClick={() => locateInTree(whereUsed.owner!.id)}>
+                        <button type="button" className="rel-link-row" onClick={() => locateInTree(whereUsed.owner!.id)}
+                          onContextMenu={(event) => openReferenceMenu(event, { kind: 'element', id: whereUsed.owner!.id })}>
                           <TypeIcon code={codeOf(whereUsed.owner.type)} size={14} />
                           <span className="rel-link-other">{whereUsed.owner.name}</span>
                         </button>
@@ -8887,6 +8979,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                             className="rel-link-row"
                             title={t('在「{diagram}」中定位', { diagram: diagram.name })}
                             onClick={() => focusElementInDiagram(selected.id, diagram.id)}
+                            onContextMenu={(event) => openReferenceMenu(event, { kind: 'diagram', id: diagram.id })}
                           >
                             <DiagramIcon code={diagram.kind} size={14} />
                             <span className="rel-link-other">{diagram.name}</span>
@@ -8909,6 +9002,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                             key={`${referrer.kind}-${referrer.id}-${referrer.key}`}
                             className="rel-link-row"
                             title={t('{name} 的属性「{key}」引用了此对象', { name: referrer.name, key: referrer.key })}
+                            onContextMenu={(event) => openReferenceMenu(event, referrer)}
                             onClick={() => {
                               if (referrer.kind === 'relation') {
                                 setSelectedRelationId(referrer.id)
@@ -8935,7 +9029,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                   <div className="rel-tab-group">
                     <div className="rel-tab-head">{t('端点')}</div>
                     {whereUsed.endpoints.map((endpoint) => (
-                      <button type="button" key={endpoint.id} className="rel-link-row" onClick={() => locateInTree(endpoint.id)}>
+                      <button type="button" key={endpoint.id} className="rel-link-row" onClick={() => locateInTree(endpoint.id)}
+                        onContextMenu={(event) => openReferenceMenu(event, { kind: 'element', id: endpoint.id })}>
                         <TypeIcon code={codeOf(endpoint.type)} size={14} />
                         <span className="rel-link-other">{endpoint.name}</span>
                       </button>
@@ -8949,6 +9044,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                           type="button"
                           key={diagram.id}
                           className="rel-link-row"
+                          onContextMenu={(event) => openReferenceMenu(event, { kind: 'diagram', id: diagram.id })}
                           onClick={() => {
                             setActiveDiagramId(diagram.id)
                             setSelectedDiagramId(diagram.id)
@@ -9387,6 +9483,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               onImport={() => setRequirementImportOpen(true)}
               onSelectElement={(id) => selectOnTree({ kind: 'element', id })}
               onSelectRelation={selectTreeRelation}
+              onReferenceContextMenu={(event, kind, id) => openReferenceMenu(event, { kind, id })}
               onRename={(id, name) => { void runCommand('RENAME_ELEMENT', { id, name }) }}
               onDocumentation={(id, documentation) => { void runCommand('UPDATE_DOCUMENTATION', { id, documentation }) }}
               onProperty={(id, key, value) => { void runCommand('UPDATE_PROPERTY', { id, key, value }) }}
@@ -10087,7 +10184,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
       {menu && (
         <div
-          className="context-menu"
+          className={menuReference ? 'context-menu reference-menu' : 'context-menu'}
           style={{ left: menu.x, top: menu.y }}
           onPointerDown={(event) => event.stopPropagation()}
         >
@@ -10096,11 +10193,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
             {menuRelation && <RelationIcon code={menuRelation.type} size={16} />}
             {menuElement && <TypeIcon code={codeOf(menuElement.type)} size={16} />}
             {menuTarget?.kind === 'root' && projectRoot && <TypeIcon code="Model" size={16} />}
-            {/* 引用型右键目标：标题也指向被引用的目标元素，而不是退化成「项目根」。 */}
-            {menuTarget?.kind === 'reference' && (() => {
-              const target = elementById.get(menuTarget.id)
-              return target ? <TypeIcon code={codeOf(target.type)} size={16} /> : null
-            })()}
+            {menuReferenceDetails && menuReferenceDetails.icon}
             <span>{menuDiagram
               ? menuDiagram.name
               : menuRelation
@@ -10108,7 +10201,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 : menuElement
                   ? menuElement.name
                   : menuTarget?.kind === 'reference'
-                    ? elementById.get(menuTarget.id)?.name ?? t('引用目标')
+                    ? menuReferenceDetails?.name ?? t('引用目标')
                     : t('项目根')}</span>
           </div>
           {menuTarget?.kind === 'element' && (
@@ -10227,50 +10320,25 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
               >{t('查看关系属性')}</button>
             </>
           )}
-          {menuTarget?.kind === 'reference' && (
+          {menuTarget?.kind === 'reference' && menuReference && menuReferenceDetails && (
             <>
-              <button type="button" onClick={() => { selectOnTree({ kind: 'reference', id: menuTarget.id }); setMenu(null) }}>
+              <button type="button" onClick={() => { selectOnTree(menuReference); setMenu(null) }}>
                 {t('树上高亮')}
               </button>
-              {/* 引用目标已出现在某张图上时，可切图定位并把视口对准它（画上高亮）。 */}
-              {model.diagrams.some((item) => item.elementIds.includes(menuTarget.id)) ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    focusElementInDiagram(menuTarget.id)
-                    setMenu(null)
-                  }}
-                >
-                  {t('画上高亮')}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="disabled-hint"
-                  disabled
-                  title={t('该元素尚未加入任何图，可用右键「加入当前图」')}
-                >
-                  {t('画上高亮')}
-                </button>
-              )}
               <button
                 type="button"
-                className="danger"
+                className={menuReferenceDiagram ? undefined : 'disabled-hint'}
+                disabled={!menuReferenceDiagram}
+                title={menuReferenceDiagram ? undefined : t(menuReference.kind === 'relation'
+                  ? '该关系尚未出现在任何图中' : '该元素尚未加入任何图，可用右键「加入当前图」')}
                 onClick={() => {
-                  const spec = propEntry?.properties.find((item) => item.key === menuTarget.propKey)
-                  // 构造型属性存的是构造型名（STRING_LIST），其余引用属性存元素 id。
-                  const ids = spec
-                    ? (spec.kind === 'STRING_LIST' ? stringList(spec) : referenceIds(spec))
-                    : []
-                  const next = ids.filter((_, index) => index !== menuTarget.index)
-                  void runCommand('UPDATE_PROPERTY', {
-                    id: propTargetId,
-                    key: menuTarget.propKey,
-                    ...(next.length === 0 ? { remove: true } : { value: next }),
-                  })
+                  if (menuReferenceDiagram) focusReferenceInDiagram(menuReference, menuReferenceDiagram)
                   setMenu(null)
                 }}
-              >{t('移除')}</button>
+              >{t('画上高亮')}</button>
+              {menuTarget.removal && canEdit && (
+                <button type="button" className="danger" onClick={() => removeReference(menuTarget.removal!)}>{t('移除')}</button>
+              )}
             </>
           )}
           {menuTarget?.kind === 'root' && (
