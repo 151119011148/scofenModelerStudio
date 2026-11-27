@@ -32,7 +32,7 @@ export interface StylePanelProps {
   nodeStyle: StyleMap
   lineStyle: StyleMap
   frameStyle: StyleMap
-  onApplyNode: (patch: StyleMap, replace?: boolean) => void
+  onApplyNode: (patch: StyleMap, replace?: boolean, keepShape?: boolean) => void
   onApplyLine: (patch: StyleMap, replace?: boolean) => void
   onApplyFrame: (patch: StyleMap, replace?: boolean) => void
   onToggleFrame: (enabled: boolean) => void
@@ -108,12 +108,13 @@ export function StylePanel(props: StylePanelProps) {
   }
 
   /** 预设 / 重置是整包替换：先冲掉待提交的增量，再发一条 replace 命令。 */
-  const replaceAll = (scope: Scope, style: StyleMap) => {
+  const replaceAll = (scope: Scope, style: StyleMap, keepShape = false) => {
     if (scopeDisabled(scope)) return
     if (timer.current !== null) window.clearTimeout(timer.current)
     timer.current = null
     pending.current[scope] = {}
-    applyByScope[scope](style, true)
+    if (scope === 'node') onApplyNode(style, true, keepShape)
+    else applyByScope[scope](style, true)
   }
 
   const renderField = (scope: Scope, field: StyleField) => {
@@ -297,7 +298,7 @@ export function StylePanel(props: StylePanelProps) {
             data-style-preset={preset.label}
             data-style-scope={scope}
             disabled={scopeDisabled(scope)}
-            onClick={() => replaceAll(scope, preset.style)}
+            onClick={() => replaceAll(scope, preset.style, true)}
           >{t(preset.label)}</button>
         ))}
       </div>

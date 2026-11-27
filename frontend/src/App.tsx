@@ -59,7 +59,7 @@ import type {
 import { arrowGeometry, controlGlyph, controlSizeOf, isBackdropShape, isLaneMembershipRelation, isPartitionType, moveRouteSegment, orthogonalRoute, readRoute, reattachRoute, relationshipStyle, routeMidpoint, shapeOf, simplifyRoute, SWIMLANE_HEADER, textWidth, wrapLabel, type RoutePoint } from './notation'
 // 图形符号：外观字典（配色 / 几何常量）与参数化记法生成器。
 import { appearanceOf, CANVAS_GRADIENTS, INTERACTIVE, INK, METRICS, TEXT } from './shapeStyle'
-import { classifierGlyph, glyphFor, packageGlyph, packageTabHeight, swimlaneGlyph } from './shapeGlyphs'
+import { classifierGlyph, databaseGlyph, glyphFor, packageGlyph, packageTabHeight, swimlaneGlyph } from './shapeGlyphs'
 import {
   layoutSequence, messageSortStyle, nextMessageOrder, reorderMessages, reorderMessagesTo,
   SEQ_MESSAGE_TOOLS, seqMessageToolOf, SEQ_ROW_PITCH, SEQ_SELF_BUMP, SEQ_SELF_HEIGHT,
@@ -91,7 +91,7 @@ import { isExtensionId } from './extensionIds'
 import { isDiagramType, isTagDefinition } from './customTypes'
 import {
   alignAnchor, alignX, colorOr, dashArray, frameEnabledOf, frameStyleOf,
-  numberValue, relationStyleOf,
+  numberValue, relationStyleOf, shapeOptions, shapeVariantOf,
 } from './diagramStyle'
 
 const EMPTY_MODEL: ModelSnapshot = {
@@ -989,6 +989,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   // 模型树拖放：元素拖到图节点上时高亮可接收的图。
   const [treeDropTarget, setTreeDropTarget] = useState<string | null>(null)
+  const [paletteShapes, setPaletteShapes] = useState<Record<string, string>>({})
   const [menu, setMenu] = useState<ContextMenuState | null>(null)
   const [createDialog, setCreateDialog] = useState<CreateDialogState | null>(null)
   const [deleteDialog, setDeleteDialog] = useState<DeleteDialogState | null>(null)
@@ -3448,6 +3449,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
   }, [model.elements, activeDiagramObj])
 
   const positions = useMemo(() => {
+    const paintOrder = (element: ModelElement, style: StyleMap) => {
+      const variant = shapeVariantOf(element.type, style)
+      if (variant === 'layer' || isBackdropShape(shapeOf(element.type))) return 0
+      return variant === 'container' ? 1 : 2
+    }
     const byElement = new Map(
       model.notations
         .filter((notation) => notation.diagramId === activeDiagramId)
@@ -3483,7 +3489,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         style: notation?.style ?? {},
       }
     // 垫底形状（泳道、生命线）先画：SVG 后画的盖在先画的上面，不透明底必须垫在动作/消息之下。
-    }).sort((a, b) => Number(isBackdropShape(shapeOf(b.element.type))) - Number(isBackdropShape(shapeOf(a.element.type))))
+    }).sort((a, b) => paintOrder(a.element, a.style) - paintOrder(b.element, b.style))
   }, [visibleElements, model.notations, activeDiagramId, drag, nodeSize.width, nodeSize.height, selectionSet, nudge, canvas.maxX, canvas.maxY])
 
   /**
@@ -4030,19 +4036,41 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       .map((notation) => notation.id)
   }, [model.notations, activeDiagramId, selectionSet])
 
+  const selectedNotationsByType = useMemo(() => {
+    const result = new Map<string, typeof model.notations>()
+    for (const notation of model.notations) {
+      if (notation.diagramId !== activeDiagramId || !selectionSet.has(notation.elementId)) continue
+      const element = elementById.get(notation.elementId)
+      if (!element) continue
+      const code = codeOf(element.type)
+      const notations = result.get(code) ?? []
+      notations.push(notation)
+      result.set(code, notations)
+    }
+    return result
+  }, [activeDiagramId, selectionSet, model.notations, elementById, codeOf])
+
   const currentLineStyle = useMemo(
     () => relationStyleOf(selectedRelation, activeDiagramId),
     [selectedRelation, activeDiagramId],
   )
 
-  const applyNodeStyle = async (patch: StyleMap, replace = false): Promise<void> => {
+  const applyNodeStyle = async (patch: StyleMap, replace = false, keepShape = false): Promise<void> => {
     if (styleTargetIds.length === 0) {
       say('当前图没有可编辑的记法')
       return
     }
-    const ok = await runCommand('SET_NOTATION_STYLE', {
-      items: styleTargetIds.map((id) => ({ notationId: id, style: patch })),
-      ...(replace ? { replace: true } : {}),
+    const ok = await runCommandDeferred('SET_NOTATION_STYLE', () => {
+      const existingShapes = keepShape
+        ? new Map(modelRef.current.notations.map(({ id, style }) => [id, style?.shapeVariant]))
+        : null
+      return {
+        items: styleTargetIds.map((id) => {
+          const shapeVariant = existingShapes?.get(id)
+          return { notationId: id, style: shapeVariant ? { ...patch, shapeVariant } : patch }
+        }),
+        ...(replace ? { replace: true } : {}),
+      }
     })
     if (ok) say('已应用图形样式')
   }
@@ -6137,6 +6165,13 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
    * 坐标随 CREATE_ELEMENT 一条命令下发，由服务端在生成 Notation 时写入——
    * 不再补发 MOVE_NOTATION，避免连续命令的 409 竞态与「撤销两次才删掉元素」。
    */
+  const paletteShape = (type: string): string => {
+    const existing = selectedNotationsByType.get(type) ?? []
+    const shapes = new Set(existing.map(({ style }) => shapeVariantOf(type, style)))
+    if (shapes.size > 1) return 'mixed'
+    return shapes.values().next().value ?? paletteShapes[type] ?? ''
+  }
+
   const createElementFromPalette = async (typeCode: string, x: number, y: number) => {
     if (!activeDiagramObj || !activeDiagramId || elementCreatingRef.current) {
       return
@@ -6151,6 +6186,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       }
       const info = typeInfo.get(typeCode)
       const id = `e-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+      const variant = paletteShape(typeCode)
+      const shapeVariant = variant === 'mixed' ? paletteShapes[typeCode] : variant
       const payload: Record<string, unknown> = {
         id,
         type: info?.uml ?? typeCode,
@@ -6160,6 +6197,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
         diagramId: activeDiagramId,
         x: Math.round(clamp(x, 0, canvas.maxX)),
         y: Math.round(clamp(y, 0, canvas.maxY)),
+        ...(shapeVariant ? { style: { shapeVariant } } : {}),
       }
       const ok = await runCommand('CREATE_ELEMENT', payload)
       if (ok) {
@@ -6169,6 +6207,54 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     } finally {
       elementCreatingRef.current = false
     }
+  }
+
+  const renderPaletteItem = (type: ElementTypeInfo) => {
+    const options = shapeOptions(type.code)
+    const label = pick(type.label, type.labelEn)
+    const create = (
+      <button
+        key={type.code}
+        type="button"
+        className="tb-item"
+        data-tb-type={type.code}
+        draggable={canEdit}
+        disabled={busy}
+        onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
+        onClick={() => createFromPaletteAtCenter(type.code)}
+        title={t('«{stereotype}» {label} · {uml}｜点击或拖入画布', { stereotype: type.stereotype, label, uml: type.uml })}
+      >
+        <TypeIcon code={type.code} size={16} />
+        <span className="tb-item-label">{label}</span>
+      </button>
+    )
+    if (!options) return create
+    const selected = selectedNotationsByType.get(type.code) ?? []
+    const current = paletteShape(type.code)
+    return (
+      <div key={type.code} className="tb-shape-row">
+        {create}
+        <select
+          className="tb-shape-select"
+          aria-label={t('{type}图形样式', { type: label })}
+          title={selected.length ? t('更改选中图元的形状') : t('设置新建图元的形状')}
+          data-tb-shape={type.code}
+          disabled={!canEdit || busy}
+          value={current}
+          onChange={async (event) => {
+            const shapeVariant = event.target.value
+            if (selected.length && !await runCommand('SET_NOTATION_STYLE', {
+              items: selected.map(({ id }) => ({ notationId: id, style: { shapeVariant } })),
+            })) return
+            setPaletteShapes((previous) => ({ ...previous, [type.code]: shapeVariant }))
+          }}
+        >
+          <option value="">{t('标准')}</option>
+          {current === 'mixed' && <option value="mixed" disabled>{t('混合样式')}</option>}
+          {options.map(({ value, label: shapeLabel }) => <option key={value} value={value}>{t(shapeLabel)}</option>)}
+        </select>
+      </div>
+    )
   }
 
   /** 工具箱点选：把新元素放在视口中心，尺寸按当前图种/类型取，避免扩展图节点偏移。 */
@@ -6866,7 +6952,9 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
 
   const renderNode = (element: ModelElement, x: number, y: number, w: number, h: number, style: StyleMap = {}): ReactNode => {
     const shape = shapeOf(element.type)
-    const info = typeInfo.get(codeOf(element.type))
+    const code = codeOf(element.type)
+    const info = typeInfo.get(code)
+    const shapeVariant = shapeVariantOf(code, style)
     const selected = selectedId === element.id
     const multiSelected = selectedIds.size > 1 && selectedIds.has(element.id)
     const isLinkSource = relationSource === element.id
@@ -6886,7 +6974,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const strokeW = isLinkSource || selected ? 2 : numberValue(style, 'strokeWidth', look.strokeWidth)
     const fontSize = numberValue(style, 'fontSize', 12)
     const smallFontSize = Math.max(8, fontSize - 2)
-    const fontColor = colorOr(style, 'fontColor', look.textColor)
+    const fontColor = shapeVariant && (selected || isLinkSource) ? look.textColor : colorOr(style, 'fontColor', look.textColor)
     const fontWeight = style.fontWeight === 'bold' ? 700 : undefined
     // CSS 类里的 fill / font-size 会盖住 SVG presentation attribute，
     // 因此样式覆盖必须用内联 style（优先级高于类选择器）。
@@ -6897,7 +6985,8 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const nameTextStyle: CSSProperties = { ...baseTextStyle, fontSize }
     const smallTextStyle: CSSProperties = { ...baseTextStyle, fontSize: smallFontSize }
     // 类三栏 / 枚举 / 用例按 UML 规范居中排字，其余左对齐（用户显式设 textAlign 时听用户的）。
-    const centered = (shape === 'classifier' || shape === 'usecase' || shape === 'enumeration')
+    const centered = (shape === 'classifier' || shape === 'usecase' || shape === 'enumeration'
+      || (!!shapeVariant && shapeVariant !== 'layer'))
       && style.textAlign === undefined
     const labelX = centered ? bx + bw / 2 : alignX(style, bx, bw)
     const labelAnchor = centered ? 'middle' : alignAnchor(style)
@@ -6917,7 +7006,18 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const pkgTabH = Math.max(packageTabHeight(bh), fontSize + 8)
 
     let shapeSvg: ReactNode = null
-    switch (shape) {
+    switch (shapeVariant || shape) {
+      case 'database':
+        shapeSvg = databaseGlyph({ x: bx, y: by, w: bw, h: bh }, { fill, stroke, strokeWidth: strokeW })
+        break
+      case 'layer':
+      case 'container':
+      case 'rectangle':
+      case 'rounded':
+        shapeSvg = <rect x={bx} y={by} width={bw} height={bh}
+          rx={shapeVariant === 'rounded' ? Math.min(8, bh / 4) : 0}
+          fill={fill} stroke={stroke} strokeWidth={strokeW} />
+        break
       case 'package': {
         // 包名按 UML 规范写在标签页里：标签页宽度跟着名字长度走，
         // 否则「«Package»」标签会从标签页里溢出来。
@@ -7070,11 +7170,11 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const isEnum = shape === 'enumeration'
     const isCentredShape = isUsecase || shape === 'action' || shape === 'object'
     const showText =
-      !isPort && shape !== 'pseudostate' && shape !== 'actor' && shape !== 'swimlane' && shape !== 'lifeline' && !glyphKind && !isContainer && shape !== 'package'
+      !shapeVariant && !isPort && shape !== 'pseudostate' && shape !== 'actor' && shape !== 'swimlane' && shape !== 'lifeline' && !glyphKind && !isContainer && shape !== 'package'
     const showLabel = shape === 'actor' || shape === 'pseudostate'
     // 有隔间的形状：SysML 块（子元素）与包（成员）；枚举的字面量单独按隔间线排布。
     const showCompartment =
-      !isPort && (shape === 'block' || shape === 'package') && children.length > 0
+      !shapeVariant && !isPort && (shape === 'block' || shape === 'package') && children.length > 0
     // 有隔间的形状名字只能占隔间线以上一行；其余按框高折行，末行省略，杜绝标签跨框。
     const nameLines = wrapLabel(
       element.name,
@@ -7086,6 +7186,10 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
     const nameBaseline = isCentredShape
       ? by + bh / 2 + fontSize / 3
       : isClass ? by + 36 : isEnum ? by + 24 : by + TEXT.nameBaseline
+    const variantLines = shapeVariant
+      ? wrapLabel(element.name, Math.max(1, bw - (shapeVariant === 'database' ? 32 : 20)), fontSize,
+        shapeVariant === 'container' || shapeVariant === 'layer' ? 1 : Math.max(1, Math.floor((bh - 6) / (fontSize + 2))))
+      : []
     // 类三栏的两段隔间高度，与 classifierGlyph 的分隔线位置保持一致。
     const classNameH = Math.min(METRICS.classNameH, bh * METRICS.classNameHRatio)
     const classAttrH = classRows.attributeCount > 0
@@ -7098,6 +7202,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
       <g
         className={`node ${drag?.elementId === element.id && drag.moved ? 'dragging' : ''} ${isLinkSource ? 'link-source' : ''}`}
         data-element-id={element.id}
+        data-shape-variant={shapeVariant || undefined}
         fillOpacity={numberValue(style, 'fillOpacity', 1)}
         strokeDasharray={dashArray(style, 'strokeDash')}
         onPointerDown={onDown}
@@ -7122,6 +7227,17 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           />
         )}
         {shapeSvg}
+        {variantLines.length > 0 && (
+          <text x={labelX}
+            y={shapeVariant === 'container' ? by + Math.min(bh / 2, fontSize + 6)
+              : by + bh / 2 - ((variantLines.length - 1) * (fontSize + 2)) / 2}
+            dominantBaseline="central" textAnchor={labelAnchor}
+            className="node-name" style={nameTextStyle} fillOpacity={1}>
+            {variantLines.map((line, index) => (
+              <tspan key={index} x={labelX} dy={index === 0 ? 0 : fontSize + 2}>{line}</tspan>
+            ))}
+          </text>
+        )}
         {selected && !multiSelected && !relationTool && (
           <g
             className="node-quick-add"
@@ -7167,7 +7283,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
           </text>
         )}
         {/* 包：名字写在文件夹的标签页里（UML 规范），用主字号（跟随样式面板设置）。 */}
-        {shape === 'package' && (
+        {shape === 'package' && !shapeVariant && (
           <text x={bx + METRICS.packageTabPadX} y={by + pkgTabH - 6} className="node-name" style={nameTextStyle} fillOpacity={1}>
             {wrapLabel(element.name, Math.max(20, bw * 0.72 - 12), fontSize, 1)[0]}
           </text>
@@ -9000,22 +9116,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                       {elementGroups.map((group) => (
                         <div className="tb-sect" key={group.key}>
                           <div className="tb-sect-label">{group.label}</div>
-                          {group.items.map((type) => (
-                            <button
-                              key={type.code}
-                              type="button"
-                              className="tb-item"
-                              data-tb-type={type.code}
-                              draggable={canEdit}
-                              disabled={busy}
-                              onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
-                              onClick={() => createFromPaletteAtCenter(type.code)}
-                              title={t('«{stereotype}» {label} · {uml}｜点击或拖入画布', { stereotype: type.stereotype, label: pick(type.label, type.labelEn), uml: type.uml })}
-                            >
-                              <TypeIcon code={type.code} size={16} />
-                              <span className="tb-item-label">{pick(type.label, type.labelEn)}</span>
-                            </button>
-                          ))}
+                          {group.items.map(renderPaletteItem)}
                         </div>
                       ))}
                       <p className="tb-tip">{t('仅显示当前图允许的 {count} 类元素 · 点击 / 拖入画布', { count: corePalette.length })}</p>
@@ -9040,21 +9141,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                         {advancedGroups.map((group) => (
                           <div className="tb-sect" key={`advanced:${group.key}`}>
                             <div className="tb-sect-label">{group.label}</div>
-                            {group.items.map((type) => (
-                              <button
-                                key={type.code}
-                                type="button"
-                                className="tb-item"
-                                draggable={canEdit}
-                                disabled={busy}
-                                onDragStart={(event) => event.dataTransfer.setData('text/scofen-type', type.code)}
-                                onClick={() => createFromPaletteAtCenter(type.code)}
-                                title={t('«{stereotype}» {label} · {uml}｜点击或拖入画布', { stereotype: type.stereotype, label: pick(type.label, type.labelEn), uml: type.uml })}
-                              >
-                                <TypeIcon code={type.code} size={16} />
-                                <span className="tb-item-label">{pick(type.label, type.labelEn)}</span>
-                              </button>
-                            ))}
+                            {group.items.map(renderPaletteItem)}
                           </div>
                         ))}
                         <p className="tb-tip">{t('UML 2.5.1 §16 具体动作：默认收起，避免撑爆工具箱')}</p>
@@ -9197,7 +9284,7 @@ function StudioApp({ session, onLogout }: { session: Session; onLogout: () => vo
                 nodeStyle={selectionNotation?.style ?? {}}
                 lineStyle={currentLineStyle}
                 frameStyle={frameStyle}
-                onApplyNode={(patch, replace) => void applyNodeStyle(patch, replace)}
+                onApplyNode={(patch, replace, keepShape) => void applyNodeStyle(patch, replace, keepShape)}
                 onApplyLine={(patch, replace) => void applyLineStyle(patch, replace)}
                 onApplyFrame={(patch, replace) => void applyFrameStyle(patch, replace)}
                 onToggleFrame={(visible) => setFrameVisible(visible)}

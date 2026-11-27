@@ -1,5 +1,22 @@
 import type { Diagram, Relationship, StyleCatalog, StyleMap } from './types'
 
+type ShapeVariant = 'layer' | 'container' | 'rectangle' | 'rounded' | 'database'
+type ShapeOption = { value: ShapeVariant; label: string }
+
+const SHAPE_VARIANTS = new Map<string, readonly ShapeOption[]>([
+  ['package', [{ value: 'layer', label: '分层框' }, { value: 'container', label: '容器框' }]],
+  ['component', [{ value: 'rectangle', label: '矩形' }, { value: 'rounded', label: '圆角矩形' }, { value: 'container', label: '容器框' }]],
+  ['node', [{ value: 'database', label: '数据库' }, { value: 'rectangle', label: '矩形' }]],
+])
+
+export function shapeOptions(type: string): readonly ShapeOption[] | undefined {
+  return SHAPE_VARIANTS.get(type.toLowerCase())
+}
+
+export function shapeVariantOf(type: string, style: StyleMap): ShapeVariant | '' {
+  return shapeOptions(type)?.find(({ value }) => value === style.shapeVariant)?.value ?? ''
+}
+
 /**
  * 图形样式的前端公共层：节点（Notation.style）、连线（关系 properties 的
  * style:<diagramId>）、图框（Diagram.style）三处共用一套键与读数规则。

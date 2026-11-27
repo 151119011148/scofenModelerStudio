@@ -57,6 +57,28 @@ class NotationStyleCommandTest {
     }
 
     @Test
+    void createWithShapeStyleUsesOneUndoableCommand() {
+        cmd("CREATE_DIAGRAM", Map.of("id", "d-bdd", "kind", "bdd", "name", "架构图"));
+        long before = executor.revision();
+        Map<String, Object> placement = Map.of(
+                "id", "db", "type", "Node", "name", "数据库", "ownerId", "pkg",
+                "diagramId", "d-bdd", "x", 210, "y", 370, "style", Map.of("shapeVariant", "database"));
+        cmd("CREATE_ELEMENT", placement);
+        String notation = "n-d-bdd-db";
+        assertThat(executor.revision()).isEqualTo(before + 1);
+        assertThat(notation(notation).style()).containsEntry("shapeVariant", "database");
+        assertThat(notation(notation).x()).isEqualTo(210);
+        executor.undo(SESSION);
+        assertThat(executor.snapshot().notations()).noneMatch(n -> n.id().equals(notation));
+        executor.redo(SESSION);
+        assertThat(notation(notation).style()).containsEntry("shapeVariant", "database");
+        cmd("SET_NOTATION_STYLE", Map.of("items", List.of(item(notation, Map.of("shapeVariant", "")))));
+        assertThat(notation(notation).style()).doesNotContainKey("shapeVariant");
+        executor.undo(SESSION);
+        assertThat(notation(notation).style()).containsEntry("shapeVariant", "database");
+    }
+
+    @Test
     void notationStyleIsMergedWrittenAndUndoneInOneStep() {
         String id = notation("n-d-ibd-part").id();
         double beforeX = notation(id).x();

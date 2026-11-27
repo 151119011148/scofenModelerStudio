@@ -54,6 +54,7 @@ public final class NotationStyle {
             "textAlign", Set.of("left", "center", "right"),
             "strokeDash", Set.of("solid", "dashed", "dotted"),
             "lineDash", Set.of("solid", "dashed", "dotted"),
+            "shapeVariant", Set.of("layer", "container", "rectangle", "rounded", "database"),
             "frame", Set.of("on", "off"));
 
     private static final Pattern COLOR = Pattern.compile("^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$");

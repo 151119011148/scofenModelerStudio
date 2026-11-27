@@ -1655,6 +1655,21 @@ body.row-resizing * { cursor: row-resize !important; }
 .tb-item:active { cursor: grabbing; }
 .tb-item:disabled { opacity: .5; }
 .tb-item-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tb-shape-row { display: flex; align-items: center; min-width: 0; gap: 3px; }
+.tb-shape-row .tb-item { flex: 1; min-width: 0; }
+.tb-shape-select {
+  flex: 0 0 66px;
+  width: 66px;
+  padding: 2px 1px 2px 4px;
+  background: var(--surface);
+  color: var(--text-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  font: inherit;
+  font-size: 11px;
+}
+.tb-shape-select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.tb-shape-select:disabled { opacity: .5; }
 .tb-item-st { font-family: var(--mono); font-size: 9.5px; color: var(--text-3); flex: none; }
 .tb-item.action { cursor: pointer; }
 /* 语义族小节：把当前图元素 / 关系按规范类别再分一层，避免一长串平铺按钮。 */

@@ -94,6 +94,9 @@ public final class ValidationEngine {
                     Diagram diagram = repository.findDiagram(diagramId)
                             .orElseThrow(() -> new ValidationException("Unknown diagram: " + diagramId));
                     assertDiagramAllows(diagram, child, repository);
+                    if (cmd.payload().containsKey("style")) {
+                        assertStylePatch(cmd.payload().get("style"));
+                    }
                 }
             }
             case "RENAME_ELEMENT" -> {

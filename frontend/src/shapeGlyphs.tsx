@@ -47,6 +47,19 @@ export function blockGlyph(box: GlyphBox, style?: Partial<GlyphStyle>): ReactNod
   )
 }
 
+export function databaseGlyph({ x, y, w, h }: GlyphBox, { fill, stroke, strokeWidth }: GlyphStyle): ReactNode {
+  const rx = Math.min(11, w / 5)
+  const ry = h / 2
+  const left = x + rx
+  const right = x + w - rx
+  return (
+    <g fill={fill} stroke={stroke} strokeWidth={strokeWidth}>
+      <path d={`M${left},${y} H${right} V${y + h} H${left} A${rx},${ry} 0 0 1 ${left},${y} Z`} />
+      <ellipse cx={right} cy={y + ry} rx={rx} ry={ry} />
+    </g>
+  )
+}
+
 /**
  * UML 类：三栏（名称 / 属性 / 操作）。
  *

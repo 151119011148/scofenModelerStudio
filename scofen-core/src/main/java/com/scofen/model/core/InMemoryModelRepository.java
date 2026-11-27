@@ -171,6 +171,11 @@ public final class InMemoryModelRepository {
                                 ? placedNotation(diagramId, id, before.kind(), element.type(),
                                         cmd.decimal("x"), cmd.decimal("y"))
                                 : defaultNotation(diagramId, id, before.kind(), element.type(), refs.size() - 1);
+                        Map<String, String> style = NotationStyle.fromPropertyValue(cmd.payload().get("style"));
+                        if (!style.isEmpty()) {
+                            notation = new Notation(notation.id(), diagramId, id, notation.x(), notation.y(),
+                                    notation.width(), notation.height(), NotationStyle.merge(Map.of(), style, false));
+                        }
                         notations.put(notation.id(), notation);
                         changes.add(new Change("add", "notation", notation.id(), null, notation));
                         affected.add(notation.id());
